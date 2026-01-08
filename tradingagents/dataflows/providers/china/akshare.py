@@ -264,6 +264,400 @@ class AKShareProvider(BaseStockDataProvider):
             self.logger.error(f"❌ {symbol} 直接调用 API 失败: {e}")
             return None
 
+    def _get_news_from_sina(self, symbol: str, limit: int = 10) -> Optional[pd.DataFrame]:
+        """
+        从新浪财经获取股票新闻（回退源1）
+        
+        Args:
+            symbol: 股票代码
+            limit: 返回数量限制
+            
+        Returns:
+            新闻 DataFrame 或 None
+        """
+        try:
+            import requests
+            import re
+            from bs4 import BeautifulSoup
+            
+            symbol_6 = symbol.zfill(6)
+            
+            # 新浪财经股票新闻页面
+            # 根据股票代码前缀确定市场（sh/sz）
+            if symbol_6.startswith(('6', '9')):
+                market = 'sh'
+            else:
+                market = 'sz'
+            
+            url = f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCB_AllNewsStock/symbol/{market}{symbol_6}.phtml"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = 'gb2312'
+            
+            if response.status_code != 200:
+                self.logger.debug(f"新浪财经请求失败: {response.status_code}")
+                return None
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            news_data = []
+            # 查找新闻列表
+            news_table = soup.find('div', class_='datelist')
+            if news_table:
+                news_items = news_table.find_all('a')
+                for item in news_items[:limit]:
+                    title = item.get_text(strip=True)
+                    link = item.get('href', '')
+                    if title and link:
+                        # 尝试提取时间（通常在链接或相邻元素中）
+                        publish_time = ''
+                        parent = item.parent
+                        if parent:
+                            time_match = re.search(r'(\d{4}-\d{2}-\d{2})', parent.get_text())
+                            if time_match:
+                                publish_time = time_match.group(1)
+                        
+                        news_data.append({
+                            "新闻标题": title,
+                            "新闻内容": "",  # 新浪列表页不提供内容
+                            "发布时间": publish_time,
+                            "新闻链接": link if link.startswith('http') else f"https:{link}",
+                            "关键词": "",
+                            "新闻来源": "新浪财经",
+                            "新闻类型": "个股新闻"
+                        })
+            
+            if news_data:
+                df = pd.DataFrame(news_data)
+                self.logger.info(f"✅ {symbol} 新浪财经新闻获取成功: {len(df)} 条")
+                return df
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"新浪财经新闻获取失败: {e}")
+            return None
+
+    def _get_news_from_10jqka(self, symbol: str, limit: int = 10) -> Optional[pd.DataFrame]:
+        """
+        从同花顺获取股票新闻（回退源2）
+        
+        Args:
+            symbol: 股票代码
+            limit: 返回数量限制
+            
+        Returns:
+            新闻 DataFrame 或 None
+        """
+        try:
+            import requests
+            import json
+            
+            symbol_6 = symbol.zfill(6)
+            
+            # 同花顺股票新闻API
+            url = f"http://basic.10jqka.com.cn/api/stockph/news/{symbol_6}/"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': f'http://basic.10jqka.com.cn/{symbol_6}/',
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                self.logger.debug(f"同花顺请求失败: {response.status_code}")
+                return None
+            
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                # 尝试解析HTML格式
+                return self._parse_10jqka_html(symbol_6, limit)
+            
+            news_data = []
+            items = data.get('data', {}).get('list', []) or data.get('list', [])
+            
+            for item in items[:limit]:
+                news_data.append({
+                    "新闻标题": item.get('title', ''),
+                    "新闻内容": item.get('content', item.get('digest', '')),
+                    "发布时间": item.get('ctime', item.get('time', '')),
+                    "新闻链接": item.get('url', item.get('link', '')),
+                    "关键词": item.get('keywords', ''),
+                    "新闻来源": "同花顺",
+                    "新闻类型": item.get('type', '个股新闻')
+                })
+            
+            if news_data:
+                df = pd.DataFrame(news_data)
+                self.logger.info(f"✅ {symbol} 同花顺新闻获取成功: {len(df)} 条")
+                return df
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"同花顺新闻获取失败: {e}")
+            return None
+
+    def _parse_10jqka_html(self, symbol: str, limit: int = 10) -> Optional[pd.DataFrame]:
+        """解析同花顺HTML页面获取新闻"""
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+            
+            url = f"http://basic.10jqka.com.cn/{symbol}/news.html"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = 'gbk'
+            
+            if response.status_code != 200:
+                return None
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            news_data = []
+            
+            # 查找新闻列表
+            news_list = soup.find_all('li', class_='news-item') or soup.find_all('div', class_='news-item')
+            
+            for item in news_list[:limit]:
+                title_elem = item.find('a')
+                time_elem = item.find('span', class_='time') or item.find('span', class_='date')
+                
+                if title_elem:
+                    news_data.append({
+                        "新闻标题": title_elem.get_text(strip=True),
+                        "新闻内容": "",
+                        "发布时间": time_elem.get_text(strip=True) if time_elem else "",
+                        "新闻链接": title_elem.get('href', ''),
+                        "关键词": "",
+                        "新闻来源": "同花顺",
+                        "新闻类型": "个股新闻"
+                    })
+            
+            if news_data:
+                return pd.DataFrame(news_data)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"同花顺HTML解析失败: {e}")
+            return None
+
+    def _get_news_from_cls(self, symbol: str = None, limit: int = 10) -> Optional[pd.DataFrame]:
+        """
+        从财联社获取新闻（回退源3 - 快讯为主）
+        
+        Args:
+            symbol: 股票代码（可选，为None时获取市场快讯）
+            limit: 返回数量限制
+            
+        Returns:
+            新闻 DataFrame 或 None
+        """
+        try:
+            import requests
+            import time as time_module
+            
+            # 财联社快讯API
+            url = "https://www.cls.cn/nodeapi/updateTelegraphList"
+            
+            params = {
+                "app": "CailianpressWeb",
+                "os": "web",
+                "sv": "8.4.6",
+                "sign": "",
+                "lastTime": "",
+                "rn": str(limit),
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Referer': 'https://www.cls.cn/telegraph',
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                self.logger.debug(f"财联社请求失败: {response.status_code}")
+                return None
+            
+            data = response.json()
+            items = data.get('data', {}).get('roll_data', [])
+            
+            news_data = []
+            symbol_6 = symbol.zfill(6) if symbol else None
+            
+            for item in items:
+                content = item.get('content', '')
+                title = item.get('title', '') or content[:50] + '...' if len(content) > 50 else content
+                
+                # 如果指定了股票代码，过滤相关新闻
+                if symbol_6:
+                    # 检查内容是否包含股票代码或相关关键词
+                    if symbol_6 not in content and symbol not in content:
+                        continue
+                
+                # 转换时间戳
+                timestamp = item.get('ctime', 0)
+                if timestamp:
+                    try:
+                        publish_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        publish_time = ''
+                else:
+                    publish_time = ''
+                
+                news_data.append({
+                    "新闻标题": title,
+                    "新闻内容": content,
+                    "发布时间": publish_time,
+                    "新闻链接": f"https://www.cls.cn/detail/{item.get('id', '')}",
+                    "关键词": ",".join(item.get('subjects', [])) if item.get('subjects') else "",
+                    "新闻来源": "财联社",
+                    "新闻类型": "快讯"
+                })
+                
+                if len(news_data) >= limit:
+                    break
+            
+            if news_data:
+                df = pd.DataFrame(news_data)
+                source_desc = f"{symbol} " if symbol else ""
+                self.logger.info(f"✅ {source_desc}财联社快讯获取成功: {len(df)} 条")
+                return df
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"财联社快讯获取失败: {e}")
+            return None
+
+    async def _get_news_with_fallback(self, symbol: str, limit: int = 10) -> Optional[pd.DataFrame]:
+        """
+        多源新闻获取，带回退机制
+        
+        优先级顺序：
+        1. 东方财富 (AKShare stock_news_em)
+        2. 东方财富直接API (curl_cffi)
+        3. 新浪财经
+        4. 同花顺
+        5. 财联社快讯
+        
+        Args:
+            symbol: 股票代码
+            limit: 返回数量限制
+            
+        Returns:
+            新闻 DataFrame 或 None
+        """
+        import akshare as ak
+        import json
+        import os
+        
+        symbol_6 = symbol.zfill(6)
+        is_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER') == 'true'
+        
+        # 记录尝试的数据源
+        tried_sources = []
+        
+        # 源1: Docker环境下优先使用curl_cffi直接调用API
+        if is_docker:
+            try:
+                from curl_cffi import requests as curl_requests
+                self.logger.debug(f"📰 {symbol} 尝试源1: 东方财富直接API (curl_cffi)")
+                tried_sources.append("东方财富API")
+                
+                news_df = await asyncio.to_thread(
+                    self._get_stock_news_direct,
+                    symbol=symbol_6,
+                    limit=limit
+                )
+                if news_df is not None and not news_df.empty:
+                    self.logger.info(f"✅ {symbol} 新闻获取成功 (来源: 东方财富API)")
+                    return news_df
+            except Exception as e:
+                self.logger.debug(f"东方财富API失败: {e}")
+        
+        # 源2: AKShare stock_news_em
+        try:
+            self.logger.debug(f"📰 {symbol} 尝试源2: AKShare stock_news_em")
+            tried_sources.append("AKShare")
+            
+            max_retries = 2
+            retry_delay = 1
+            
+            for attempt in range(max_retries):
+                try:
+                    news_df = await asyncio.to_thread(ak.stock_news_em, symbol=symbol_6)
+                    if news_df is not None and not news_df.empty:
+                        self.logger.info(f"✅ {symbol} 新闻获取成功 (来源: AKShare)")
+                        return news_df
+                    break
+                except (json.JSONDecodeError, KeyError) as e:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        self.logger.debug(f"AKShare失败: {e}")
+                except Exception as e:
+                    self.logger.debug(f"AKShare失败: {e}")
+                    break
+        except Exception as e:
+            self.logger.debug(f"AKShare初始化失败: {e}")
+        
+        # 源3: 新浪财经
+        try:
+            self.logger.debug(f"📰 {symbol} 尝试源3: 新浪财经")
+            tried_sources.append("新浪财经")
+            
+            news_df = await asyncio.to_thread(self._get_news_from_sina, symbol_6, limit)
+            if news_df is not None and not news_df.empty:
+                self.logger.info(f"✅ {symbol} 新闻获取成功 (来源: 新浪财经)")
+                return news_df
+        except Exception as e:
+            self.logger.debug(f"新浪财经失败: {e}")
+        
+        # 源4: 同花顺
+        try:
+            self.logger.debug(f"📰 {symbol} 尝试源4: 同花顺")
+            tried_sources.append("同花顺")
+            
+            news_df = await asyncio.to_thread(self._get_news_from_10jqka, symbol_6, limit)
+            if news_df is not None and not news_df.empty:
+                self.logger.info(f"✅ {symbol} 新闻获取成功 (来源: 同花顺)")
+                return news_df
+        except Exception as e:
+            self.logger.debug(f"同花顺失败: {e}")
+        
+        # 源5: 财联社（搜索相关快讯）
+        try:
+            self.logger.debug(f"📰 {symbol} 尝试源5: 财联社")
+            tried_sources.append("财联社")
+            
+            news_df = await asyncio.to_thread(self._get_news_from_cls, symbol_6, limit * 2)  # 获取更多以便过滤
+            if news_df is not None and not news_df.empty:
+                self.logger.info(f"✅ {symbol} 新闻获取成功 (来源: 财联社)")
+                return news_df.head(limit)
+        except Exception as e:
+            self.logger.debug(f"财联社失败: {e}")
+        
+        # 所有源都失败
+        self.logger.warning(f"⚠️ {symbol} 所有新闻源均失败，已尝试: {', '.join(tried_sources)}")
+        return None
+
     def _configure_timeout(self):
         """配置AKShare的超时设置"""
         try:
@@ -1183,6 +1577,13 @@ class AKShareProvider(BaseStockDataProvider):
     async def get_stock_news(self, symbol: str = None, limit: int = 10) -> Optional[List[Dict[str, Any]]]:
         """
         获取股票新闻（异步版本，返回结构化列表）
+        
+        使用多源回退机制，提高新闻获取成功率：
+        1. 东方财富 (AKShare stock_news_em)
+        2. 东方财富直接API (curl_cffi)
+        3. 新浪财经
+        4. 同花顺
+        5. 财联社快讯
 
         Args:
             symbol: 股票代码，为None时获取市场新闻
@@ -1196,86 +1597,13 @@ class AKShareProvider(BaseStockDataProvider):
 
         try:
             import akshare as ak
-            import json
-            import os
 
             if symbol:
-                # 获取个股新闻
-                self.logger.debug(f"📰 获取AKShare个股新闻: {symbol}")
+                # 获取个股新闻 - 使用多源回退机制
+                self.logger.debug(f"📰 获取个股新闻: {symbol}")
 
-                # 标准化股票代码
-                symbol_6 = symbol.zfill(6)
-
-                # 检测是否在 Docker 环境中
-                is_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER') == 'true'
-
-                # 获取东方财富个股新闻，添加重试机制
-                max_retries = 3
-                retry_delay = 1  # 秒
-                news_df = None
-
-                # 如果在 Docker 环境中，尝试使用 curl_cffi 直接调用 API
-                if is_docker:
-                    try:
-                        from curl_cffi import requests as curl_requests
-                        self.logger.debug(f"🐳 检测到 Docker 环境，使用 curl_cffi 直接调用 API")
-                        news_df = await asyncio.to_thread(
-                            self._get_stock_news_direct,
-                            symbol=symbol_6,
-                            limit=limit
-                        )
-                        if news_df is not None and not news_df.empty:
-                            self.logger.info(f"✅ {symbol} Docker 环境直接调用 API 成功")
-                        else:
-                            self.logger.warning(f"⚠️ {symbol} Docker 环境直接调用 API 失败，回退到 AKShare")
-                            news_df = None  # 回退到 AKShare
-                    except ImportError:
-                        self.logger.warning(f"⚠️ curl_cffi 未安装，回退到 AKShare")
-                        news_df = None
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ {symbol} Docker 环境直接调用 API 异常: {e}，回退到 AKShare")
-                        news_df = None
-
-                # 如果直接调用失败或不在 Docker 环境，使用 AKShare
-                if news_df is None:
-                    for attempt in range(max_retries):
-                        try:
-                            news_df = await asyncio.to_thread(
-                                ak.stock_news_em,
-                                symbol=symbol_6
-                            )
-                            break  # 成功则跳出重试循环
-                        except json.JSONDecodeError as e:
-                            if attempt < max_retries - 1:
-                                self.logger.warning(f"⚠️ {symbol} 第{attempt+1}次获取新闻失败(JSON解析错误)，{retry_delay}秒后重试...")
-                                await asyncio.sleep(retry_delay)
-                                retry_delay *= 2  # 指数退避
-                            else:
-                                self.logger.error(f"❌ {symbol} 获取新闻失败(JSON解析错误): {e}")
-                                return []
-                        except KeyError as e:
-                            # 东方财富网接口变更或反爬虫拦截，返回的字段结构改变
-                            if str(e) == "'cmsArticleWebOld'":
-                                self.logger.error(f"❌ {symbol} AKShare新闻接口返回数据结构异常: 缺少 'cmsArticleWebOld' 字段")
-                                self.logger.error(f"   这通常是因为：1) 反爬虫拦截 2) 接口变更 3) 网络问题")
-                                self.logger.error(f"   建议：检查 AKShare 版本是否为最新 (当前要求 >=1.17.86)")
-                                # 返回空列表，避免程序崩溃
-                                return []
-                            else:
-                                if attempt < max_retries - 1:
-                                    self.logger.warning(f"⚠️ {symbol} 第{attempt+1}次获取新闻失败(字段错误): {e}，{retry_delay}秒后重试...")
-                                    await asyncio.sleep(retry_delay)
-                                    retry_delay *= 2
-                                else:
-                                    self.logger.error(f"❌ {symbol} 获取新闻失败(字段错误): {e}")
-                                    return []
-                        except Exception as e:
-                            if attempt < max_retries - 1:
-                                self.logger.warning(f"⚠️ {symbol} 第{attempt+1}次获取新闻失败: {e}，{retry_delay}秒后重试...")
-                                await asyncio.sleep(retry_delay)
-                                retry_delay *= 2
-                            else:
-                                raise
+                # 使用新的多源回退方法获取新闻
+                news_df = await self._get_news_with_fallback(symbol, limit)
 
                 if news_df is not None and not news_df.empty:
                     news_list = []

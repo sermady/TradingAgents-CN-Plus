@@ -1430,20 +1430,18 @@ class TushareProvider(BaseStockDataProvider):
     def _calculate_ttm_from_tushare(self, income_statements: list, field: str) -> Optional[float]:
         """
         从 Tushare 利润表数据计算 TTM（最近12个月）
+        
+        支持多种回退策略以提高计算成功率：
+        1. 标准TTM计算：基准年报 + (本期累计 - 去年同期累计)
+        2. 回退策略A：累计最近4个季度单季数据
+        3. 回退策略B：使用最近可用年报数据
+        4. 回退策略C：年化当前季度数据（仅限Q1）
 
         Tushare 利润表数据是累计值（从年初到报告期的累计）：
         - 2025Q1 (20250331): 2025年1-3月累计
         - 2025Q2 (20250630): 2025年1-6月累计
         - 2025Q3 (20250930): 2025年1-9月累计
         - 2025Q4 (20251231): 2025年1-12月累计（年报）
-
-        TTM 计算公式：
-        TTM = 去年同期之后的最近年报 + (本期累计 - 去年同期累计)
-
-        例如：2025Q2 TTM = 2024年报 + (2025Q2 - 2024Q2)
-                        = 2024年1-12月 + (2025年1-6月 - 2024年1-6月)
-                        = 2024年7-12月 + 2025年1-6月
-                        = 最近12个月
 
         Args:
             income_statements: 利润表数据列表（按报告期倒序）
@@ -1463,7 +1461,6 @@ class TushareProvider(BaseStockDataProvider):
             if not latest_period or latest_value is None:
                 return None
 
-            # 判断最新期的类型
             month_day = latest_period[4:8]
 
             # 如果最新期是年报（1231），直接使用
@@ -1471,13 +1468,43 @@ class TushareProvider(BaseStockDataProvider):
                 self.logger.debug(f"✅ TTM计算: 使用年报数据 {latest_period} = {latest_value:.2f}")
                 return latest_value
 
-            # 如果是季报/半年报，需要计算 TTM = 基准期 + (本期累计 - 去年同期累计)
+            # 尝试标准TTM计算
+            ttm_result = self._try_standard_ttm(income_statements, field, latest, latest_period, latest_value)
+            if ttm_result is not None:
+                return ttm_result
 
-            # 1. 查找去年同期
+            # 回退策略A：累计最近4个季度
+            ttm_result = self._try_quarterly_sum_ttm(income_statements, field, latest_period)
+            if ttm_result is not None:
+                return ttm_result
+
+            # 回退策略B：使用最近可用年报
+            ttm_result = self._try_latest_annual_ttm(income_statements, field, latest_period)
+            if ttm_result is not None:
+                return ttm_result
+
+            # 回退策略C：年化当前季度（仅限Q1，准确性最低）
+            if month_day == '0331':
+                ttm_result = self._try_annualized_ttm(latest_value, latest_period)
+                if ttm_result is not None:
+                    return ttm_result
+
+            self.logger.warning(f"⚠️ TTM计算: 所有策略均失败，字段={field}，最新期={latest_period}")
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"❌ TTM计算异常: {e}")
+            return None
+
+    def _try_standard_ttm(self, income_statements: list, field: str, latest: dict, 
+                          latest_period: str, latest_value: float) -> Optional[float]:
+        """标准TTM计算：基准年报 + (本期累计 - 去年同期累计)"""
+        try:
             latest_year = latest_period[:4]
             last_year = str(int(latest_year) - 1)
             last_year_same_period = last_year + latest_period[4:]
 
+            # 查找去年同期
             last_year_same = None
             for stmt in income_statements:
                 if stmt.get('end_date') == last_year_same_period:
@@ -1485,48 +1512,156 @@ class TushareProvider(BaseStockDataProvider):
                     break
 
             if not last_year_same:
-                # 缺少去年同期数据，无法准确计算 TTM
-                self.logger.warning(f"⚠️ TTM计算失败: 缺少去年同期数据（需要: {last_year_same_period}，最新期: {latest_period}）")
+                self.logger.debug(f"标准TTM: 缺少去年同期数据 {last_year_same_period}")
                 return None
 
             last_year_value = self._safe_float(last_year_same.get(field))
             if last_year_value is None:
-                self.logger.warning(f"⚠️ TTM计算失败: 去年同期数据值为空（{last_year_same_period}）")
+                self.logger.debug(f"标准TTM: 去年同期数据值为空 {last_year_same_period}")
                 return None
 
-            # 2. 查找"去年同期之后的最近年报"作为基准期
-            # 例如：如果最新期是 2025Q2，去年同期是 2024Q2，则查找 2024年报（20241231）
+            # 查找基准年报
             base_period = None
             for stmt in income_statements:
                 period = stmt.get('end_date')
-                # 必须满足：在去年同期之后 且 是年报（1231）
                 if period and period > last_year_same_period and period[4:8] == '1231':
                     base_period = stmt
                     break
 
             if not base_period:
-                # 没有找到合适的年报，无法计算
-                # 这种情况通常发生在：最新期是 2025Q1，但 2024年报还没公布
-                self.logger.warning(f"⚠️ TTM计算失败: 缺少基准年报（需要在 {last_year_same_period} 之后的年报，最新期: {latest_period}）")
+                self.logger.debug(f"标准TTM: 缺少基准年报（需要在 {last_year_same_period} 之后的年报）")
                 return None
 
             base_value = self._safe_float(base_period.get(field))
             if base_value is None:
-                self.logger.warning(f"⚠️ TTM计算失败: 基准年报数据值为空（{base_period.get('end_date')}）")
+                self.logger.debug(f"标准TTM: 基准年报数据值为空 {base_period.get('end_date')}")
                 return None
 
-            # 3. 计算 TTM = 基准年报 + (本期累计 - 去年同期累计)
             ttm_value = base_value + (latest_value - last_year_value)
-
             self.logger.debug(
-                f"✅ TTM计算: {base_period.get('end_date')}({base_value:.2f}) + "
+                f"✅ 标准TTM: {base_period.get('end_date')}({base_value:.2f}) + "
                 f"({latest_period}({latest_value:.2f}) - {last_year_same_period}({last_year_value:.2f})) = {ttm_value:.2f}"
             )
-
             return ttm_value
 
         except Exception as e:
-            self.logger.warning(f"❌ TTM计算异常: {e}")
+            self.logger.debug(f"标准TTM计算异常: {e}")
+            return None
+
+    def _try_quarterly_sum_ttm(self, income_statements: list, field: str, latest_period: str) -> Optional[float]:
+        """
+        回退策略A：累计最近4个季度的单季数据
+        通过 本季累计 - 上季累计 计算每个季度的单季值，然后累加
+        """
+        try:
+            quarterly_values = []
+            periods_found = []
+            
+            # 按报告期排序（倒序）
+            sorted_stmts = sorted(income_statements, key=lambda x: x.get('end_date', ''), reverse=True)
+            
+            for i, stmt in enumerate(sorted_stmts):
+                if len(quarterly_values) >= 4:
+                    break
+                    
+                period = stmt.get('end_date')
+                if not period:
+                    continue
+                    
+                cumulative_value = self._safe_float(stmt.get(field))
+                if cumulative_value is None:
+                    continue
+                
+                month_day = period[4:8]
+                
+                if month_day == '1231':
+                    # Q4: 年报累计 - Q3累计
+                    q3_period = period[:4] + '0930'
+                    q3_value = self._find_period_value(sorted_stmts, q3_period, field)
+                    if q3_value is not None:
+                        quarterly_value = cumulative_value - q3_value
+                        quarterly_values.append(quarterly_value)
+                        periods_found.append(f"Q4({period})")
+                    else:
+                        # 如果没有Q3数据，尝试使用年报数据除以4（粗略估计）
+                        continue
+                        
+                elif month_day == '0930':
+                    # Q3: Q3累计 - Q2累计
+                    q2_period = period[:4] + '0630'
+                    q2_value = self._find_period_value(sorted_stmts, q2_period, field)
+                    if q2_value is not None:
+                        quarterly_value = cumulative_value - q2_value
+                        quarterly_values.append(quarterly_value)
+                        periods_found.append(f"Q3({period})")
+                        
+                elif month_day == '0630':
+                    # Q2: Q2累计 - Q1累计
+                    q1_period = period[:4] + '0331'
+                    q1_value = self._find_period_value(sorted_stmts, q1_period, field)
+                    if q1_value is not None:
+                        quarterly_value = cumulative_value - q1_value
+                        quarterly_values.append(quarterly_value)
+                        periods_found.append(f"Q2({period})")
+                        
+                elif month_day == '0331':
+                    # Q1: 直接使用Q1累计值
+                    quarterly_values.append(cumulative_value)
+                    periods_found.append(f"Q1({period})")
+
+            if len(quarterly_values) >= 4:
+                ttm_value = sum(quarterly_values[:4])
+                self.logger.debug(f"✅ 季度累加TTM: {' + '.join(periods_found[:4])} = {ttm_value:.2f}")
+                return ttm_value
+            elif len(quarterly_values) >= 2:
+                # 如果只有2-3个季度数据，进行年化估算
+                avg_quarterly = sum(quarterly_values) / len(quarterly_values)
+                ttm_value = avg_quarterly * 4
+                self.logger.debug(f"✅ 季度年化TTM（{len(quarterly_values)}季度平均×4）: {ttm_value:.2f}")
+                return ttm_value
+
+            return None
+
+        except Exception as e:
+            self.logger.debug(f"季度累加TTM计算异常: {e}")
+            return None
+
+    def _find_period_value(self, statements: list, period: str, field: str) -> Optional[float]:
+        """在报表列表中查找指定期间的字段值"""
+        for stmt in statements:
+            if stmt.get('end_date') == period:
+                return self._safe_float(stmt.get(field))
+        return None
+
+    def _try_latest_annual_ttm(self, income_statements: list, field: str, latest_period: str) -> Optional[float]:
+        """
+        回退策略B：使用最近可用的年报数据
+        当无法计算精确TTM时，使用最近年报作为参考值
+        """
+        try:
+            for stmt in income_statements:
+                period = stmt.get('end_date')
+                if period and period[4:8] == '1231':
+                    value = self._safe_float(stmt.get(field))
+                    if value is not None:
+                        self.logger.debug(f"✅ 年报回退TTM: 使用 {period} 年报数据 = {value:.2f}（非精确TTM）")
+                        return value
+            return None
+        except Exception as e:
+            self.logger.debug(f"年报回退TTM计算异常: {e}")
+            return None
+
+    def _try_annualized_ttm(self, q1_value: float, latest_period: str) -> Optional[float]:
+        """
+        回退策略C：年化Q1数据（准确性最低）
+        仅当最新期是Q1且无其他数据可用时使用
+        """
+        try:
+            ttm_value = q1_value * 4
+            self.logger.debug(f"✅ Q1年化TTM: {latest_period}({q1_value:.2f}) × 4 = {ttm_value:.2f}（粗略估计）")
+            return ttm_value
+        except Exception as e:
+            self.logger.debug(f"Q1年化TTM计算异常: {e}")
             return None
 
     def _determine_report_type(self, report_period: str) -> str:
