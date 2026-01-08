@@ -7,6 +7,10 @@ import platform
 import chromadb
 from chromadb.config import Settings
 
+# 导入统一日志系统
+from tradingagents.utils.logging_init import get_logger
+logger = get_logger("agents.utils.chromadb_config")
+
 
 def is_windows_11() -> bool:
     """
@@ -36,26 +40,26 @@ def is_windows_11() -> bool:
 def get_win10_chromadb_client():
     """
     获取 Windows 10 兼容的 ChromaDB 客户端
-    
+
     Returns:
         chromadb.Client: ChromaDB 客户端实例
     """
-    settings = Settings(
-        allow_reset=True,
-        anonymized_telemetry=False,
-        is_persistent=False,
-        # Windows 10 特定配置
-        chroma_db_impl="duckdb+parquet",
-        chroma_api_impl="chromadb.api.segment.SegmentAPI",
-        # 使用临时目录避免权限问题
-        persist_directory=None
-    )
-    
     try:
+        # Windows 10 使用内存模式，避免权限问题
+        settings = Settings(
+            allow_reset=True,
+            anonymized_telemetry=False,
+            is_persistent=False,
+            # Windows 10 特定配置
+            chroma_db_impl="duckdb+parquet",
+            chroma_api_impl="chromadb.api.segment.SegmentAPI"
+            # 不设置 persist_directory，使用内存模式
+        )
         client = chromadb.Client(settings)
         return client
     except Exception as e:
         # 降级到最基本配置
+        logger.debug(f"Windows 10标准配置失败，使用基本配置: {e}")
         basic_settings = Settings(
             allow_reset=True,
             is_persistent=False
@@ -66,26 +70,26 @@ def get_win10_chromadb_client():
 def get_win11_chromadb_client():
     """
     获取 Windows 11 优化的 ChromaDB 客户端
-    
+
     Returns:
         chromadb.Client: ChromaDB 客户端实例
     """
-    # Windows 11 对 ChromaDB 支持更好，可以使用更现代的配置
-    settings = Settings(
-        allow_reset=True,
-        anonymized_telemetry=False,  # 禁用遥测避免 posthog 错误
-        is_persistent=False,
-        # Windows 11 可以使用默认实现，性能更好
-        chroma_db_impl="duckdb+parquet",
-        chroma_api_impl="chromadb.api.segment.SegmentAPI"
-        # 移除 persist_directory=None，让它使用默认值
-    )
-    
     try:
+        # Windows 11 对 ChromaDB 支持更好，可以使用更现代的配置
+        settings = Settings(
+            allow_reset=True,
+            anonymized_telemetry=False,  # 禁用遥测避免 posthog 错误
+            is_persistent=False,
+            # Windows 11 可以使用默认实现，性能更好
+            chroma_db_impl="duckdb+parquet",
+            chroma_api_impl="chromadb.api.segment.SegmentAPI"
+            # 不设置 persist_directory，使用内存模式
+        )
         client = chromadb.Client(settings)
         return client
     except Exception as e:
         # 如果还有问题，使用最简配置
+        logger.debug(f"Windows 11标准配置失败，使用最简配置: {e}")
         minimal_settings = Settings(
             allow_reset=True,
             anonymized_telemetry=False,  # 关键：禁用遥测
