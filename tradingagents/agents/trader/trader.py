@@ -134,7 +134,7 @@ def create_trader(llm, memory):
         # 检查memory是否可用
         if memory is not None:
             logger.debug(f"[DEBUG] memory可用，获取历史记忆")
-            past_memories = memory.get_memories(curr_situation, n_matches=2)
+            past_memories = memory.get_memories(curr_situation, n_matches=5)
             past_memory_str = ""
             for i, rec in enumerate(past_memories, 1):
                 past_memory_str += rec["recommendation"] + "\n\n"
