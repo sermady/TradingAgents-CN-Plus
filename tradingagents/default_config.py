@@ -14,8 +14,10 @@ DEFAULT_CONFIG = {
     "quick_think_llm": "gpt-4o-mini",
     "backend_url": "https://api.openai.com/v1",
     # Debate and discussion settings
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    # 牛熊辩论轮次: 3轮 = Bull发言3次 + Bear发言3次 = 6次交锋
+    "max_debate_rounds": 3,
+    # 风险讨论轮次: 2轮 = (Risky+Safe+Neutral) x 2 = 6次发言
+    "max_risk_discuss_rounds": 2,
     "max_recur_limit": 100,
     # Tool settings - 从环境变量读取，提供默认值
     "online_tools": os.getenv("ONLINE_TOOLS_ENABLED", "false").lower() == "true",
