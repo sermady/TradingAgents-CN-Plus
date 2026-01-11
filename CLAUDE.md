@@ -43,6 +43,39 @@ python scripts/diagnose_<issue>.py         # Diagnose issues
 
 ## Architecture Overview
 
+### Multi-Agent Execution Flow
+
+```
+START
+  |
+  v
+[Analyst Team] (4 agents, serial execution)
+  |- Market Analyst - Technical indicators (MA, RSI, MACD, BOLL)
+  |- Social Analyst - Sentiment analysis
+  |- News Analyst - News interpretation
+  '- Fundamentals Analyst - Financial data (with forced tool calls)
+  |
+  v
+[Investment Debate Team] (3 rounds = 6 exchanges)
+  |- Bull Researcher - Bullish arguments
+  |- Bear Researcher - Bearish arguments
+  '- Research Manager -> Investment plan
+  |
+  v
+[Trading Decision]
+  '- Trader -> Trading plan + Target price (validated)
+  |
+  v
+[Risk Management Debate Team] (2 rounds = 6 exchanges)
+  |- Risky Analyst - Aggressive risk assessment
+  |- Safe Analyst - Conservative risk assessment
+  |- Neutral Analyst - Neutral risk assessment
+  '- Risk Manager -> Final decision
+  |
+  v
+END (Complete report generated)
+```
+
 ### Core Components
 
 **Multi-Agent Trading Framework** (`tradingagents/`):
@@ -70,11 +103,46 @@ python scripts/diagnose_<issue>.py         # Diagnose issues
 - Google AI (Gemini), DashScope (Qwen), DeepSeek, OpenAI, Anthropic
 - Unified interface via `create_llm_by_provider()` in trading_graph.py
 
+**LLM Provider Selection Guide**:
+| Provider | Model | Cost | VPN Required | Best For |
+|----------|-------|------|--------------|----------|
+| DashScope | qwen-turbo | Low (CNY0.002/1K) | No | Daily use, China users |
+| DeepSeek | deepseek-chat | Very Low (CNY0.0014/1K) | No | Cost optimization |
+| Google AI | gemini-2.5-flash | Medium ($0.00025/1K) | Recommended | Speed + Quality balance |
+| Google AI | gemini-2.5-pro | Higher ($0.00125/1K) | Recommended | Complex analysis |
+| OpenAI | gpt-4o-mini | High ($0.0015/1K) | Required | International users |
+| Anthropic | claude-3-sonnet | Medium | Required | Complex reasoning |
+| Ollama | local models | Free | No | Privacy, offline use |
+
+**Hybrid Mode Strategy**:
+```python
+# Quick analysis with cheap model
+quick_think_llm = "qwen-turbo"  # Low cost, fast
+
+# Deep decisions with powerful model
+deep_think_llm = "gemini-2.5-pro"  # High quality, strong reasoning
+```
+
 **Data Sources** (`tradingagents/dataflows/`):
 - `providers/china/` - Tushare, AkShare, Baostock for A-shares
 - `providers/us/` - FinnHub, Alpha Vantage, yfinance for US stocks
 - `providers/hk/` - Hong Kong stock providers
 - `data_source_manager.py` - Intelligent source switching with fallback
+
+**Data Source Priority**:
+| Market | Priority Order | Notes |
+|--------|---------------|-------|
+| A-shares | MongoDB cache -> Tushare -> AkShare -> Baostock | Smart fallback |
+| US stocks | yfinance -> Alpha Vantage -> Finnhub | By availability |
+| HK stocks | AkShare -> Yahoo Finance -> Finnhub | Multi-source |
+
+**Data Source Comparison**:
+| Source | Cost | API Key | Quality | Stability |
+|--------|------|---------|---------|-----------|
+| Tushare | Points | Required | Best | High |
+| AkShare | Free | Not required | Good | Medium |
+| Baostock | Free | Not required | Good | High |
+| yfinance | Free | Not required | Good | Medium |
 
 **Caching** (`tradingagents/dataflows/cache/`):
 - MongoDB for persistent storage
@@ -122,3 +190,37 @@ The multi-agent debate mechanism has been optimized for better decision quality:
 | 2025-01-12 | `agents/analysts/fundamentals_analyst.py` | Tool call bypass | Fixed logic: only skip tool call when `has_tool_result=True`, not when only `has_analysis_content=True` |
 | 2025-01-12 | Multiple agents | Insufficient memory retrieval | Increased `n_matches` from 2 to 5 in bull/bear researchers, research/risk managers, trader |
 | 2025-01-12 | `agents/analysts/fundamentals_analyst.py` | Complex monolithic function (692 lines) | Refactored: 2 -> 33 functions, main function 590 -> 88 lines (-85%), nesting 5 -> 3 levels |
+
+### Key Design Highlights
+
+**1. Forced Tool Call Mechanism** (fundamentals_analyst.py):
+```python
+# Prevents LLM from fabricating data - must have actual tool results
+if has_tool_result:
+    return use_existing_analysis()
+# Force tool call to get real data
+return execute_force_tool_call()
+```
+
+**2. Trading Decision Validation** (trader.py):
+```python
+def validate_trading_decision(content, currency_symbol, company_name):
+    # Validates: recommendation, target price, currency, confidence, risk score
+    # Rejects evasive responses like "cannot determine"
+```
+
+**3. Memory-Enhanced Learning**:
+- All agents retrieve 5 historical memories for similar situations
+- Enables learning from past mistakes and successes
+
+### Critical Files Reference
+
+| Category | File | Lines | Purpose |
+|----------|------|-------|---------|
+| Orchestration | `graph/trading_graph.py` | 1398 | Main LangGraph orchestration |
+| Flow Control | `graph/conditional_logic.py` | 243 | Debate round conditions |
+| Fundamentals | `agents/analysts/fundamentals_analyst.py` | 1158 | Refactored, 33 functions |
+| Trading | `agents/trader/trader.py` | 227 | Decision + validation |
+| Risk | `agents/managers/risk_manager.py` | 164 | Final decision maker |
+| Data Sources | `dataflows/data_source_manager.py` | - | Smart source switching |
+| Config | `default_config.py` | - | Debate rounds, LLM settings |
