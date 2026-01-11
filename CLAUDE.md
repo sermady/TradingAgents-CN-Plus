@@ -121,3 +121,4 @@ The multi-agent debate mechanism has been optimized for better decision quality:
 | 2025-01-12 | `agents/trader/trader.py` | No target price validation | Added `validate_trading_decision()` function with checks for target price, currency, confidence |
 | 2025-01-12 | `agents/analysts/fundamentals_analyst.py` | Tool call bypass | Fixed logic: only skip tool call when `has_tool_result=True`, not when only `has_analysis_content=True` |
 | 2025-01-12 | Multiple agents | Insufficient memory retrieval | Increased `n_matches` from 2 to 5 in bull/bear researchers, research/risk managers, trader |
+| 2025-01-12 | `agents/analysts/fundamentals_analyst.py` | Complex monolithic function (692 lines) | Refactored: 2 -> 33 functions, main function 590 -> 88 lines (-85%), nesting 5 -> 3 levels |
