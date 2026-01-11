@@ -118,3 +118,4 @@ The multi-agent debate mechanism has been optimized for better decision quality:
 |------|------|-------|-----|
 | 2025-01-12 | `agents/managers/risk_manager.py:18` | Wrong report fetched | Changed `state["news_report"]` to `state["fundamentals_report"]` |
 | 2025-01-12 | `default_config.py` | Insufficient debate rounds | Increased from 1 to 3 (bull/bear) and 1 to 2 (risk) |
+| 2025-01-12 | `agents/trader/trader.py` | No target price validation | Added `validate_trading_decision()` function with checks for target price, currency, confidence |
