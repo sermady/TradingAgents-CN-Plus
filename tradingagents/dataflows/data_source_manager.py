@@ -2126,6 +2126,117 @@ class DataSourceManager:
         logger.warning(f"⚠️ [数据来源: 所有数据源失败] 无法获取新闻: {symbol or '市场新闻'}")
         return []
 
+    # ==================== 实时行情接口 ====================
+
+    def get_realtime_quote(self, symbol: str, market_type: str = "A股") -> Optional[Dict[str, Any]]:
+        """
+        获取单只股票的实时行情
+
+        优先使用 AkShare（免费），失败时降级到 Tushare。
+        交易时段返回实时价格，非交易时段返回最新收盘价。
+
+        Args:
+            symbol: 股票代码（6位数字，如 '000001'）
+            market_type: 市场类型（A股/港股/美股）
+
+        Returns:
+            dict: 实时行情数据，包含 price, change, change_pct, volume 等
+            None: 获取失败时返回
+        """
+        from tradingagents.default_config import DEFAULT_CONFIG
+
+        # 检查是否启用实时行情功能
+        realtime_config = DEFAULT_CONFIG.get("realtime_data", {})
+        if not realtime_config.get("enabled", True):
+            logger.debug("⚠️ 实时行情功能已禁用")
+            return None
+
+        # 获取首选数据源
+        preferred_source = realtime_config.get("preferred_source", "akshare")
+
+        result = None
+
+        # 尝试首选数据源
+        if preferred_source == "akshare":
+            result = self._get_akshare_realtime_quote(symbol)
+            if result is None and ChinaDataSource.TUSHARE in self.available_sources:
+                logger.info(f"🔄 AkShare 实时行情失败，尝试降级到 Tushare: {symbol}")
+                result = self._get_tushare_realtime_quote(symbol)
+        else:  # tushare
+            result = self._get_tushare_realtime_quote(symbol)
+            if result is None:
+                logger.info(f"🔄 Tushare 实时行情失败，尝试降级到 AkShare: {symbol}")
+                result = self._get_akshare_realtime_quote(symbol)
+
+        if result:
+            # 添加市场状态信息
+            from tradingagents.utils.trading_hours import get_market_status
+            status, status_desc = get_market_status(market_type)
+            result["market_status"] = status
+            result["market_status_desc"] = status_desc
+            result["is_realtime"] = status == "trading"
+
+        return result
+
+    def _get_akshare_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """使用 AkShare 获取实时行情"""
+        try:
+            from .providers.china.akshare import get_realtime_quote as akshare_realtime
+            return akshare_realtime(symbol)
+        except Exception as e:
+            logger.warning(f"⚠️ AkShare 实时行情获取失败: {e}")
+            return None
+
+    def _get_tushare_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """使用 Tushare 获取实时行情"""
+        try:
+            from .providers.china.tushare import get_realtime_quote as tushare_realtime
+            return tushare_realtime(symbol)
+        except Exception as e:
+            logger.warning(f"⚠️ Tushare 实时行情获取失败: {e}")
+            return None
+
+    def should_use_realtime_data(self, analysis_date: str, market_type: str = "A股") -> bool:
+        """
+        判断是否应该使用实时行情数据
+
+        条件：
+        1. 分析日期是今天
+        2. 当前在交易时段内
+        3. 实时行情功能已启用
+
+        Args:
+            analysis_date: 分析日期（YYYY-MM-DD 格式或 'today'）
+            market_type: 市场类型
+
+        Returns:
+            bool: 是否应使用实时数据
+        """
+        from datetime import datetime
+        from tradingagents.default_config import DEFAULT_CONFIG
+
+        # 检查是否启用实时行情
+        realtime_config = DEFAULT_CONFIG.get("realtime_data", {})
+        if not realtime_config.get("enabled", True):
+            return False
+
+        # 检查是否自动检测交易时段
+        auto_detect = realtime_config.get("auto_detect_trading_hours", True)
+
+        # 判断分析日期是否是今天
+        today = datetime.now().strftime("%Y-%m-%d")
+        is_today = (analysis_date == "today" or analysis_date == today)
+
+        if not is_today:
+            return False
+
+        # 如果启用自动检测，检查是否在交易时段
+        if auto_detect:
+            from tradingagents.utils.trading_hours import is_trading_hours
+            return is_trading_hours(market_type)
+
+        return True
+
 
 # 全局数据源管理器实例
 _data_source_manager = None

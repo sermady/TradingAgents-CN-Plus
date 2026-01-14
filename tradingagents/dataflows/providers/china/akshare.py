@@ -1921,3 +1921,102 @@ def get_akshare_provider() -> AKShareProvider:
     if _akshare_provider is None:
         _akshare_provider = AKShareProvider()
     return _akshare_provider
+
+
+def get_realtime_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    获取单只股票的实时行情（同步版本，供 data_source_manager 调用）
+
+    使用 stock_zh_a_spot_em() 获取全市场快照，然后筛选目标股票
+
+    Args:
+        symbol: 股票代码（6位数字，如 000001）
+
+    Returns:
+        Dict: 实时行情数据，包含以下字段：
+            - symbol: 股票代码
+            - name: 股票名称
+            - price: 最新价
+            - change: 涨跌额
+            - change_pct: 涨跌幅(%)
+            - open: 今开
+            - high: 最高
+            - low: 最低
+            - pre_close: 昨收
+            - volume: 成交量(股)
+            - amount: 成交额(元)
+            - timestamp: 数据时间戳
+            - source: 数据来源
+        None: 获取失败
+    """
+    try:
+        import akshare as ak
+        from datetime import datetime
+
+        logger.info(f"[AKShare] 获取实时行情: {symbol}")
+
+        # 标准化股票代码
+        symbol_6 = symbol.zfill(6)
+
+        # 获取全市场A股实时行情
+        df = ak.stock_zh_a_spot_em()
+
+        if df is None or df.empty:
+            logger.warning(f"[AKShare] 获取实时行情失败：数据为空")
+            return None
+
+        # 查找目标股票
+        code_col = '代码' if '代码' in df.columns else 'code'
+        stock_data = df[df[code_col] == symbol_6]
+
+        if stock_data.empty:
+            logger.warning(f"[AKShare] 未找到股票: {symbol}")
+            return None
+
+        row = stock_data.iloc[0]
+
+        # 安全获取数值
+        def safe_float(val, default=0.0):
+            try:
+                if pd.isna(val) or val is None:
+                    return default
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        def safe_int(val, default=0):
+            try:
+                if pd.isna(val) or val is None:
+                    return default
+                return int(float(val))
+            except (ValueError, TypeError):
+                return default
+
+        # 构建返回数据
+        result = {
+            "symbol": symbol_6,
+            "name": str(row.get('名称', row.get('name', f'股票{symbol_6}'))),
+            "price": safe_float(row.get('最新价', row.get('price', 0))),
+            "change": safe_float(row.get('涨跌额', row.get('change', 0))),
+            "change_pct": safe_float(row.get('涨跌幅', row.get('pct_change', 0))),
+            "open": safe_float(row.get('今开', row.get('open', 0))),
+            "high": safe_float(row.get('最高', row.get('high', 0))),
+            "low": safe_float(row.get('最低', row.get('low', 0))),
+            "pre_close": safe_float(row.get('昨收', row.get('pre_close', 0))),
+            "volume": safe_int(row.get('成交量', row.get('volume', 0))),
+            "amount": safe_float(row.get('成交额', row.get('amount', 0))),
+            "turnover_rate": safe_float(row.get('换手率', None)),
+            "pe": safe_float(row.get('市盈率-动态', None)),
+            "pb": safe_float(row.get('市净率', None)),
+            "total_mv": safe_float(row.get('总市值', None)),
+            "circ_mv": safe_float(row.get('流通市值', None)),
+            "timestamp": datetime.now().isoformat(),
+            "source": "akshare_eastmoney"
+        }
+
+        logger.info(f"[AKShare] 获取实时行情成功: {symbol} @ {result['price']} ({result['change_pct']:+.2f}%)")
+        return result
+
+    except Exception as e:
+        logger.error(f"[AKShare] 获取实时行情异常: {symbol}, 错误: {e}")
+        return None

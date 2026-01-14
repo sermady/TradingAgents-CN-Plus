@@ -1742,3 +1742,93 @@ def get_tushare_provider() -> TushareProvider:
             except Exception as e:
                 logger.warning(f"⚠️ Tushare自动连接失败: {e}")
     return _tushare_provider
+
+
+def get_realtime_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    """
+    获取单只股票的实时行情（同步版本，供 data_source_manager 调用）
+
+    使用 Tushare 的 daily 接口获取最新日线数据，
+    因为 rt_k 接口是批量接口，单只股票调用浪费配额。
+
+    Args:
+        symbol: 股票代码（6位数字，如 '000001'）
+
+    Returns:
+        dict: 标准化的实时行情数据，包含以下字段：
+            - symbol: 股票代码
+            - name: 股票名称（如果可获取）
+            - price: 当前/收盘价
+            - change: 涨跌额
+            - change_pct: 涨跌幅
+            - open: 开盘价
+            - high: 最高价
+            - low: 最低价
+            - pre_close: 昨收价
+            - volume: 成交量（股）
+            - amount: 成交额（元）
+            - timestamp: 数据时间戳
+            - source: 数据源标识
+        None: 获取失败时返回
+    """
+    try:
+        provider = get_tushare_provider()
+        if not provider.is_available():
+            logger.warning("⚠️ Tushare 提供器不可用，无法获取实时行情")
+            return None
+
+        # 标准化股票代码为 Tushare 格式
+        ts_code = provider._normalize_ts_code(symbol)
+
+        # 获取最近3天的日线数据（考虑周末和节假日）
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
+
+        df = provider.api.daily(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        if df is None or df.empty:
+            logger.warning(f"⚠️ Tushare daily 接口返回空数据: {symbol}")
+            return None
+
+        # 取最新一天的数据
+        row = df.iloc[0]
+
+        # 安全获取数值
+        def safe_float(val, default=0.0):
+            try:
+                if val is None or (isinstance(val, float) and val != val):  # NaN check
+                    return default
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        # 标准化输出格式
+        result = {
+            "symbol": symbol,
+            "name": "",  # daily 接口不包含名称
+            "price": safe_float(row.get('close')),
+            "change": safe_float(row.get('change')),
+            "change_pct": safe_float(row.get('pct_chg')),
+            "open": safe_float(row.get('open')),
+            "high": safe_float(row.get('high')),
+            "low": safe_float(row.get('low')),
+            "pre_close": safe_float(row.get('pre_close')),
+            # Tushare daily 返回的成交量单位是手，转换为股
+            "volume": safe_float(row.get('vol')) * 100,
+            # Tushare daily 返回的成交额单位是千元，转换为元
+            "amount": safe_float(row.get('amount')) * 1000,
+            "trade_date": str(row.get('trade_date', '')),
+            "timestamp": datetime.now().isoformat(),
+            "source": "tushare_daily"
+        }
+
+        logger.debug(f"✅ Tushare 获取实时行情成功: {symbol} 价格={result['price']}")
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Tushare 获取实时行情失败 {symbol}: {e}")
+        return None
