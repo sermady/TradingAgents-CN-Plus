@@ -212,26 +212,67 @@ class StartupValidator:
     
     def _check_security_configs(self):
         """检查安全配置"""
+        # 检查是否为生产环境
+        is_production = os.getenv("ENV", "development").lower() == "production"
+
         # 检查JWT密钥是否使用默认值
         jwt_secret = os.getenv("JWT_SECRET", "")
-        if jwt_secret in ["change-me-in-production", "your-super-secret-jwt-key-change-in-production"]:
-            self.result.warnings.append(
-                "⚠️  JWT_SECRET 使用默认值，生产环境请务必修改！"
-            )
-        
+        default_jwt_secrets = [
+            "change-me-in-production",
+            "your-super-secret-jwt-key-change-in-production"
+        ]
+        if jwt_secret in default_jwt_secrets:
+            if is_production:
+                # 生产环境使用默认密钥，视为配置错误
+                jwt_config = ConfigItem(
+                    key="JWT_SECRET",
+                    level=ConfigLevel.REQUIRED,
+                    description="JWT密钥（生产环境必须修改默认值）",
+                    example="your-unique-32-char-secret-key-here"
+                )
+                self.result.invalid_configs.append(
+                    (jwt_config, "生产环境禁止使用默认 JWT_SECRET")
+                )
+                logger.error("❌ 生产环境禁止使用默认 JWT_SECRET！请设置强密钥。")
+            else:
+                self.result.warnings.append(
+                    "⚠️  JWT_SECRET 使用默认值，生产环境请务必修改！"
+                )
+
         # 检查CSRF密钥是否使用默认值
         csrf_secret = os.getenv("CSRF_SECRET", "")
-        if csrf_secret in ["change-me-csrf-secret", "your-csrf-secret-key-change-in-production"]:
-            self.result.warnings.append(
-                "⚠️  CSRF_SECRET 使用默认值，生产环境请务必修改！"
-            )
-        
+        default_csrf_secrets = [
+            "change-me-csrf-secret",
+            "your-csrf-secret-key-change-in-production"
+        ]
+        if csrf_secret in default_csrf_secrets:
+            if is_production:
+                # 生产环境使用默认密钥，视为配置错误
+                csrf_config = ConfigItem(
+                    key="CSRF_SECRET",
+                    level=ConfigLevel.REQUIRED,
+                    description="CSRF密钥（生产环境必须修改默认值）",
+                    example="your-unique-csrf-secret-key-here"
+                )
+                self.result.invalid_configs.append(
+                    (csrf_config, "生产环境禁止使用默认 CSRF_SECRET")
+                )
+                logger.error("❌ 生产环境禁止使用默认 CSRF_SECRET！请设置强密钥。")
+            else:
+                self.result.warnings.append(
+                    "⚠️  CSRF_SECRET 使用默认值，生产环境请务必修改！"
+                )
+
         # 检查是否在生产环境使用DEBUG模式
         debug = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes", "on")
-        if not debug:
-            logger.info("ℹ️  生产环境模式")
+        if is_production:
+            logger.info("ℹ️  生产环境模式 (ENV=production)")
+            if debug:
+                self.result.warnings.append(
+                    "⚠️  生产环境启用了 DEBUG 模式，建议关闭"
+                )
         else:
-            logger.info("ℹ️  开发环境模式（DEBUG=true）")
+            logger.info("ℹ️  开发环境模式")
     
     def _print_validation_result(self):
         """输出验证结果"""
