@@ -85,16 +85,53 @@
                   </el-col>
                 </el-row>
 
-                <el-form-item label="分析日期">
-                  <el-date-picker
-                    v-model="analysisForm.analysisDate"
-                    type="date"
-                    placeholder="选择分析基准日期"
-                    size="large"
-                    style="width: 100%"
-                    :disabled-date="disabledDate"
-                  />
-                </el-form-item>
+                <el-row :gutter="16">
+                  <el-col :span="16">
+                    <el-form-item label="分析日期">
+                      <div class="date-picker-wrapper">
+                        <el-date-picker
+                          v-model="analysisForm.analysisDate"
+                          type="date"
+                          placeholder="选择分析基准日期"
+                          size="large"
+                          style="width: 100%"
+                          :disabled-date="disabledDate"
+                        />
+                        <el-button
+                          type="primary"
+                          plain
+                          size="small"
+                          class="today-btn"
+                          @click="setToday"
+                        >
+                          今天
+                        </el-button>
+                      </div>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-form-item label="实时行情">
+                      <el-switch
+                        v-model="analysisForm.useRealtime"
+                        :disabled="!isToday"
+                        active-text="开启"
+                        inactive-text="关闭"
+                        inline-prompt
+                      />
+                      <el-tooltip
+                        :content="realtimeTooltip"
+                        placement="top"
+                      >
+                        <el-icon class="realtime-tip"><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                      <div v-if="marketStatusText" class="market-status-tag">
+                        <el-tag :type="marketStatusType" size="small">
+                          {{ marketStatusText }}
+                        </el-tag>
+                      </div>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
               </div>
 
               <!-- 分析深度 -->
@@ -738,6 +775,7 @@ interface AnalysisForm {
   includeSentiment: boolean
   includeRisk: boolean
   language: 'zh-CN' | 'en-US'
+  useRealtime: boolean  // 是否使用实时行情
 }
 
 // 使用store
@@ -810,7 +848,8 @@ const analysisForm = reactive<AnalysisForm>({
   selectedAnalysts: ['市场分析师', '基本面分析师'], // 将在 onMounted 中从用户偏好加载
   includeSentiment: true,
   includeRisk: true,
-  language: 'zh-CN'
+  language: 'zh-CN',
+  useRealtime: true  // 默认开启实时行情
 })
 
 // 股票代码验证相关
@@ -829,6 +868,73 @@ const depthOptions = [
 // 禁用日期
 const disabledDate = (time: Date) => {
   return time.getTime() > Date.now()
+}
+
+// 实时行情相关状态
+const marketStatus = ref<{
+  status: string
+  status_desc: string
+  is_trading_day: boolean
+} | null>(null)
+
+// 计算属性：是否是今天
+const isToday = computed(() => {
+  const today = new Date()
+  const selectedDate = analysisForm.analysisDate
+  return (
+    selectedDate.getFullYear() === today.getFullYear() &&
+    selectedDate.getMonth() === today.getMonth() &&
+    selectedDate.getDate() === today.getDate()
+  )
+})
+
+// 计算属性：实时行情提示文字
+const realtimeTooltip = computed(() => {
+  if (!isToday.value) {
+    return '实时行情仅在分析日期为今天时可用'
+  }
+  if (marketStatus.value) {
+    return `当前${marketStatus.value.status_desc}，${marketStatus.value.is_trading_day ? '可获取实时数据' : '使用历史数据'}`
+  }
+  return '开启后将获取盘中实时价格'
+})
+
+// 计算属性：市场状态文字
+const marketStatusText = computed(() => {
+  if (!isToday.value || !marketStatus.value) return ''
+  return marketStatus.value.status_desc
+})
+
+// 计算属性：市场状态标签类型
+const marketStatusType = computed(() => {
+  if (!marketStatus.value) return 'info'
+  const status = marketStatus.value.status
+  if (status === 'trading') return 'success'
+  if (status === 'pre_market' || status === 'post_market') return 'warning'
+  return 'info'
+})
+
+// 设置日期为今天
+const setToday = () => {
+  analysisForm.analysisDate = new Date()
+  fetchMarketStatus()
+}
+
+// 获取市场状态
+const fetchMarketStatus = async () => {
+  if (!isToday.value) {
+    marketStatus.value = null
+    return
+  }
+  try {
+    const { getMarketStatus } = await import('@/api/realtime')
+    const response = await getMarketStatus(analysisForm.market)
+    if (response.success) {
+      marketStatus.value = response.data
+    }
+  } catch (error) {
+    console.warn('获取市场状态失败:', error)
+  }
 }
 
 // 股票代码输入时的处理
@@ -943,6 +1049,7 @@ const submitAnalysis = async () => {
       parameters: {
         market_type: analysisForm.market,
         analysis_date: analysisDate.toISOString().split('T')[0],
+        use_realtime: analysisForm.useRealtime && isToday.value,  // 仅今天时有效
         research_depth: getDepthDescription(analysisForm.researchDepth),
         selected_analysts: convertAnalystNamesToIds(analysisForm.selectedAnalysts),
         include_sentiment: analysisForm.includeSentiment,
@@ -2244,6 +2351,9 @@ onMounted(async () => {
     await restoreTaskFromCache()
   }
 
+  // 获取市场状态（用于实时行情开关）
+  await fetchMarketStatus()
+
   // 🆕 初始检查模型适用性
   await checkModelSuitability()
 })
@@ -2333,6 +2443,27 @@ onMounted(async () => {
           padding-bottom: 8px;
           border-bottom: 2px solid #e2e8f0;
         }
+      }
+
+      // 日期选择器和实时行情样式
+      .date-picker-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .today-btn {
+          flex-shrink: 0;
+        }
+      }
+
+      .realtime-tip {
+        margin-left: 8px;
+        color: #909399;
+        cursor: help;
+      }
+
+      .market-status-tag {
+        margin-top: 4px;
       }
 
       .stock-input {
