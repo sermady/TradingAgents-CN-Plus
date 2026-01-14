@@ -22,7 +22,20 @@ DEFAULT_CONFIG = {
     # Tool settings - 从环境变量读取，提供默认值
     "online_tools": os.getenv("ONLINE_TOOLS_ENABLED", "false").lower() == "true",
     "online_news": os.getenv("ONLINE_NEWS_ENABLED", "true").lower() == "true",
-    "realtime_data": os.getenv("REALTIME_DATA_ENABLED", "false").lower() == "true",
+
+    # ========== 实时行情配置 ==========
+    # 实时行情功能开关（环境变量可覆盖）
+    "realtime_data_enabled": os.getenv("REALTIME_DATA_ENABLED", "true").lower() == "true",
+    # 实时行情详细配置
+    "realtime_data": {
+        "enabled": True,                    # 是否启用实时行情
+        "auto_detect_trading_hours": True,  # 自动检测交易时段
+        "preferred_source": "akshare",      # 首选数据源：akshare/tushare
+        "fallback_to_close": True,          # 非交易时段回退到收盘价
+        "cache_ttl_seconds": 60,            # 实时数据缓存时间（秒）
+    },
+    # 默认分析日期配置
+    "default_analysis_date": "today",       # today/yesterday/specific_date
 
     # ========== 统一配置：工具调用和重试 ==========
     # 各分析师的工具调用限制
