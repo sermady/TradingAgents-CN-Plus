@@ -12,6 +12,8 @@ from tradingagents.tools.unified_news_tool import create_unified_news_tool
 from tradingagents.utils.stock_utils import StockUtils
 # 导入Google工具调用处理器
 from tradingagents.agents.utils.google_tool_handler import GoogleToolCallHandler
+# 导入统一公司名称工具（替换原有的重复代码）
+from tradingagents.utils.company_name_utils import get_company_name
 
 logger = get_logger("analysts.news")
 
@@ -21,10 +23,10 @@ def create_news_analyst(llm, toolkit):
     def news_analyst_node(state):
         start_time = datetime.now()
 
-        # 🔧 工具调用计数器 - 防止无限循环
+        # 工具调用计数器 - 防止无限循环
         tool_call_count = state.get("news_tool_call_count", 0)
         max_tool_calls = 3  # 最大工具调用次数
-        logger.info(f"🔧 [死循环修复] 当前工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(f"[死循环修复] 当前工具调用次数: {tool_call_count}/{max_tool_calls}")
 
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
@@ -32,70 +34,16 @@ def create_news_analyst(llm, toolkit):
         logger.info(f"[新闻分析师] 开始分析 {ticker} 的新闻，交易日期: {current_date}")
         session_id = state.get("session_id", "未知会话")
         logger.info(f"[新闻分析师] 会话ID: {session_id}，开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         # 获取市场信息
         market_info = StockUtils.get_market_info(ticker)
         logger.info(f"[新闻分析师] 股票类型: {market_info['market_name']}")
-        
-        # 获取公司名称
-        def _get_company_name(ticker: str, market_info: dict) -> str:
-            """根据股票代码获取公司名称"""
-            try:
-                if market_info['is_china']:
-                    # 中国A股：使用统一接口获取股票信息
-                    from tradingagents.dataflows.interface import get_china_stock_info_unified
-                    stock_info = get_china_stock_info_unified(ticker)
-                    
-                    # 解析股票名称
-                    if "股票名称:" in stock_info:
-                        company_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
-                        logger.debug(f"📊 [DEBUG] 从统一接口获取中国股票名称: {ticker} -> {company_name}")
-                        return company_name
-                    else:
-                        logger.warning(f"⚠️ [DEBUG] 无法从统一接口解析股票名称: {ticker}")
-                        return f"股票代码{ticker}"
-                        
-                elif market_info['is_hk']:
-                    # 港股：使用改进的港股工具
-                    try:
-                        from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
-                        company_name = get_hk_company_name_improved(ticker)
-                        logger.debug(f"📊 [DEBUG] 使用改进港股工具获取名称: {ticker} -> {company_name}")
-                        return company_name
-                    except Exception as e:
-                        logger.debug(f"📊 [DEBUG] 改进港股工具获取名称失败: {e}")
-                        # 降级方案：生成友好的默认名称
-                        clean_ticker = ticker.replace('.HK', '').replace('.hk', '')
-                        return f"港股{clean_ticker}"
-                        
-                elif market_info['is_us']:
-                    # 美股：使用简单映射或返回代码
-                    us_stock_names = {
-                        'AAPL': '苹果公司',
-                        'TSLA': '特斯拉',
-                        'NVDA': '英伟达',
-                        'MSFT': '微软',
-                        'GOOGL': '谷歌',
-                        'AMZN': '亚马逊',
-                        'META': 'Meta',
-                        'NFLX': '奈飞'
-                    }
-                    
-                    company_name = us_stock_names.get(ticker.upper(), f"美股{ticker}")
-                    logger.debug(f"📊 [DEBUG] 美股名称映射: {ticker} -> {company_name}")
-                    return company_name
-                    
-                else:
-                    return f"股票{ticker}"
-                    
-            except Exception as e:
-                logger.error(f"❌ [DEBUG] 获取公司名称失败: {e}")
-                return f"股票{ticker}"
-        
-        company_name = _get_company_name(ticker, market_info)
+
+        # 使用统一公司名称工具获取公司名称
+        company_name = get_company_name(ticker, market_info)
         logger.info(f"[新闻分析师] 公司名称: {company_name}")
-        
-        # 🔧 使用统一新闻工具，简化工具调用
+
+        # 使用统一新闻工具，简化工具调用
         logger.info(f"[新闻分析师] 使用统一新闻工具，自动识别股票类型并获取相应新闻")
    # 创建统一新闻工具
         unified_news_tool = create_unified_news_tool(toolkit)

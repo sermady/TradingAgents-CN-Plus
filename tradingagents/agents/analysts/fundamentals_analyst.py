@@ -19,6 +19,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from tradingagents.utils.tool_logging import log_analyst_module
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.agents.utils.google_tool_handler import GoogleToolCallHandler
+# 导入统一公司名称工具（替换原有的重复代码）
+from tradingagents.utils.company_name_utils import get_company_name
 
 logger = get_logger("default")
 
@@ -116,93 +118,6 @@ def _has_valid_analysis_content(result: Any, min_length: int = 500) -> bool:
         return False
     content_length = len(str(result.content))
     return content_length > min_length
-
-
-# =============================================================================
-# 公司名称获取函数
-# =============================================================================
-
-def _get_company_name_for_fundamentals(ticker: str, market_info: dict) -> str:
-    """
-    为基本面分析师获取公司名称
-
-    Args:
-        ticker: 股票代码
-        market_info: 市场信息字典
-
-    Returns:
-        公司名称
-    """
-    try:
-        if market_info['is_china']:
-            return _get_china_company_name(ticker)
-        elif market_info['is_hk']:
-            return _get_hk_company_name(ticker)
-        elif market_info['is_us']:
-            return _get_us_company_name(ticker)
-        else:
-            return f"股票{ticker}"
-    except Exception as e:
-        logger.error(f"[基本面分析师] 获取公司名称失败: {e}")
-        return f"股票{ticker}"
-
-
-def _get_china_company_name(ticker: str) -> str:
-    """获取中国A股公司名称"""
-    from tradingagents.dataflows.interface import get_china_stock_info_unified
-    stock_info = get_china_stock_info_unified(ticker)
-
-    logger.debug(f"[基本面分析师] 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}...")
-
-    if stock_info and "股票名称:" in stock_info:
-        company_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
-        logger.info(f"[基本面分析师] 成功获取中国股票名称: {ticker} -> {company_name}")
-        return company_name
-
-    # 降级方案：尝试直接从数据源管理器获取
-    logger.warning(f"[基本面分析师] 无法从统一接口解析股票名称: {ticker}，尝试降级方案")
-    try:
-        from tradingagents.dataflows.data_source_manager import get_china_stock_info_unified as get_info_dict
-        info_dict = get_info_dict(ticker)
-        if info_dict and info_dict.get('name'):
-            company_name = info_dict['name']
-            logger.info(f"[基本面分析师] 降级方案成功获取股票名称: {ticker} -> {company_name}")
-            return company_name
-    except Exception as e:
-        logger.error(f"[基本面分析师] 降级方案也失败: {e}")
-
-    logger.error(f"[基本面分析师] 所有方案都无法获取股票名称: {ticker}")
-    return f"股票代码{ticker}"
-
-
-def _get_hk_company_name(ticker: str) -> str:
-    """获取港股公司名称"""
-    try:
-        from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
-        company_name = get_hk_company_name_improved(ticker)
-        logger.debug(f"[基本面分析师] 使用改进港股工具获取名称: {ticker} -> {company_name}")
-        return company_name
-    except Exception as e:
-        logger.debug(f"[基本面分析师] 改进港股工具获取名称失败: {e}")
-        clean_ticker = ticker.replace('.HK', '').replace('.hk', '')
-        return f"港股{clean_ticker}"
-
-
-def _get_us_company_name(ticker: str) -> str:
-    """获取美股公司名称"""
-    us_stock_names = {
-        'AAPL': '苹果公司',
-        'TSLA': '特斯拉',
-        'NVDA': '英伟达',
-        'MSFT': '微软',
-        'GOOGL': '谷歌',
-        'AMZN': '亚马逊',
-        'META': 'Meta',
-        'NFLX': '奈飞'
-    }
-    company_name = us_stock_names.get(ticker.upper(), f"美股{ticker}")
-    logger.debug(f"[基本面分析师] 美股名称映射: {ticker} -> {company_name}")
-    return company_name
 
 
 # =============================================================================
@@ -1097,8 +1012,8 @@ def create_fundamentals_analyst(llm, toolkit):
         market_info = StockUtils.get_market_info(ticker)
         _log_market_info(ticker, market_info, toolkit)
 
-        company_name = _get_company_name_for_fundamentals(ticker, market_info)
-        logger.debug(f"[基本面分析师] 公司名称: {ticker} -> {company_name}")
+        company_name = get_company_name(ticker, market_info)
+        logger.info(f"[基本面分析师] 公司名称: {company_name}")
 
         # 4. 准备工具和提示词
         tools = [toolkit.get_stock_fundamentals_unified]

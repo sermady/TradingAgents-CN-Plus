@@ -6,6 +6,9 @@ import json
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
+# 导入统一公司名称工具（替换原有的重复代码）
+from tradingagents.utils.company_name_utils import get_company_name
+
 
 def create_bull_researcher(llm, memory):
     def bull_node(state) -> dict:
@@ -27,48 +30,9 @@ def create_bull_researcher(llm, memory):
         market_info = StockUtils.get_market_info(ticker)
         is_china = market_info['is_china']
 
-        # 获取公司名称
-        def _get_company_name(ticker_code: str, market_info_dict: dict) -> str:
-            """根据股票代码获取公司名称"""
-            try:
-                if market_info_dict['is_china']:
-                    from tradingagents.dataflows.interface import get_china_stock_info_unified
-                    stock_info = get_china_stock_info_unified(ticker_code)
-                    if stock_info and "股票名称:" in stock_info:
-                        name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
-                        logger.info(f"✅ [多头研究员] 成功获取中国股票名称: {ticker_code} -> {name}")
-                        return name
-                    else:
-                        # 降级方案
-                        try:
-                            from tradingagents.dataflows.data_source_manager import get_china_stock_info_unified as get_info_dict
-                            info_dict = get_info_dict(ticker_code)
-                            if info_dict and info_dict.get('name'):
-                                name = info_dict['name']
-                                logger.info(f"✅ [多头研究员] 降级方案成功获取股票名称: {ticker_code} -> {name}")
-                                return name
-                        except Exception as e:
-                            logger.error(f"❌ [多头研究员] 降级方案也失败: {e}")
-                elif market_info_dict['is_hk']:
-                    try:
-                        from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
-                        name = get_hk_company_name_improved(ticker_code)
-                        return name
-                    except Exception:
-                        clean_ticker = ticker_code.replace('.HK', '').replace('.hk', '')
-                        return f"港股{clean_ticker}"
-                elif market_info_dict['is_us']:
-                    us_stock_names = {
-                        'AAPL': '苹果公司', 'TSLA': '特斯拉', 'NVDA': '英伟达',
-                        'MSFT': '微软', 'GOOGL': '谷歌', 'AMZN': '亚马逊',
-                        'META': 'Meta', 'NFLX': '奈飞'
-                    }
-                    return us_stock_names.get(ticker_code.upper(), f"美股{ticker_code}")
-            except Exception as e:
-                logger.error(f"❌ [多头研究员] 获取公司名称失败: {e}")
-            return f"股票代码{ticker_code}"
-
-        company_name = _get_company_name(ticker, market_info)
+        # 获取公司名称（使用统一工具）
+        company_name = get_company_name(ticker, market_info)
+        logger.info(f"[多头研究员] 公司名称: {company_name}")
         is_hk = market_info['is_hk']
         is_us = market_info['is_us']
 

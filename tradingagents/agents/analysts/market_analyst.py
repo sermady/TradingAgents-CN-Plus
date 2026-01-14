@@ -13,83 +13,8 @@ logger = get_logger("default")
 # 导入Google工具调用处理器
 from tradingagents.agents.utils.google_tool_handler import GoogleToolCallHandler
 
-
-def _get_company_name(ticker: str, market_info: dict) -> str:
-    """
-    根据股票代码获取公司名称
-
-    Args:
-        ticker: 股票代码
-        market_info: 市场信息字典
-
-    Returns:
-        str: 公司名称
-    """
-    try:
-        if market_info['is_china']:
-            # 中国A股：使用统一接口获取股票信息
-            from tradingagents.dataflows.interface import get_china_stock_info_unified
-            stock_info = get_china_stock_info_unified(ticker)
-
-            logger.debug(f"📊 [市场分析师] 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}...")
-
-            # 解析股票名称
-            if stock_info and "股票名称:" in stock_info:
-                company_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
-                logger.info(f"✅ [市场分析师] 成功获取中国股票名称: {ticker} -> {company_name}")
-                return company_name
-            else:
-                # 降级方案：尝试直接从数据源管理器获取
-                logger.warning(f"⚠️ [市场分析师] 无法从统一接口解析股票名称: {ticker}，尝试降级方案")
-                try:
-                    from tradingagents.dataflows.data_source_manager import get_china_stock_info_unified as get_info_dict
-                    info_dict = get_info_dict(ticker)
-                    if info_dict and info_dict.get('name'):
-                        company_name = info_dict['name']
-                        logger.info(f"✅ [市场分析师] 降级方案成功获取股票名称: {ticker} -> {company_name}")
-                        return company_name
-                except Exception as e:
-                    logger.error(f"❌ [市场分析师] 降级方案也失败: {e}")
-
-                logger.error(f"❌ [市场分析师] 所有方案都无法获取股票名称: {ticker}")
-                return f"股票代码{ticker}"
-
-        elif market_info['is_hk']:
-            # 港股：使用改进的港股工具
-            try:
-                from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
-                company_name = get_hk_company_name_improved(ticker)
-                logger.debug(f"📊 [DEBUG] 使用改进港股工具获取名称: {ticker} -> {company_name}")
-                return company_name
-            except Exception as e:
-                logger.debug(f"📊 [DEBUG] 改进港股工具获取名称失败: {e}")
-                # 降级方案：生成友好的默认名称
-                clean_ticker = ticker.replace('.HK', '').replace('.hk', '')
-                return f"港股{clean_ticker}"
-
-        elif market_info['is_us']:
-            # 美股：使用简单映射或返回代码
-            us_stock_names = {
-                'AAPL': '苹果公司',
-                'TSLA': '特斯拉',
-                'NVDA': '英伟达',
-                'MSFT': '微软',
-                'GOOGL': '谷歌',
-                'AMZN': '亚马逊',
-                'META': 'Meta',
-                'NFLX': '奈飞'
-            }
-
-            company_name = us_stock_names.get(ticker.upper(), f"美股{ticker}")
-            logger.debug(f"📊 [DEBUG] 美股名称映射: {ticker} -> {company_name}")
-            return company_name
-
-        else:
-            return f"股票{ticker}"
-
-    except Exception as e:
-        logger.error(f"❌ [DEBUG] 获取公司名称失败: {e}")
-        return f"股票{ticker}"
+# 导入统一公司名称工具（替换原有的重复代码）
+from tradingagents.utils.company_name_utils import get_company_name
 
 
 def create_market_analyst(llm, toolkit):
@@ -116,9 +41,9 @@ def create_market_analyst(llm, toolkit):
 
         logger.debug(f"📈 [DEBUG] 股票类型检查: {ticker} -> {market_info['market_name']} ({market_info['currency_name']})")
 
-        # 获取公司名称
-        company_name = _get_company_name(ticker, market_info)
-        logger.debug(f"📈 [DEBUG] 公司名称: {ticker} -> {company_name}")
+        # 获取公司名称（使用统一工具）
+        company_name = get_company_name(ticker, market_info)
+        logger.info(f"[市场分析师] 公司名称: {company_name}")
 
         # 统一使用 get_stock_market_data_unified 工具
         # 该工具内部会自动识别股票类型（A股/港股/美股）并调用相应的数据源
