@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 import os
 
@@ -28,7 +28,7 @@ class ConfigProvider:
         return (
             self._cache_settings is not None
             and self._cache_time is not None
-            and __import__("datetime").datetime.now(__import__("datetime").timezone.utc) - self._cache_time < self._ttl
+            and datetime.now(timezone.utc) - self._cache_time < self._ttl
         )
 
     async def get_effective_system_settings(self) -> Dict[str, Any]:
@@ -67,7 +67,7 @@ class ConfigProvider:
 
         # Cache
         self._cache_settings = dict(merged)
-        self._cache_time = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        self._cache_time = datetime.now(timezone.utc)
         return dict(merged)
     async def get_system_settings_meta(self) -> Dict[str, Dict[str, Any]]:
         """Return metadata for system settings keys including sensitivity, editability and source.
