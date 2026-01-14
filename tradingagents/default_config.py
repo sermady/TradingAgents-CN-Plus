@@ -10,7 +10,7 @@ DEFAULT_CONFIG = {
     ),
     # LLM settings
     "llm_provider": "openai",
-    "deep_think_llm": "o4-mini",
+    "deep_think_llm": "gpt-4o",  # 修复: o4-mini 不是有效的 OpenAI 模型
     "quick_think_llm": "gpt-4o-mini",
     "backend_url": "https://api.openai.com/v1",
     # Debate and discussion settings
