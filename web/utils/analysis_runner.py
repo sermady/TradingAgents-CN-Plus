@@ -97,18 +97,28 @@ def extract_risk_assessment(state):
         logger.info(f"提取风险评估数据时出错: {e}")
         return None
 
-def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, llm_provider, llm_model, market_type="美股", progress_callback=None):
+def run_stock_analysis(stock_symbol, analysis_date=None, analysts=None, research_depth=3, llm_provider="dashscope", llm_model="qwen-plus", market_type="美股", use_realtime=True, progress_callback=None):
     """执行股票分析
 
     Args:
         stock_symbol: 股票代码
-        analysis_date: 分析日期
-        analysts: 分析师列表
-        research_depth: 研究深度
+        analysis_date: 分析日期 (默认今天)
+        analysts: 分析师列表 (默认全部)
+        research_depth: 研究深度 (默认3-标准分析)
         llm_provider: LLM提供商 (dashscope/deepseek/google)
         llm_model: 大模型名称
+        market_type: 市场类型 (A股/港股/美股)
+        use_realtime: 是否使用实时行情 (仅今天有效，默认True)
         progress_callback: 进度回调函数，用于更新UI状态
     """
+    # 处理默认值
+    if analysis_date is None:
+        analysis_date = datetime.now().strftime('%Y-%m-%d')
+        logger.info(f"📅 未指定分析日期，默认使用今天: {analysis_date}")
+
+    if analysts is None:
+        analysts = ['market', 'fundamentals', 'news', 'social']
+        logger.info(f"📊 未指定分析师，默认使用全部: {analysts}")
 
     def update_progress(message, step=None, total_steps=None):
         """更新进度"""
@@ -152,6 +162,31 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
         update_progress(success_msg)  # 使用智能检测，不再硬编码步骤
         logger.info(f"[{session_id}] {success_msg}")
         logger.info(f"[{session_id}] 缓存状态: {preparation_result.cache_status}")
+
+        # 2. 实时行情获取（仅当 use_realtime=True 且分析日期是今天时）
+        realtime_quote = None
+        if use_realtime:
+            try:
+                from tradingagents.dataflows.data_source_manager import get_data_source_manager
+                dsm = get_data_source_manager()
+
+                if dsm.should_use_realtime_data(analysis_date, market_type):
+                    update_progress("📈 获取实时行情数据...")
+                    realtime_quote = dsm.get_realtime_quote(stock_symbol, market_type)
+                    if realtime_quote:
+                        price = realtime_quote.get('price', 'N/A')
+                        change_pct = realtime_quote.get('change_pct', 0)
+                        market_status = realtime_quote.get('market_status_desc', '未知')
+                        logger.info(f"📈 [实时行情] {stock_symbol}: 价格={price}, 涨跌幅={change_pct}%, 市场状态={market_status}")
+                        update_progress(f"📈 实时行情: ¥{price} ({change_pct:+.2f}%) - {market_status}")
+                    else:
+                        logger.warning(f"⚠️ [实时行情] 获取失败，将使用历史数据")
+                        update_progress("⚠️ 实时行情获取失败，使用历史数据")
+                else:
+                    logger.info(f"📅 [实时行情] 分析日期非今天或非交易时段，使用历史数据")
+            except Exception as rt_error:
+                logger.warning(f"⚠️ [实时行情] 获取异常: {rt_error}")
+                # 实时行情获取失败不影响后续分析
 
     except Exception as e:
         error_msg = f"❌ 数据预获取过程中发生错误: {str(e)}"
@@ -512,6 +547,9 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
             'llm_provider': llm_provider,
             'llm_model': llm_model,
             'model_info': model_info,  # 🔥 添加模型信息字段
+            'market_type': market_type,  # 添加市场类型
+            'use_realtime': use_realtime,  # 添加是否使用实时行情标志
+            'realtime_quote': realtime_quote,  # 添加实时行情数据
             'state': state,
             'decision': decision,
             'success': True,
@@ -817,13 +855,14 @@ def validate_analysis_params(stock_symbol, analysis_date, analysts, research_dep
     if not isinstance(research_depth, int) or research_depth < 1 or research_depth > 5:
         errors.append("研究深度必须是1-5之间的整数")
     
-    # 验证分析日期
-    try:
-        from datetime import datetime
-        datetime.strptime(analysis_date, '%Y-%m-%d')
-    except ValueError:
-        errors.append("分析日期格式无效，应为YYYY-MM-DD格式")
-    
+    # 验证分析日期（允许None，表示使用今天）
+    if analysis_date is not None:
+        try:
+            from datetime import datetime
+            datetime.strptime(analysis_date, '%Y-%m-%d')
+        except ValueError:
+            errors.append("分析日期格式无效，应为YYYY-MM-DD格式")
+
     return len(errors) == 0, errors
 
 def get_supported_stocks():
