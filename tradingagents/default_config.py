@@ -21,8 +21,22 @@ DEFAULT_CONFIG = {
     "max_recur_limit": 100,
     # Tool settings - 从环境变量读取，提供默认值
     "online_tools": os.getenv("ONLINE_TOOLS_ENABLED", "false").lower() == "true",
-    "online_news": os.getenv("ONLINE_NEWS_ENABLED", "true").lower() == "true", 
+    "online_news": os.getenv("ONLINE_NEWS_ENABLED", "true").lower() == "true",
     "realtime_data": os.getenv("REALTIME_DATA_ENABLED", "false").lower() == "true",
+
+    # ========== 统一配置：工具调用和重试 ==========
+    # 各分析师的工具调用限制
+    "analyst_tool_call_limits": {
+        "fundamentals": 1,  # 基本面分析师：一次工具调用即可获取所有数据
+        "market": 3,        # 市场分析师：最多3次工具调用
+        "news": 3,          # 新闻分析师：最多3次工具调用
+        "social_media": 3,  # 社交媒体分析师：最多3次工具调用
+    },
+    # LLM重试配置
+    "max_llm_retries": 3,        # LLM调用最大重试次数
+    "retry_base_delay": 1.0,     # 重试基础延时（秒）
+    # 历史记忆检索配置
+    "memory_n_matches": 5,       # 检索历史记忆的数量
 
     # Note: Database and cache configuration is now managed by .env file and config.database_manager
     # No database/cache settings in default config to avoid configuration conflicts
