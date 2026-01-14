@@ -42,6 +42,7 @@ class AnalysisParameters(BaseModel):
     """
     market_type: str = "A股"
     analysis_date: Optional[datetime] = None
+    use_realtime: bool = Field(default=True, description="是否使用实时行情（仅今天有效）")
     research_depth: str = "标准"  # 默认使用3级标准分析（推荐）
     selected_analysts: List[str] = Field(default_factory=lambda: ["market", "fundamentals", "news", "social"])
     custom_prompt: Optional[str] = None
