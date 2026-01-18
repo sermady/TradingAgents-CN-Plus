@@ -278,7 +278,7 @@ class OpenAIProvider(BaseLLMProvider):
             model=model,
             api_key=api_key,
             base_url=base_url,
-            temperature=tokenperature,
+            temperature=temperature,
             max_tokens=max_tokens,
             timeout=timeout,
         )

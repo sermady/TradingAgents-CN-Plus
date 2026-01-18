@@ -173,9 +173,9 @@ class LLMCache:
         oldest_key = min(
             self._memory_cache.items(),
             key=lambda x: x[1][1],
-        )
+        )[0]
 
-        del self.memory_cache[oldest_key]
+        del self._memory_cache[oldest_key]
         logger.info(f"🗑️ [LLM缓存] 淘汰旧缓存: key={oldest_key[:16]}...")
 
     def clear(self):
@@ -188,7 +188,7 @@ class LLMCache:
         """获取缓存统计"""
         return {
             "backend": self.cache_backend,
-            "size": len(self.memory_cache),
+            "size": len(self._memory_cache),
             "max_size": self.max_size,
             "hit_rate": self._calculate_hit_rate(),
         }
@@ -196,7 +196,7 @@ class LLMCache:
     def _calculate_hit_rate(self) -> float:
         """计算缓存命中率"""
         total_hits = sum(hit_count for _, _, hit_count in self._memory_cache.values())
-        total_access = len(self.memory_cache)
+        total_access = len(self._memory_cache)
         return (total_hits / total_access * 100) if total_access > 0 else 0
 
 
