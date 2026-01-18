@@ -6,9 +6,11 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
+from .parallel_analysts import ParallelAnalystExecutor, create_parallel_executor
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+
 logger = get_logger("default")
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "Propagator",
     "Reflector",
     "SignalProcessor",
+    "ParallelAnalystExecutor",
+    "create_parallel_executor",
 ]
