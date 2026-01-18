@@ -5,6 +5,7 @@ import json
 # 导入统一日志系统和分析模块日志装饰器
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.tool_logging import log_analyst_module
+
 logger = get_logger("analysts.social_media")
 
 # 导入Google工具调用处理器
@@ -20,13 +21,16 @@ def create_social_media_analyst(llm, toolkit):
         # 🔧 工具调用计数器 - 防止无限循环
         tool_call_count = state.get("sentiment_tool_call_count", 0)
         max_tool_calls = 3  # 最大工具调用次数
-        logger.info(f"🔧 [死循环修复] 当前工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(
+            f"🔧 [死循环修复] 当前工具调用次数: {tool_call_count}/{max_tool_calls}"
+        )
 
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
         # 获取股票市场信息
         from tradingagents.utils.stock_utils import StockUtils
+
         market_info = StockUtils.get_market_info(ticker)
 
         # 获取公司名称（使用统一工具）
@@ -38,8 +42,7 @@ def create_social_media_analyst(llm, toolkit):
         logger.info(f"[社交媒体分析师] 使用统一情绪分析工具，自动识别股票类型")
         tools = [toolkit.get_stock_sentiment_unified]
 
-        system_message = (
-            """您是一位专业的中国市场社交媒体和投资情绪分析师，负责分析中国投资者对特定股票的讨论和情绪变化。
+        system_message = """您是一位专业的中国市场社交媒体和投资情绪分析师，负责分析中国投资者对特定股票的讨论和情绪变化。
 
 您的主要职责包括：
 1. 分析中国主要财经平台的投资者情绪（如雪球、东方财富股吧等）
@@ -61,24 +64,31 @@ def create_social_media_analyst(llm, toolkit):
 - 热点事件对股价预期的影响
 - 政策解读和市场预期变化
 - 散户情绪与机构观点的差异
+ 
+ 📊 数据验证要求（重要）：
+- 情绪指数评分是否合理？（通常 1-10 分）
+- 情绪变化趋势是否符合实际数据？
+- 投资者情绪分析是否基于具体讨论内容？
+- KOL观点是否有实际引用？
+- 是否有矛盾的情绪数据点？
+- 所有情绪评分必须使用工具返回的实际数据，不允许编造
 
-📊 情绪影响分析要求：
-- 量化投资者情绪强度（乐观/悲观程度）和情绪变化趋势
+📊 情绪影响分析要求（必须基于工具数据）：
+- 量化投资者情绪强度（乐观/悲观程度）和情绪变化趋势（使用工具返回的数值）
 - 评估情绪变化对短期市场反应的影响（1-5天）
 - 分析散户情绪与市场走势的相关性
 - 识别情绪极端点和可能的情绪反转信号
 - 提供基于情绪分析的市场预期和投资建议
 - 评估市场情绪对投资者信心和决策的影响程度
 - 不允许回复'无法评估情绪影响'或'需要更多数据'
-
-💰 必须包含：
-- 情绪指数评分（1-10分）
+ 
+💰 必须包含（基于工具返回数据）：
+- 情绪指数评分（1-10分）- 必须使用工具返回的数值
 - 预期价格波动幅度
 - 基于情绪的交易时机建议
 
 请撰写详细的中文分析报告，并在报告末尾附上Markdown表格总结关键发现。
 注意：由于中国社交媒体API限制，如果数据获取受限，请明确说明并提供替代分析建议。"""
-        )
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -101,9 +111,9 @@ def create_social_media_analyst(llm, toolkit):
         # 安全地获取工具名称，处理函数和工具对象
         tool_names = []
         for tool in tools:
-            if hasattr(tool, 'name'):
+            if hasattr(tool, "name"):
                 tool_names.append(tool.name)
-            elif hasattr(tool, '__name__'):
+            elif hasattr(tool, "__name__"):
                 tool_names.append(tool.__name__)
             else:
                 tool_names.append(str(tool))
@@ -120,15 +130,15 @@ def create_social_media_analyst(llm, toolkit):
         # 使用统一的Google工具调用处理器
         if GoogleToolCallHandler.is_google_model(llm):
             logger.info(f"📊 [社交媒体分析师] 检测到Google模型，使用统一工具调用处理器")
-            
+
             # 创建分析提示词
             analysis_prompt_template = GoogleToolCallHandler.create_analysis_prompt(
                 ticker=ticker,
                 company_name=company_name,
                 analyst_type="社交媒体情绪分析",
-                specific_requirements="重点关注投资者情绪、社交媒体讨论热度、舆论影响等。"
+                specific_requirements="重点关注投资者情绪、社交媒体讨论热度、舆论影响等。",
             )
-            
+
             # 处理Google模型工具调用
             report, messages = GoogleToolCallHandler.handle_google_tool_calls(
                 result=result,
@@ -136,12 +146,14 @@ def create_social_media_analyst(llm, toolkit):
                 tools=tools,
                 state=state,
                 analysis_prompt_template=analysis_prompt_template,
-                analyst_name="社交媒体分析师"
+                analyst_name="社交媒体分析师",
             )
         else:
             # 非Google模型的处理逻辑
-            logger.debug(f"📊 [DEBUG] 非Google模型 ({llm.__class__.__name__})，使用标准处理逻辑")
-            
+            logger.debug(
+                f"📊 [DEBUG] 非Google模型 ({llm.__class__.__name__})，使用标准处理逻辑"
+            )
+
             report = ""
             if len(result.tool_calls) == 0:
                 report = result.content
@@ -150,7 +162,7 @@ def create_social_media_analyst(llm, toolkit):
         return {
             "messages": [result],
             "sentiment_report": report,
-            "sentiment_tool_call_count": tool_call_count + 1
+            "sentiment_tool_call_count": tool_call_count + 1,
         }
 
     return social_media_analyst_node

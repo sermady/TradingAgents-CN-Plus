@@ -1,9 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
+from datetime import datetime, timedelta
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+
 logger = get_logger("default")
 
 # 导入Google工具调用处理器
@@ -22,62 +24,83 @@ def _get_company_name_for_china_market(ticker: str, market_info: dict) -> str:
         str: 公司名称
     """
     try:
-        if market_info['is_china']:
+        if market_info["is_china"]:
             # 中国A股：使用统一接口获取股票信息
             from tradingagents.dataflows.interface import get_china_stock_info_unified
+
             stock_info = get_china_stock_info_unified(ticker)
 
-            logger.debug(f"📊 [中国市场分析师] 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}...")
+            logger.debug(
+                f"📊 [中国市场分析师] 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}..."
+            )
 
             # 解析股票名称
             if stock_info and "股票名称:" in stock_info:
                 company_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
-                logger.info(f"✅ [中国市场分析师] 成功获取中国股票名称: {ticker} -> {company_name}")
+                logger.info(
+                    f"✅ [中国市场分析师] 成功获取中国股票名称: {ticker} -> {company_name}"
+                )
                 return company_name
             else:
                 # 降级方案：尝试直接从数据源管理器获取
-                logger.warning(f"⚠️ [中国市场分析师] 无法从统一接口解析股票名称: {ticker}，尝试降级方案")
+                logger.warning(
+                    f"⚠️ [中国市场分析师] 无法从统一接口解析股票名称: {ticker}，尝试降级方案"
+                )
                 try:
-                    from tradingagents.dataflows.data_source_manager import get_china_stock_info_unified as get_info_dict
+                    from tradingagents.dataflows.data_source_manager import (
+                        get_china_stock_info_unified as get_info_dict,
+                    )
+
                     info_dict = get_info_dict(ticker)
-                    if info_dict and info_dict.get('name'):
-                        company_name = info_dict['name']
-                        logger.info(f"✅ [中国市场分析师] 降级方案成功获取股票名称: {ticker} -> {company_name}")
+                    if info_dict and info_dict.get("name"):
+                        company_name = info_dict["name"]
+                        logger.info(
+                            f"✅ [中国市场分析师] 降级方案成功获取股票名称: {ticker} -> {company_name}"
+                        )
                         return company_name
                 except Exception as e:
                     logger.error(f"❌ [中国市场分析师] 降级方案也失败: {e}")
 
-                logger.error(f"❌ [中国市场分析师] 所有方案都无法获取股票名称: {ticker}")
+                logger.error(
+                    f"❌ [中国市场分析师] 所有方案都无法获取股票名称: {ticker}"
+                )
                 return f"股票代码{ticker}"
 
-        elif market_info['is_hk']:
+        elif market_info["is_hk"]:
             # 港股：使用改进的港股工具
             try:
-                from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
+                from tradingagents.dataflows.providers.hk.improved_hk import (
+                    get_hk_company_name_improved,
+                )
+
                 company_name = get_hk_company_name_improved(ticker)
-                logger.debug(f"📊 [中国市场分析师] 使用改进港股工具获取名称: {ticker} -> {company_name}")
+                logger.debug(
+                    f"📊 [中国市场分析师] 使用改进港股工具获取名称: {ticker} -> {company_name}"
+                )
                 return company_name
             except Exception as e:
                 logger.debug(f"📊 [中国市场分析师] 改进港股工具获取名称失败: {e}")
                 # 降级方案：生成友好的默认名称
-                clean_ticker = ticker.replace('.HK', '').replace('.hk', '')
+                clean_ticker = ticker.replace(".HK", "").replace(".hk", "")
                 return f"港股{clean_ticker}"
 
-        elif market_info['is_us']:
+        elif market_info["is_us"]:
             # 美股：使用简单映射或返回代码
             us_stock_names = {
-                'AAPL': '苹果公司',
-                'TSLA': '特斯拉',
-                'NVDA': '英伟达',
-                'MSFT': '微软',
-                'GOOGL': '谷歌',
-                'AMZN': '亚马逊',
-                'META': 'Meta',
-                'NFLX': '奈飞'
+                "AAPL": "苹果公司",
+                "TSLA": "特斯拉",
+                "NVDA": "英伟达",
+                "MSFT": "微软",
+                "GOOGL": "谷歌",
+                "AMZN": "亚马逊",
+                "META": "Meta",
+                "NFLX": "奈飞",
             }
 
             company_name = us_stock_names.get(ticker.upper(), f"美股{ticker}")
-            logger.debug(f"📊 [中国市场分析师] 美股名称映射: {ticker} -> {company_name}")
+            logger.debug(
+                f"📊 [中国市场分析师] 美股名称映射: {ticker} -> {company_name}"
+            )
             return company_name
 
         else:
@@ -90,28 +113,52 @@ def _get_company_name_for_china_market(ticker: str, market_info: dict) -> str:
 
 def create_china_market_analyst(llm, toolkit):
     """创建中国市场分析师"""
-    
+
     def china_market_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
-        
+
         # 获取股票市场信息
         from tradingagents.utils.stock_utils import StockUtils
+
         market_info = StockUtils.get_market_info(ticker)
-        
+
         # 获取公司名称
         company_name = _get_company_name_for_china_market(ticker, market_info)
         logger.info(f"[中国市场分析师] 公司名称: {company_name}")
-        
+
         # 中国股票分析工具
         tools = [
             toolkit.get_china_stock_data,
             toolkit.get_china_market_overview,
             toolkit.get_YFin_data,  # 备用数据源
         ]
-        
-        system_message = (
-            """您是一位专业的中国股市分析师，专门分析A股、港股等中国资本市场。您具备深厚的中国股市知识和丰富的本土投资经验。
+
+        system_message = """您是一位专业的中国股市分析师，专门分析A股、港股等中国资本市场。您具备深厚的中国股市知识和丰富的本土投资经验。
+
+🚨 CRITICAL REQUIREMENT - 绝对强制要求：
+
+❌ 禁止行为：
+- 绝对禁止在没有调用工具的情况下直接回答
+- 绝对禁止编造技术指标数据（如MA、MACD、RSI等）
+- 绝对禁止编造财务数据或公司基本面信息
+- 绝对禁止基于推测或假设进行分析
+- 绝对禁止说'我无法获取数据'等借口
+
+✅ 强制执行步骤：
+1. 您必须调用工具获取真实的市场数据
+2. 基于工具返回的真实数据进行技术指标计算和分析
+3. 所有分析必须基于真实数据
+4. 技术指标必须使用工具返回的实际数值
+
+🔧 可用工具：
+- get_china_stock_data: 获取A股历史数据和技术指标
+- get_china_market_overview: 获取A股市场概况
+- get_YFin_data: 备用数据源（Yahoo Finance）
+
+⚠️ 如果您不调用工具，您的回答将被视为无效。
+⚠️ 您必须先调用工具获取数据，然后基于数据进行分析。
+⚠️ 没有例外，没有借口，必须调用工具。
 
 您的专业领域包括：
 1. **A股市场分析**: 深度理解A股的独特性，包括涨跌停制度、T+1交易、融资融券等
@@ -121,7 +168,7 @@ def create_china_market_analyst(llm, toolkit):
 5. **市场情绪**: 理解中国投资者的行为特征和情绪波动
 
 分析重点：
-- **技术面分析**: 使用通达信数据进行精确的技术指标分析
+- **技术面分析**: 使用工具提供的真实数据进行精确的技术指标分析
 - **基本面分析**: 结合中国会计准则和财报特点进行分析
 - **政策面分析**: 评估政策变化对个股和板块的影响
 - **资金面分析**: 分析北向资金、融资融券、大宗交易等资金流向
@@ -134,10 +181,9 @@ def create_china_market_analyst(llm, toolkit):
 - 国企改革、混改等主题投资机会
 - 中美关系、地缘政治对中概股的影响
 
-请基于Tushare数据接口提供的实时数据和技术指标，结合中国股市的特殊性，撰写专业的中文分析报告。
+请基于工具提供的真实数据和技术指标，结合中国股市的特殊性，撰写专业的中文分析报告。
 确保在报告末尾附上Markdown表格总结关键发现和投资建议。"""
-        )
-        
+
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -152,14 +198,14 @@ def create_china_market_analyst(llm, toolkit):
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
-        
+
         prompt = prompt.partial(system_message=system_message)
         # 安全地获取工具名称，处理函数和工具对象
         tool_names = []
         for tool in tools:
-            if hasattr(tool, 'name'):
+            if hasattr(tool, "name"):
                 tool_names.append(tool.name)
-            elif hasattr(tool, '__name__'):
+            elif hasattr(tool, "__name__"):
                 tool_names.append(tool.__name__)
             else:
                 tool_names.append(str(tool))
@@ -167,22 +213,22 @@ def create_china_market_analyst(llm, toolkit):
         prompt = prompt.partial(tool_names=", ".join(tool_names))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
-        
+
         chain = prompt | llm.bind_tools(tools)
         result = chain.invoke(state["messages"])
-        
+
         # 使用统一的Google工具调用处理器
         if GoogleToolCallHandler.is_google_model(llm):
             logger.info(f"📊 [中国市场分析师] 检测到Google模型，使用统一工具调用处理器")
-            
+
             # 创建分析提示词
             analysis_prompt_template = GoogleToolCallHandler.create_analysis_prompt(
                 ticker=ticker,
                 company_name=company_name,
                 analyst_type="中国市场分析",
-                specific_requirements="重点关注中国A股市场特点、政策影响、行业发展趋势等。"
+                specific_requirements="重点关注中国A股市场特点、政策影响、行业发展趋势等。",
             )
-            
+
             # 处理Google模型工具调用
             report, messages = GoogleToolCallHandler.handle_google_tool_calls(
                 result=result,
@@ -190,37 +236,184 @@ def create_china_market_analyst(llm, toolkit):
                 tools=tools,
                 state=state,
                 analysis_prompt_template=analysis_prompt_template,
-                analyst_name="中国市场分析师"
+                analyst_name="中国市场分析师",
             )
         else:
             # 非Google模型的处理逻辑
-            logger.debug(f"📊 [DEBUG] 非Google模型 ({llm.__class__.__name__})，使用标准处理逻辑")
-            
+            logger.debug(
+                f"📊 [DEBUG] 非Google模型 ({llm.__class__.__name__})，使用标准处理逻辑"
+            )
+
             report = ""
             if len(result.tool_calls) == 0:
+                logger.warning(
+                    f"[中国市场分析师] ⚠️ {llm.__class__.__name__} 没有调用任何工具，启动补救机制..."
+                )
+                logger.warning(
+                    f"[中国市场分析师] 📄 LLM原始响应内容 (前500字符): {result.content[:500] if hasattr(result, 'content') else 'No content'}"
+                )
+
+                try:
+                    # 强制调用工具获取数据
+                    logger.info(f"[中国市场分析师] 🔧 强制调用工具获取市场数据...")
+                    logger.info(
+                        f"[中国市场分析师] 📊 尝试调用 get_china_stock_data 工具"
+                    )
+
+                    # 尝试第一个工具（get_china_stock_data）
+                    tool_to_call = tools[0] if tools else None
+
+                    if tool_to_call:
+                        # 计算合理的历史日期范围（过去一年）
+                        try:
+                            end_date = datetime.strptime(current_date, "%Y%m%d")
+                            start_date = end_date - timedelta(days=365)
+                        except ValueError:
+                            # 如果日期格式不正确，使用默认范围
+                            logger.warning(
+                                f"[中国市场分析师] ⚠️ 无法解析日期格式: {current_date}，使用默认日期范围"
+                            )
+                            end_date = datetime.now()
+                            start_date = end_date - timedelta(days=365)
+
+                        forced_data = tool_to_call.invoke(
+                            {
+                                "stock_code": ticker,
+                                "start_date": start_date.strftime("%Y%m%d"),
+                                "end_date": end_date.strftime("%Y%m%d"),
+                            }
+                        )
+
+                        logger.info(
+                            f"[中国市场分析师] 📋 强制获取返回结果长度: {len(str(forced_data)) if forced_data is not None else 0} 字符"
+                        )
+                        logger.info(
+                            f"[中国市场分析师] 📄 强制获取返回结果预览 (前500字符): {str(forced_data)[:500] if forced_data is not None else 'None'}"
+                        )
+
+                        # 类型安全的强制数据检查
+                        forced_data_str = ""
+                        if forced_data is not None:
+                            if isinstance(forced_data, str):
+                                forced_data_str = forced_data.strip()
+                            else:
+                                # 尝试导入 pandas 并检查是否为 DataFrame
+                                try:
+                                    import pandas as pd
+
+                                    if isinstance(forced_data, pd.DataFrame):
+                                        forced_data_str = str(forced_data)
+                                    elif isinstance(forced_data, (dict, list)):
+                                        forced_data_str = json.dumps(
+                                            forced_data, ensure_ascii=False, indent=2
+                                        )
+                                    else:
+                                        forced_data_str = str(forced_data)
+                                except ImportError:
+                                    # pandas 不可用时，直接转换为字符串
+                                    if isinstance(forced_data, (dict, list)):
+                                        forced_data_str = json.dumps(
+                                            forced_data, ensure_ascii=False, indent=2
+                                        )
+                                    else:
+                                        forced_data_str = str(forced_data)
+
+                        if forced_data_str and len(forced_data_str) > 100:
+                            logger.info(
+                                f"[中国市场分析师] ✅ 强制获取数据成功: {len(forced_data_str)} 字符"
+                            )
+
+                            # 基于真实数据重新生成分析
+                            forced_prompt = f"""
+您是一位专业的中国股市分析师。请基于以下最新获取的市场数据，对股票 {ticker}（{company_name}）进行详细的市场分析：
+
+=== 最新市场数据 ===
+{forced_data}
+
+=== 分析要求 ===
+{system_message}
+
+请基于上述真实市场数据撰写详细的中文分析报告。
+"""
+
+                            logger.info(
+                                f"[中国市场分析师] 🔄 基于强制获取的数据重新生成完整分析..."
+                            )
+                            logger.info(
+                                f"[中国市场分析师] 📝 强制提示词长度: {len(forced_prompt)} 字符"
+                            )
+
+                            forced_result = llm.invoke(
+                                [{"role": "user", "content": forced_prompt}]
+                            )
+
+                            if (
+                                hasattr(forced_result, "content")
+                                and forced_result.content
+                            ):
+                                report = forced_result.content
+                                logger.info(
+                                    f"[中国市场分析师] ✅ 强制补救成功，生成基于真实数据的报告，长度: {len(report)} 字符"
+                                )
+                                logger.info(
+                                    f"[中国市场分析师] 📄 报告预览 (前300字符): {report[:300]}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"[中国市场分析师] ⚠️ 强制补救LLM返回为空，使用原始结果"
+                                )
+                                report = (
+                                    result.content if hasattr(result, "content") else ""
+                                )
+                        else:
+                            logger.warning(
+                                f"[中国市场分析师] ⚠️ 工具获取失败或内容过短（{len(forced_data) if forced_data else 0}字符），使用原始结果"
+                            )
+                            if forced_data:
+                                logger.warning(
+                                    f"[中国市场分析师] 📄 失败的数据内容: {forced_data}"
+                                )
+                            report = (
+                                result.content if hasattr(result, "content") else ""
+                            )
+                    else:
+                        logger.error(
+                            f"[中国市场分析师] ❌ 没有可用的工具，强制补救失败"
+                        )
+                        report = result.content if hasattr(result, "content") else ""
+
+                except Exception as e:
+                    logger.error(f"[中国市场分析师] ❌ 强制补救过程失败: {e}")
+                    import traceback
+
+                    logger.error(
+                        f"[中国市场分析师] 📋 异常堆栈: {traceback.format_exc()}"
+                    )
+                    report = result.content if hasattr(result, "content") else ""
+            else:
+                # 有工具调用，直接使用结果
                 report = result.content
-        
+
         return {
             "messages": [result],
             "china_market_report": report,
             "sender": "ChinaMarketAnalyst",
         }
-    
+
     return china_market_analyst_node
 
 
 def create_china_stock_screener(llm, toolkit):
     """创建中国股票筛选器"""
-    
+
     def china_stock_screener_node(state):
         current_date = state["trade_date"]
-        
+
         tools = [
             toolkit.get_china_market_overview,
         ]
-        
-        system_message = (
-            """您是一位专业的中国股票筛选专家，负责从A股市场中筛选出具有投资价值的股票。
+
+        system_message = """您是一位专业的中国股票筛选专家，负责从A股市场中筛选出具有投资价值的股票。
 
 筛选维度包括：
 1. **基本面筛选**: 
@@ -250,12 +443,11 @@ def create_china_stock_screener(llm, toolkit):
 - **周期投资**: 经济周期、行业周期、季节性
 
 请基于当前市场环境和政策背景，提供专业的股票筛选建议。"""
-        )
-        
+
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
-                    "system", 
+                    "system",
                     "您是一位专业的股票筛选专家。"
                     " 使用提供的工具分析市场概况。"
                     " 您可以访问以下工具：{tool_names}。\n{system_message}"
@@ -264,28 +456,28 @@ def create_china_stock_screener(llm, toolkit):
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
-        
+
         prompt = prompt.partial(system_message=system_message)
         # 安全地获取工具名称，处理函数和工具对象
         tool_names = []
         for tool in tools:
-            if hasattr(tool, 'name'):
+            if hasattr(tool, "name"):
                 tool_names.append(tool.name)
-            elif hasattr(tool, '__name__'):
+            elif hasattr(tool, "__name__"):
                 tool_names.append(tool.__name__)
             else:
                 tool_names.append(str(tool))
 
         prompt = prompt.partial(tool_names=", ".join(tool_names))
         prompt = prompt.partial(current_date=current_date)
-        
+
         chain = prompt | llm.bind_tools(tools)
         result = chain.invoke(state["messages"])
-        
+
         return {
             "messages": [result],
             "stock_screening_report": result.content,
             "sender": "ChinaStockScreener",
         }
-    
+
     return china_stock_screener_node
