@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN v0.1.9 版本发布脚本
 CLI用户体验重大优化与统一日志管理版本

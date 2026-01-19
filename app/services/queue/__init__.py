@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Queue 子包
 - keys: Redis 键名与常量

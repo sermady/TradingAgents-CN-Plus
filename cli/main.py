@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 标准库导入
 import datetime
 import os

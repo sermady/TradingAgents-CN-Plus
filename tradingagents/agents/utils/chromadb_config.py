@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 ChromaDB 统一配置模块
 支持 Windows 10/11 和其他操作系统的自动适配

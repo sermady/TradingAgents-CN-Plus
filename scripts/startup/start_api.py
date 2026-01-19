@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN v1.0.0-preview API服务启动脚本
 同时启动FastAPI服务和Worker进程

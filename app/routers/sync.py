@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Sync router for stock basics synchronization
 - POST /api/sync/stock_basics/run -> trigger full sync

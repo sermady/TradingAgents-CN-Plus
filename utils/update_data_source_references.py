@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 批量更新数据源引用
 将所有"通达信"引用更新为"Tushare"或通用描述

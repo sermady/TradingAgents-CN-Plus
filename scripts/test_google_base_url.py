@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试脚本：验证 Google AI 的 base_url 参数是否生效
 

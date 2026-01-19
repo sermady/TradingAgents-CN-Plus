@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 优化的A股数据获取工具
 集成缓存策略和Tushare数据接口，提高数据获取效率

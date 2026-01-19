@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试 Docker 容器内 AKShare 新闻接口 - 检查请求头和反爬虫
 """

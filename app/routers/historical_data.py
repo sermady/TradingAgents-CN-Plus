@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 历史数据查询API
 提供统一的历史K线数据查询接口

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """检查数据库中新闻数据的字段"""
 
 from pymongo import MongoClient

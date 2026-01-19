@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 实时新闻数据获取工具
 解决新闻滞后性问题

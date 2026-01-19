@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Alpha Vantage API 公共模块
 

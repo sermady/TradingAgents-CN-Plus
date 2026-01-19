@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 环境变量诊断脚本
 用于排查 Docker 容器内环境变量读取问题

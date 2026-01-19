@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 调试脚本：检查 MongoDB 中 601288 的 daily 数据
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 使用 curl_cffi 模拟真实浏览器的 TLS 指纹
 这个库可以模拟 Chrome/Firefox 的 TLS/JA3 指纹，绕过更严格的反爬虫检测

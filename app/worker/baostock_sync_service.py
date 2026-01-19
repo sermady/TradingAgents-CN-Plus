@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 BaoStock数据同步服务
 提供BaoStock数据的批量同步功能，集成到APScheduler调度系统

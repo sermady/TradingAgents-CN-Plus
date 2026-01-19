@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 通知数据模型（MongoDB + Pydantic）
 """

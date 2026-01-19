@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 示例SDK适配器实现 (tradingagents层)
 展示如何基于BaseStockDataProvider创建新的数据源适配器

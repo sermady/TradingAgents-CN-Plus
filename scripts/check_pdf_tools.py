@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 PDF导出工具检查脚本
 检查系统中PDF导出所需的工具是否已安装

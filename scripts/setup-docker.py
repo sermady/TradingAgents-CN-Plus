@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN Docker 环境配置脚本
 前后端分离架构 (FastAPI + Vue3)

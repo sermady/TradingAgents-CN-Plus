@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 集成验证测试脚本
 测试Web和CLI界面中的股票数据预获取功能是否正常工作

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """启用MongoDB缓存并测试"""
 
 import sys

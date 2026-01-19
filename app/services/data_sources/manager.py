@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Data source manager that orchestrates multiple adapters with priority and optional consistency checks
 """

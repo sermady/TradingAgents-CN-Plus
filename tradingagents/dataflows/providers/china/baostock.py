@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 BaoStock统一数据提供器
 实现BaseStockDataProvider接口，提供标准化的BaoStock数据访问

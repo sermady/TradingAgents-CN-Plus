@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 检查 Redis 连接状态和 PubSub 频道
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 验证扩展字段同步结果
 检查 stock_basic_info 集合中新增的财务指标字段

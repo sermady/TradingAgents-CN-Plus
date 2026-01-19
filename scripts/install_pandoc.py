@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Pandoc安装脚本
 自动安装pandoc工具，用于报告导出功能

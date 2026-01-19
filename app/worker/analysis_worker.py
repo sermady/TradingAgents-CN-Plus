@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 分析任务Worker进程
 消费队列中的分析任务，调用TradingAgents进行股票分析

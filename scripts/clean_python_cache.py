@@ -1,5 +1,6 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 清理Python缓存文件脚本
 """

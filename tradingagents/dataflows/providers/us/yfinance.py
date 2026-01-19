@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # gets data/stats
 
 import yfinance as yf

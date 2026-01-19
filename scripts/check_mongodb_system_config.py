@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查脚本：查看 MongoDB 中的 system_config 集合
 """

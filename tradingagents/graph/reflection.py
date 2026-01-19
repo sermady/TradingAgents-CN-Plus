@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # TradingAgents/graph/reflection.py
 
 from typing import Dict, Any

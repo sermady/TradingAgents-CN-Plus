@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # LLM Adapters for TradingAgents
 from .dashscope_openai_adapter import ChatDashScopeOpenAI
 from .google_openai_adapter import ChatGoogleOpenAI

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 AKShare统一数据提供器
 基于AKShare SDK的统一数据同步方案，提供标准化的数据接口

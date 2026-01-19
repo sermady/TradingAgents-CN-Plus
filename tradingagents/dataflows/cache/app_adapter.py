@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 App 缓存读取适配器（TradingAgents -> app MongoDB 集合）
 - 基本信息集合：stock_basic_info

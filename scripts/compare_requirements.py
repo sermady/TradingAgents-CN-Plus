@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 比较 requirements.txt 和 pyproject.toml 中的依赖是否一致
 

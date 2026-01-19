@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 统一的Tushare数据提供器
 合并app层和tradingagents层的所有优势功能

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 确保logs目录存在的脚本
 在启动Docker容器前运行，创建必要的logs目录

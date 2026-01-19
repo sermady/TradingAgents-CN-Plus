@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN Backend Entry Point
 支持 python -m app 启动方式

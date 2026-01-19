@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Thin re-export: RedisProgressTracker moved to app.services.progress.tracker
 This module keeps exports for backward compatibility. Prefer importing from the new path.

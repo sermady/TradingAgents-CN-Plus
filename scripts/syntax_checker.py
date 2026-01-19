@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 语法检查器 - 检查项目中所有Python文件的语法错误
 Syntax Checker - Check syntax errors in all Python files in the project

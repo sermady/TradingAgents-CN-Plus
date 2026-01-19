@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 将 .env 文件中的配置迁移到新的JSON配置系统
 """

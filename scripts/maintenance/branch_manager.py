@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 分支管理工具 - 快速创建和管理开发分支
 """

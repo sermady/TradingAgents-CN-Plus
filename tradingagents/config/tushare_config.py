@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Tushare配置管理
 专门处理Tushare相关的环境变量配置，兼容Python 3.13+

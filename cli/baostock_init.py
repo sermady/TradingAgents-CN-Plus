@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 BaoStock数据初始化CLI工具
 提供命令行界面进行BaoStock数据初始化和管理

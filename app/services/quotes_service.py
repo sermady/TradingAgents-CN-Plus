@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 QuotesService: 提供A股批量实时快照获取（AKShare东方财富 spot 接口），带内存TTL缓存。
 - 不使用通达信（TDX）作为兜底数据源。

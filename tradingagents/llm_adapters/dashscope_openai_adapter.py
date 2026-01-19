@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 阿里百炼 OpenAI兼容适配器
 为 TradingAgents 提供阿里百炼大模型的 OpenAI 兼容接口

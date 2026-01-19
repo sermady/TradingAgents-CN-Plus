@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 数据目录配置工具
 Data Directory Configuration Utilities

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 BaoStock初始化API路由
 提供BaoStock数据初始化的RESTful API接口

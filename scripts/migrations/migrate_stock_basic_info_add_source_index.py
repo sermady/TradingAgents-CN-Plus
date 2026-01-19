@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据迁移脚本：为 stock_basic_info 集合添加 (code, source) 联合唯一索引
 

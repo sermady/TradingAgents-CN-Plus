@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查智谱AI配置"""
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient

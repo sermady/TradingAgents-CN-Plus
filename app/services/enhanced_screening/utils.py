@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Utility helpers for EnhancedScreeningService to separate analysis and conversion logic.
 """

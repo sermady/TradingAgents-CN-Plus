@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据库环境设置脚本
 自动安装和配置MongoDB + Redis

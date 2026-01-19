@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 进度跟踪器（过渡期）
 - 暂时从旧模块导入 RedisProgressTracker 类

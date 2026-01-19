@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 获取Docker容器内部日志文件的脚本
 用于从运行中的TradingAgents容器获取实际的日志文件

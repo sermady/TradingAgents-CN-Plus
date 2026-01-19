@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 修复 stock_basic_info 集合的 symbol 字段问题
 为所有缺少 symbol 字段的记录添加 symbol 字段（从 code 字段复制）

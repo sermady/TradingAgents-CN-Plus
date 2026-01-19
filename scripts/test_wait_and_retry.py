@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """等待一段时间后重试，避免频率限制"""
 
 import time

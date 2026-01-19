@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 迁移脚本：为 stock_financial_data 集合添加 symbol 字段
 将 code 字段的值复制到 symbol 字段，统一字段命名

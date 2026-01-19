@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 PDF工具安装脚本
 自动安装PDF生成所需的工具

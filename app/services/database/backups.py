@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Backup, import, and export routines extracted from DatabaseService.
 """

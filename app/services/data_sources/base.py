@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Base classes and shared typing for data source adapters
 """

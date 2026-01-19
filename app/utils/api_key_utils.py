@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 API Key 处理工具函数
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import questionary
 from typing import List, Optional, Tuple, Dict
 from rich.console import Console

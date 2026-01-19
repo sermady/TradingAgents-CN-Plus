@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN Streamlit Web界面
 基于Streamlit的股票分析Web应用程序

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 异步进度显示组件
 支持定时刷新，从Redis或文件获取进度状态

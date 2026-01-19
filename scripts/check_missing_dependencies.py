@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查 pyproject.toml 中缺失的依赖包
 

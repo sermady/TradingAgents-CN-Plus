@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 股票数据API接口
 提供简单易用的股票数据获取接口，内置完整的降级机制

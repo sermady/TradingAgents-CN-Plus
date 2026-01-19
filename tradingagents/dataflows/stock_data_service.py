@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 统一的股票数据获取服务
 实现MongoDB -> Tushare数据接口的完整降级机制

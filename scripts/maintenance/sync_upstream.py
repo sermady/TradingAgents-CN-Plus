@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 上游同步脚本 - 自动同步原项目的更新
 """

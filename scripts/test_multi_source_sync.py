@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试多数据源同步功能
 验证数据源分级和fallback机制

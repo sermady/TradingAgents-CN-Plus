@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 增强版股票列表获取示例
 演示如何使用从tdx_servers_config.json配置文件中获取数据服务器参数

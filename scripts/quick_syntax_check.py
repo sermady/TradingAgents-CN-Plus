@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 快速语法检查器 - 只显示有语法错误的文件
 Quick Syntax Checker - Only show files with syntax errors

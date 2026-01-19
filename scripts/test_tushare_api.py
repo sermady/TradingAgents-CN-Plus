@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Tushare API 验证测试脚本
 用于检查 Tushare API 是否正常工作

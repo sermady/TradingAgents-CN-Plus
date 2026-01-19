@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """检查用户数据"""
 from pymongo import MongoClient
 from bson import ObjectId

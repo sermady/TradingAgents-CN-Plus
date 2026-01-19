@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 DeepSeek LLM适配器，支持Token使用统计
 """

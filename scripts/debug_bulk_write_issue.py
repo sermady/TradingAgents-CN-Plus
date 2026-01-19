@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 调试bulk_write问题
 检查为什么数据没有真正写入

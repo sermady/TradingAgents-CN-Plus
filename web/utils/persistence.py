@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 持久化工具
 使用URL参数和session state结合的方式来持久化用户选择

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Tushare统一方案演示脚本
 展示新的TushareProvider和TushareSyncService的功能

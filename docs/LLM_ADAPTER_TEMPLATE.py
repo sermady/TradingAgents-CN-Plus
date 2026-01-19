@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 LLM 适配器模板 - 适用于 OpenAI 兼容提供商
 

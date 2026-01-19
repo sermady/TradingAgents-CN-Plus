@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 MongoDB存储适配器
 用于将token使用记录存储到MongoDB数据库

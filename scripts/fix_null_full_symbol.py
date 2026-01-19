@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 修复 stock_basic_info 集合中 full_symbol 为 null 的记录
 

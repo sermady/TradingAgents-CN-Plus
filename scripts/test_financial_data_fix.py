@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """测试修复后的财务数据获取"""
 
 from tradingagents.dataflows.optimized_china_data import OptimizedChinaDataProvider

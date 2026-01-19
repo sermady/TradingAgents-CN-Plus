@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 共享的文档指标处理函数
 - add_financial_metrics: 将日度基础指标（市值/估值/交易）追加到文档中

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试脚本：验证 default_base_url 修复是否生效
 """

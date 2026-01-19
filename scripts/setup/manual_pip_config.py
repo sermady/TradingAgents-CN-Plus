@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 手动创建pip配置文件
 适用于老版本pip不支持config命令的情况

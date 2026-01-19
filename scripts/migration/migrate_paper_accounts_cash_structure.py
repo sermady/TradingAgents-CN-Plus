@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Migrate legacy paper_accounts documents where 'cash' or 'realized_pnl' are scalars
 to a multi-currency object structure: {'CNY': ..., 'HKD': 0.0, 'USD': 0.0}.

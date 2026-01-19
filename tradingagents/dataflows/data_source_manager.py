@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据源管理器
 统一管理中国股票数据源的选择和切换，支持Tushare、AKShare、BaoStock等

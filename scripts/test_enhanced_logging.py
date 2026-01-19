@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试增强的Tushare日志功能
 验证详细日志是否能帮助追踪数据获取问题

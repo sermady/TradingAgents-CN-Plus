@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 统一配置管理系统
 整合 config/、tradingagents/config/ 和 webapi 的配置管理

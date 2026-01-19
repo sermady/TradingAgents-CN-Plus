@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
 from typing import List
 from typing import Annotated

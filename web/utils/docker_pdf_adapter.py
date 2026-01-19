@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Docker环境PDF导出适配器
 处理Docker容器中的PDF生成特殊需求

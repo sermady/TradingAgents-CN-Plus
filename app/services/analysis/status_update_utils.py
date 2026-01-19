@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Utilities for updating analysis task status.
 
 Extracted from AnalysisService to reduce file size and improve modularity

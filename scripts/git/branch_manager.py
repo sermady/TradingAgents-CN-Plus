@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Git分支管理工具
 帮助管理TradingAgents-CN项目的分支

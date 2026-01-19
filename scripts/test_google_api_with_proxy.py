@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 Google API 连接（使用代理）
 """

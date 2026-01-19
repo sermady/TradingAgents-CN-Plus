@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 简单测试脚本：验证 Google AI SDK 的基础功能
 

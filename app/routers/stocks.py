@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 股票详情相关API
 - 统一响应包: {success, data, message, timestamp}

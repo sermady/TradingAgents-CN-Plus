@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Minimal stub for DataConsistencyChecker
 - Purpose: eliminate warning and provide no-op consistency checking

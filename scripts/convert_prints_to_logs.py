@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 将项目中的print语句转换为日志输出
 排除tests和env目录

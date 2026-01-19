@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 语法检查脚本 - 检查除env目录外的所有Python文件
 Syntax Check Script - Check all Python files except env directory

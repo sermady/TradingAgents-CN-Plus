@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 AKShare数据同步服务
 基于AKShare提供器的统一数据同步方案

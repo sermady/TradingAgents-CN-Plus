@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 MongoDB报告管理器
 用于保存和读取分析报告到MongoDB数据库

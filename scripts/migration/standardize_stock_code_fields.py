@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 数据库字段标准化迁移脚本
 将所有集合的股票代码字段统一为 symbol 和 full_symbol

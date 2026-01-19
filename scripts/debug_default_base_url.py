@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 调试脚本：检查为什么 default_base_url 没有生效
 """

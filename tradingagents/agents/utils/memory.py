@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import chromadb
 from chromadb.config import Settings
 from openai import OpenAI

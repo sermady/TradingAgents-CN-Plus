@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """测试 AkShare 中的新浪财经接口"""
 
 import akshare as ak

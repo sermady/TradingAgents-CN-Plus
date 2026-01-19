@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据目录重新组织迁移脚本
 Data Directory Reorganization Migration Script

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 导入基础模块
 # Finnhub 工具（支持新旧路径）
 try:

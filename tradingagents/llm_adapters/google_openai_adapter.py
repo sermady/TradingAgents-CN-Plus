@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Google AI OpenAI兼容适配器
 为 TradingAgents 提供Google AI (Gemini)模型的 OpenAI 兼容接口

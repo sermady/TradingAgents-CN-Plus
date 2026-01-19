@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 简化的DeepSeek演示 - 避免所有复杂导入
 """

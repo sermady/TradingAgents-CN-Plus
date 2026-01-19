@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 default_base_url 是否被正确使用
 

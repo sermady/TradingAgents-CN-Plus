@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 创建财务数据集合和索引
 根据设计文档创建stock_financial_data集合及其优化索引

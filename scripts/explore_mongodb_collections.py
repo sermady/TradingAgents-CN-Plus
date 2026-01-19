@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """探索 MongoDB 数据库结构，查找分析结果"""
 
 import sys

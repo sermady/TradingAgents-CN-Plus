@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 配置迁移脚本：JSON → MongoDB
 

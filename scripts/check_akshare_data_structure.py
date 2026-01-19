@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查数据库中 AKShare 财务数据的结构"""
 
 import asyncio

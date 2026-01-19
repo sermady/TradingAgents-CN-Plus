@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 简化的股票分析服务
 直接调用现有的 TradingAgents 分析功能

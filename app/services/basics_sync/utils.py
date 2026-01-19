@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 与 Tushare 相关的阻塞式工具函数：
 - fetch_stock_basic_df：获取股票列表（确保 Tushare 已连接）

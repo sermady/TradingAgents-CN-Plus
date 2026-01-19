@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 BaoStock data source adapter
 """

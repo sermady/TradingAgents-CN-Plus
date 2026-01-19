@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 股票数据模型定义
 定义标准化的股票数据结构，用于MongoDB存储和数据交换

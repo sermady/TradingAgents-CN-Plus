@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 系统初始化数据脚本 - TradingAgents-CN v1.0.0-preview
 用于初始化系统所需的基础数据

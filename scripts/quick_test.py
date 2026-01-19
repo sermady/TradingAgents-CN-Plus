@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 快速测试脚本 - 验证API架构升级是否正常工作
 """

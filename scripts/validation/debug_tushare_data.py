@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 调试 Tushare 数据格式
 检查 stock_basic 和 daily_basic 的实际数据格式和代码匹配问题

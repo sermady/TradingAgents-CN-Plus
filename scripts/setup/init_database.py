@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据库初始化脚本
 创建MongoDB集合和索引，初始化Redis缓存结构
