@@ -1,0 +1,432 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+TradingAgents-CN is a Chinese-enhanced multi-agent LLM financial trading decision framework. It provides complete A股/HK/美股 analysis capabilities with full Chinese localization. The project uses a FastAPI + Vue 3 architecture with MongoDB + Redis dual-database support.
+
+### Core Technology Stack
+
+**Backend (FastAPI)**:
+- FastAPI with Uvicorn server
+- MongoDB for persistent storage
+- Redis for caching
+- LangGraph for multi-agent orchestration
+- Multiple LLM provider support (OpenAI, Google AI, DashScope, DeepSeek, etc.)
+
+**Frontend (Vue 3)**:
+- Vue 3 + Vite
+- Element Plus UI components
+- Pinia state management
+- TypeScript support
+
+**Multi-Agent System**:
+- Market Analyst, Social Media Analyst, News Analyst, Fundamentals Analyst
+- Bull/Bear Researchers for debate mechanism
+- Risk Management, Trading execution
+
+### Data Sources
+
+**China A-Stock** (three-source unified management with auto-fallback):
+- Tushare (highest quality, requires token)
+- Baostock (free, stable)
+- AkShare (multi-source aggregation, fallback option)
+
+**Hong Kong/US Stocks**:
+- AkShare, Yahoo Finance, FinnHub
+
+## Development Commands
+
+### Running the Application
+
+**Docker Deployment (Recommended)**:
+```bash
+# Windows
+scripts\docker\start_docker_services.bat
+
+# Linux/Mac
+chmod +x scripts/docker/start_docker_services.sh && ./scripts/docker/start_docker_services.sh
+
+# Smart start (auto-detects if build needed)
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\smart_start.ps1
+
+# Linux/Mac
+chmod +x scripts/smart_start.sh && ./scripts/smart_start.sh
+
+# With management tools (Redis Commander, Mongo Express)
+docker-compose --profile management up -d
+```
+
+**Local Development**:
+```bash
+# Backend (FastAPI)
+python -m app
+# or
+python app/__main__.py
+
+# Frontend (Vue 3 - development mode)
+cd frontend
+npm run dev
+
+# Frontend (build for production)
+cd frontend
+npm run build
+```
+
+### Data Import
+
+**Unified Data Importer (supports three data sources)**:
+```bash
+# Baostock (free, open source)
+python scripts/import/import_a_stocks_unified.py --data-source baostock
+
+# Tushare (requires token)
+python scripts/import/import_a_stocks_unified.py --data-source tushare
+
+# AkShare (original)
+python scripts/import/import_a_stocks_unified.py --data-source akshare
+
+# Mixed mode (auto-fallback: Tushare → Baostock → AkShare)
+python scripts/import/import_a_stocks_unified.py --data-source mixed
+
+# Auto-select best source
+python scripts/import/import_a_stocks_unified.py --data-source auto
+
+# Interactive selection
+python scripts/import/import_a_stocks_unified.py --interactive
+
+# Limited import for testing
+python scripts/import/import_a_stocks_unified.py --data-source baostock --limit 10 --delay 1.0
+```
+
+### Testing and Validation
+
+```bash
+# Data source integration tests
+python scripts/test/test_data_sources.py
+
+# Import system tests
+python scripts/test/test_import_system.py
+
+# Performance benchmarking
+python scripts/test/test_performance_benchmark.py
+
+# System status check
+python scripts/validation/check_system_status.py
+
+# Data integrity validation
+python scripts/validation/validate_data_integrity.py
+
+# Health check
+python scripts/maintenance/health_check.py
+
+# Final status check
+python scripts/maintenance/final_status_check.py
+```
+
+### Build and Dependencies
+
+```bash
+# Install all dependencies
+pip install -e .
+
+# Using uv (faster)
+uv pip install -e .
+
+# Frontend dependencies
+cd frontend && npm install
+```
+
+## Architecture Overview
+
+### Multi-Agent Graph System
+
+The core analysis logic uses LangGraph to orchestrate multiple specialized agents:
+
+**TradingGraph** (`tradingagents/graph/trading_graph.py`):
+- Main orchestration layer using LangGraph
+- Supports multiple LLM providers through unified interface
+- Implements progressive analysis (1-5 levels of depth)
+- Manages agent states and debate flow
+
+**Agent Types**:
+1. **Analysts** (`tradingagents/agents/analysts/`):
+   - Market Analyst: Technical indicators and price trends
+   - News Analyst: News sentiment analysis
+   - Social Media Analyst: Social media sentiment
+   - Fundamentals Analyst: Financial metrics (PE, PB, ROE, etc.)
+   - China Market Analyst: A股 specific analysis
+
+2. **Researchers** (`tradingagents/agents/researchers/`):
+   - Bull Researcher: Bullish investment arguments
+   - Bear Researcher: Bearish investment arguments
+   - Debate mechanism for balanced decision-making
+
+3. **Risk Management** (`tradingagents/agents/risk_mgmt/`):
+   - Aggressive Debator, Conservative Debator, Neutral Debator
+   - Risk assessment and position sizing
+
+4. **Trader** (`tradingagents/agents/trader/`):
+   - Final trading decision based on all inputs
+
+5. **Managers** (`tradingagents/agents/managers/`):
+   - Research Manager: Coordinates analysis workflow
+   - Risk Manager: Manages risk assessment
+
+### Data Flow Architecture
+
+**Data Source Management**:
+- `tradingagents/dataflows/providers/base_provider.py`: Unified interface for all data sources
+- `tradingagents/dataflows/providers/china/`: A股 data providers (Tushare, Baostock, AkShare)
+- `tradingagents/dataflows/providers/hk/`: Hong Kong stock providers
+- `tradingagents/dataflows/providers/us/`: US stock providers
+
+**Multi-Source Fallback Strategy**:
+```
+Priority 1: Tushare (highest data quality)
+Priority 2: Baostock (free, stable)
+Priority 3: AkShare (fallback option)
+```
+
+**Caching System**:
+- MongoDB cache for persistent storage
+- Redis cache for high-performance access
+- File-based cache as fallback
+- Adaptive cache selection based on availability
+
+### LLM Adapter System
+
+**LLM Provider Support** (`tradingagents/llm_adapters/`):
+- OpenAI-compatible base adapter
+- Google AI (Gemini) adapter
+- DashScope (Alibaba Qwen) adapter
+- DeepSeek adapter
+- Custom OpenAI-compatible endpoint support
+
+**Configuration Management**:
+- Database-backed LLM provider configuration
+- Runtime model selection
+- Model capability management (vision, function calling, etc.)
+- Token usage tracking
+
+### FastAPI Backend Structure
+
+**Main Application** (`app/main.py`):
+- FastAPI app initialization
+- CORS and middleware setup
+- Router registration
+- Lifespan management (startup/shutdown)
+- Background task scheduling
+
+**Core Components**:
+- `app/core/`: Configuration, database, logging
+- `app/routers/`: API route handlers (30+ modules)
+- `app/services/`: Business logic services
+- `app/models/`: Pydantic models
+- `app/schemas/`: Request/response schemas
+- `app/middleware/`: Custom middleware (auth, logging, rate limiting)
+
+**Key Services**:
+- Analysis Service: Multi-agent analysis orchestration
+- Database Service: MongoDB operations
+- Cache Service: Redis caching layer
+- Config Service: Runtime configuration management
+- Auth Service: JWT-based authentication
+- Notification Service: SSE + WebSocket notifications
+
+### Vue 3 Frontend Structure
+
+**Main Entry** (`frontend/src/main.ts`):
+- Vue app initialization with Pinia
+- Element Plus UI library (Chinese locale)
+- Router setup
+- Global components registration
+
+**Key Modules**:
+- `api/`: HTTP API clients (auto-generated types)
+- `components/`: Reusable Vue components
+- `stores/`: Pinia state management
+- `types/`: TypeScript type definitions
+- `utils/`: Utility functions
+- `router/`: Vue Router configuration
+
+## File Creation Rules
+
+**IMPORTANT**: Never create files in the project root directory unless explicitly allowed!
+
+| File Type | Location | Pattern | Example |
+|-----------|----------|---------|---------|
+| Data import scripts | `scripts/import/` | `import_<function>.py` | `import_realtime_data.py` |
+| Test scripts | `scripts/test/` | `test_<module>.py` | `test_trading_logic.py` |
+| Validation scripts | `scripts/validation/` | `validate_<target>.py` | `validate_model_accuracy.py` |
+| Maintenance scripts | `scripts/maintenance/` | `<action>_<object>.py` | `cleanup_old_data.py` |
+| Database scripts | `scripts/database/` | `<operation>_<database>.py` | `migrate_mongodb.py` |
+| Core business logic | `tradingagents/` | By module | `tradingagents/agents/new_agent.py` |
+| Backend API routes | `app/routers/` | `<feature>.py` | `app/routers/new_feature.py` |
+| Frontend components | `frontend/src/components/` | `<ComponentName>.vue` | `StockAnalysis.vue` |
+| Frontend API clients | `frontend/src/api/` | `<feature>.ts` | `newApi.ts` |
+| Log files | `logs/` | `<module>_<date>.log` | `trading_2024-01-15.log` |
+| Report documents | `docs/reports/` | `<type>_report_<date>.md` | `performance_20240115.md` |
+| Technical docs | `docs/` | `<topic>.md` | `docs/architecture/new_feature.md` |
+| Analysis results | `results/` | `<type>_<code>_<date>/` | `results/analysis_000001_20240115/` |
+| Config files | `config/` | `<module>.json/.yaml` | `config/trading_params.yaml` |
+| Data files | `data/` | By type in subdirs | `data/stocks/` |
+| Export files | `exports/` | `<content>_<date>.<format>` | `exports/portfolio_20240115.xlsx` |
+| Temp files | `temp/` | `temp_<function>_<random>.ext` | `temp/test_data_abc123.json` |
+
+**Allowed root files**: `main.py`, `start_web.py`, `pyproject.toml`, `requirements.txt`, `.env`, `.gitignore`, `docker-compose.yml`, `README.md`, `LICENSE`, `CHANGELOG.md`, `CLAUDE.md`, Dockerfiles
+
+## Encoding Standards
+
+**CRITICAL**: All Python files MUST use UTF-8 encoding and declare it at the top:
+
+```python
+# -*- coding: utf-8 -*-
+```
+
+**File Operations**:
+```python
+# ✅ Correct: Explicit UTF-8 encoding
+with open('data.txt', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# ✅ JSON files
+import json
+with open('config.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+```
+
+**Network Requests**:
+```python
+import requests
+
+# ✅ Correct: Force UTF-8 encoding
+response = requests.get('http://api.example.com/data')
+response.encoding = 'utf-8'
+text = response.text
+```
+
+## Key Configuration
+
+### Environment Variables (.env)
+- LLM API keys (DASHSCOPE_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY, etc.)
+- Data source keys (FINNHUB_API_KEY, TUSHARE_TOKEN)
+- Database configuration (MongoDB, Redis)
+- Cache settings
+
+### Database Connection
+- **MongoDB**: Used for persistent storage (stock data, analysis reports, user data)
+- **Redis**: Used for high-performance caching and session management
+
+### API Configuration
+The FastAPI backend runs on:
+- Default port: 8000
+- API docs: http://localhost:8000/docs (when DEBUG=True)
+- Health check: http://localhost:8000/api/health
+
+The Vue 3 frontend runs on:
+- Development: http://localhost:5173 (Vite dev server)
+- Production: http://localhost:3000 (Nginx in Docker)
+
+## Git Commit Convention
+
+Follow semantic commit format:
+
+```bash
+# Feature addition
+git commit -m "feat: add Baostock data source support"
+
+# Bug fix
+git commit -m "fix: resolve encoding issue in unified importer"
+
+# Performance optimization
+git commit -m "perf: optimize data source switching performance"
+
+# Documentation
+git commit -m "docs: update Baostock integration guide"
+
+# Testing
+git commit -m "test: add Baostock integration tests"
+
+# Build
+git commit -m "build: update dependency versions"
+
+# Refactoring
+git commit -m "refactor: restructure data flow architecture"
+```
+
+## Development Best Practices
+
+### Code Quality
+1. **UTF-8 Encoding**: All new files must use UTF-8 encoding
+2. **Error Handling**: Implement comprehensive exception handling and logging
+3. **Testing**: Write test scripts for new functionality
+4. **Documentation**: Update relevant docs when changing code
+
+### Data Source Development
+1. **Unified Interface**: All data sources must implement `BaseStockDataProvider`
+2. **Error Fallback**: Support automatic switching to backup data sources
+3. **Caching Strategy**: Use MongoDB/Redis caching appropriately
+4. **Performance Optimization**: Support batch processing and delay control
+
+### Avoid Reinventing the Wheel
+```python
+# ✅ Correct: Extend existing framework
+from tradingagents.dataflows.providers.base_provider import BaseStockDataProvider
+
+class CustomProvider(BaseStockDataProvider):
+    """Extend base provider functionality"""
+    pass
+
+# ❌ Wrong: Reimplement core functionality
+class MyOwnDataProvider:  # Don't do this
+    """Completely custom data provider"""
+    pass
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Encoding Problems**:
+```bash
+# Check system encoding
+python -c "import sys; print(f'System encoding: {sys.stdout.encoding}')"
+
+# Check data source availability
+python -c "from tradingagents.dataflows.providers.base_provider import get_data_source_manager; mgr = get_data_source_manager(); print(f'Available sources: {[s.value for s in mgr.available_sources]}')"
+```
+
+**Database Connection**:
+```bash
+# MongoDB connection check
+python -c "import pymongo; client = pymongo.MongoClient('mongodb://localhost:27017/'); print('MongoDB OK') if client.admin.command('ping') else print('MongoDB Failed')"
+
+# Redis connection check
+python -c "import redis; r = redis.Redis(host='localhost', port=6379); print('Redis OK') if r.ping() else print('Redis Failed')"
+```
+
+### Log Locations
+- Application logs: `logs/` directory
+- Docker logs: `docker-compose logs -f [service]`
+- Frontend dev server logs: Console output
+
+## License Information
+
+This project uses a **mixed license** model:
+
+**Apache 2.0 (Open Source)**:
+- Applies to all files except `app/` and `frontend/`
+- Free for commercial use with attribution
+- See LICENSE file for details
+
+**Proprietary (Commercial License Required)**:
+- `app/` (FastAPI backend)
+- `frontend/` (Vue 3 frontend)
+- Commercial use requires separate licensing
+- Contact: hsliup@163.com
+
+**Personal/Learning Use**: All functionality can be used freely
+**Commercial Application**: Contact for proprietary component licensing
