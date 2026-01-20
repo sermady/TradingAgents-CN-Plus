@@ -1,0 +1,28 @@
+{
+  "include": [
+    "tradingagents",
+    "app",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.git",
+    "**/venv",
+    "**/env",
+    "**/dist",
+    "**/build",
+    "**/.*.pyc"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.10",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportOptionalCall": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalOperand": "warning",
+  "reportGeneralTypeIssues": "warning",
+  "reportUndefinedVariable": "warning",
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning"
+}
