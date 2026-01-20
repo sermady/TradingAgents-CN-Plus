@@ -146,7 +146,9 @@ class Settings(BaseSettings):
 
     # 监控配置
     METRICS_ENABLED: bool = Field(default=True)
-    HEALTH_CHECK_INTERVAL: int = Field(default=60)  # 60秒
+    HEALTH_CHECK_INTERVAL: int = Field(
+        default=300
+    )  # 300秒（5分钟），从60秒减少健康检查频率
 
     # 配置真相来源（方案A）：file|db|hybrid
     # - file：以文件/env 为准（推荐，生产缺省）

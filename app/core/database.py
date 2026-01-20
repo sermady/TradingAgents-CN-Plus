@@ -44,15 +44,18 @@ class DatabaseManager:
         try:
             logger.info("🔄 正在初始化MongoDB连接...")
 
-            # 创建MongoDB客户端，配置连接池
+            # 创建MongoDB客户端，配置连接池（优化参数以减少连接创建销毁）
             self.mongo_client = AsyncIOMotorClient(
                 settings.MONGO_URI,
                 maxPoolSize=settings.MONGO_MAX_CONNECTIONS,
                 minPoolSize=settings.MONGO_MIN_CONNECTIONS,
-                maxIdleTimeMS=30000,  # 30秒空闲超时
-                serverSelectionTimeoutMS=settings.MONGO_SERVER_SELECTION_TIMEOUT_MS,  # 服务器选择超时
-                connectTimeoutMS=settings.MONGO_CONNECT_TIMEOUT_MS,  # 连接超时
-                socketTimeoutMS=settings.MONGO_SOCKET_TIMEOUT_MS,  # 套接字超时
+                maxIdleTimeMS=60000,  # 60秒空闲超时（从30秒增加，减少连接销毁频率）
+                serverSelectionTimeoutMS=settings.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+                connectTimeoutMS=settings.MONGO_CONNECT_TIMEOUT_MS,
+                socketTimeoutMS=settings.MONGO_SOCKET_TIMEOUT_MS,
+                retryWrites=True,  # 启用重试写入
+                w="majority",  # 写入确认级别：大多数节点确认
+                wtimeoutMS=5000,  # 写入超时：5秒
             )
 
             # 获取数据库实例
@@ -81,14 +84,17 @@ class DatabaseManager:
         try:
             logger.info("🔄 正在初始化Redis连接...")
 
-            # 创建Redis连接池
+            # 创建Redis连接池（优化参数以减少连接创建销毁）
             self.redis_pool = ConnectionPool.from_url(
                 settings.REDIS_URL,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 retry_on_timeout=settings.REDIS_RETRY_ON_TIMEOUT,
                 decode_responses=True,
-                socket_connect_timeout=5,  # 5秒连接超时
-                socket_timeout=10,  # 10秒套接字超时
+                socket_connect_timeout=10,  # 10秒连接超时（从5秒增加）
+                socket_timeout=30,  # 30秒套接字超时（从10秒增加）
+                health_check_interval=300,  # 300秒健康检查间隔（从30秒增加，减少频繁检查）
+                max_connections_per_node=20,  # 每个节点最大连接数
+                socket_keepalive=True,  # 启用TCP keepalive
             )
 
             # 创建Redis客户端

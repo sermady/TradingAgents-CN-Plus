@@ -100,16 +100,28 @@ function tagType(t: string) { return t === 'analysis' ? 'success' : t === 'alert
 function toLocal(iso: string) { try { return new Date(iso).toLocaleString() } catch { return iso } }
 function go(n: any) { if (n.link) window.open(n.link, '_blank') }
 
-onMounted(() => {
+ onMounted(() => {
+  // 刷新未读数（一次性）
   notifStore.refreshUnreadCount()
   // 🔥 建立 WebSocket 连接（优先），失败自动降级到 SSE
   notifStore.connect()
-
-  timerCount = setInterval(() => notifStore.refreshUnreadCount(), 30000)
+  
+  // 🔥 优化：只在 WebSocket 未连接时启用轮询作为降级方案
+  // 当 WebSocket 连接正常时，完全依赖推送，不进行 HTTP 轮询
+  timerCount = setInterval(() => {
+    // 只在 WebSocket 未连接时才轮询
+    if (!notifStore.wsConnected) {
+      notifStore.refreshUnreadCount()
+    }
+  }, 30000)
+  
   watch(drawerVisible, (v) => {
     if (v) {
       notifStore.loadList(filter.value)
-      timerList = setInterval(() => notifStore.loadList(filter.value), 60000)
+      // 打开通知抽屉时，如果 WebSocket 已连接，不需要轮询列表
+      if (!notifStore.wsConnected) {
+        timerList = setInterval(() => notifStore.loadList(filter.value), 60000)
+      }
     } else if (timerList) {
       clearInterval(timerList)
       timerList = null
@@ -117,6 +129,15 @@ onMounted(() => {
   }, { immediate: true })
   watch(filter, () => { if (drawerVisible.value) notifStore.loadList(filter.value) })
 
+  // 🔥 WebSocket 连接状态变化时，控制轮询
+  watch(() => notifStore.wsConnected, (connected) => {
+    if (connected) {
+      console.log('[HeaderActions] WebSocket 已连接，禁用通知轮询，完全依赖推送')
+    } else {
+      console.log('[HeaderActions] WebSocket 已断开，启用通知轮询作为降级方案')
+    }
+  })
+  
   // token 变化时重连
   watch(() => authStore.token, () => {
     notifStore.connect()
