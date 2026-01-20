@@ -75,6 +75,7 @@ class AnalysisService:
         self.progress_manager = get_progress_manager()
         self.billing_service = get_billing_service()
         self._trading_graph_cache = {}
+        self._progress_trackers = {}  # 进度跟踪器缓存
 
     def _convert_user_id(self, user_id: str) -> PyObjectId:
         """将字符串用户ID转换为PyObjectId"""
@@ -422,6 +423,68 @@ class AnalysisService:
             logger.error(f"❌ [线程池] 执行分析任务失败: {task.task_id} - {e}")
             raise
 
+    async def _update_task_status(
+        self,
+        task_id: str,
+        status: AnalysisStatus,
+        progress: int,
+        message: Optional[str] = None,
+    ):
+        """更新任务状态"""
+        from app.services.analysis.status_update_utils import perform_update_task_status
+
+        await perform_update_task_status(task_id, status, progress)
+
+    async def _update_task_status_with_tracker(
+        self,
+        task_id: str,
+        status: AnalysisStatus,
+        progress_tracker,
+        result: Optional[AnalysisResult] = None,
+    ):
+        """使用进度跟踪器更新任务状态"""
+        from app.services.analysis.status_update_utils import (
+            perform_update_task_status_with_tracker,
+        )
+
+        await perform_update_task_status_with_tracker(
+            task_id, status, progress_tracker, result
+        )
+
+    async def _record_token_usage(
+        self, task: AnalysisTask, result: AnalysisResult, provider: str, model_name: str
+    ):
+        """记录 token 使用情况"""
+        try:
+            # 获取使用的 token 数量
+            input_tokens = 0
+            output_tokens = result.tokens_used
+
+            # 尝试从详细分析中提取更精确的 token 数据
+            if result.detailed_analysis and isinstance(result.detailed_analysis, dict):
+                # 检查是否有详细的 token 使用数据
+                if "input_tokens" in result.detailed_analysis:
+                    input_tokens = result.detailed_analysis.get("input_tokens", 0)
+                if "output_tokens" in result.detailed_analysis:
+                    output_tokens = result.detailed_analysis.get("output_tokens", 0)
+
+            # 使用计费服务记录使用情况
+            success = self.billing_service.record_usage(
+                provider=provider,
+                model_name=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                session_id=task.task_id,
+                analysis_type="stock_analysis",
+                stock_code=task.symbol,
+            )
+
+            if not success:
+                logger.warning("⚠️ 记录 token 使用失败")
+
+        except Exception as e:
+            logger.error(f"❌ 记录 token 使用失败: {e}")
+
     async def _execute_single_analysis_async(self, task: AnalysisTask):
         """异步执行单股分析任务（在后台运行，不阻塞主线程）"""
         progress_tracker = None
@@ -478,17 +541,18 @@ class AnalysisService:
 
                 # 根据模型名称确定供应商
                 from app.services.simple_analysis_service import (
-                    get_provider_by_model_name,
+                    get_provider_by_model_name_sync as get_provider_by_model_name,
                 )
 
                 provider = get_provider_by_model_name(model_name)
 
                 # 记录使用情况
-                await self._record_token_usage(task, result, provider, model_name)
+                self._record_token_usage(task, result, provider, model_name)
             except Exception as e:
                 logger.error(f"⚠️  记录 token 使用失败: {e}")
 
             logger.info(f"✅ 分析任务完成: {task.task_id}")
+            return result
 
         except Exception as e:
             logger.error(f"❌ 分析任务失败: {task.task_id} - {e}")
@@ -503,6 +567,21 @@ class AnalysisService:
                 await self._update_task_status(
                     task.task_id, AnalysisStatus.FAILED, 0, str(e)
                 )
+            # 返回失败结果（设置所有必需字段的默认值）
+            return AnalysisResult(
+                analysis_id=str(uuid.uuid4()),
+                summary="",
+                recommendation="",
+                confidence_score=0.0,
+                risk_level="未知",
+                key_points=[],
+                detailed_analysis=None,
+                charts=[],
+                tokens_used=0,
+                execution_time=0.0,
+                error_message=str(e),
+                model_info=None,
+            )
         finally:
             # 清理进度跟踪器缓存
             if task.task_id in self._progress_trackers:
@@ -748,81 +827,10 @@ class AnalysisService:
         task: AnalysisTask,
         progress_callback: Optional[Callable[[int, str], None]] = None,
     ) -> AnalysisResult:
-        """执行单个分析任务"""
-        try:
-            logger.info(f"开始执行分析任务: {task.task_id} - {task.symbol}")
-
-            # 更新任务状态
-            await self._update_task_status(task.task_id, AnalysisStatus.PROCESSING, 0)
-
-            if progress_callback:
-                progress_callback(10, "初始化分析引擎...")
-
-            # 使用标准配置函数创建完整配置 - 与单股分析保持一致
-            # 🔧 使用统一配置管理器
-            config_mgr = get_config_manager()
-            quick_model = (
-                getattr(task.parameters, "quick_analysis_model", None)
-                or config_mgr.get_quick_analysis_model()
-            )
-            deep_model = (
-                getattr(task.parameters, "deep_analysis_model", None)
-                or config_mgr.get_deep_analysis_model()
-            )
-
-            # 🔧 从数据库读取模型的完整配置参数
-            quick_model_config = None
-            deep_model_config = None
-            # 🔧 使用统一配置管理器获取模型配置
-            config_mgr = get_config_manager()
-            model_config = config_mgr.get_model_config(quick_model)
-            quick_model_config = {
-                "max_tokens": model_config.get("max_tokens"),
-                "temperature": model_config.get("temperature"),
-                "timeout": model_config.get("timeout"),
-            }
-            model_config = config_mgr.get_model_config(deep_model)
-            deep_model_config = {
-                "max_tokens": model_config.get("max_tokens"),
-                "temperature": model_config.get("temperature"),
-                "timeout": model_config.get("timeout"),
-            }
-
-            # 🔧 使用统一配置管理器计算成本
-            config_mgr = get_config_manager()
-            cost = 0.0
-            currency = "CNY"  # 默认货币单位
-                input_price = llm_config.input_price_per_1k or 0.0
-                output_price = llm_config.output_price_per_1k or 0.0
-                cost = (input_tokens / 1000 * input_price) + (
-                    output_tokens / 1000 * output_price
-                )
-                currency = llm_config.currency or "CNY"
-
-            # 创建使用记录
-            usage_record = UsageRecord(
-                timestamp=datetime.now().isoformat(),
-                provider=provider,
-                model_name=model_name,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost=cost,
-                currency=currency,
-                session_id=task.task_id,
-                analysis_type="stock_analysis",
-                stock_code=task.symbol,
-            )
-
-            # 保存到数据库
-            success = await self.usage_service.add_usage_record(usage_record)
-
-            if success:
-                logger.info(f"💰 记录使用成本: {provider}/{model_name} - ¥{cost:.4f}")
-            else:
-                logger.warning(f"⚠️  记录使用成本失败")
-
-        except Exception as e:
-            logger.error(f"❌ 记录 token 使用失败: {e}")
+        """执行单个分析任务（队列系统专用）"""
+        # 简单地调用已有的异步分析函数
+        # 这个函数是为了兼容队列系统而设计的包装器
+        return await self._execute_single_analysis_async(task)
 
 
 # 全局分析服务实例（延迟初始化）

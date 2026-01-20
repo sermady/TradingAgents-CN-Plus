@@ -8,8 +8,7 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from app.models.config import LLMConfig
-from app.models.usage_record import UsageRecord
+from app.models.config import LLMConfig, UsageRecord
 from app.services.usage_statistics_service import UsageStatisticsService
 from app.core.unified_config_service import get_config_manager
 
