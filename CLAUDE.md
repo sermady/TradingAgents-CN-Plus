@@ -235,6 +235,8 @@ Priority 3: AkShare (fallback option)
 - Config Service: Runtime configuration management
 - Auth Service: JWT-based authentication
 - Notification Service: SSE + WebSocket notifications
+- Progress Manager: Analysis progress tracking (app/services/progress_manager.py)
+- Billing Service: Token usage and cost calculation (app/services/billing_service.py)
 
 ### Vue 3 Frontend Structure
 
@@ -259,16 +261,19 @@ Priority 3: AkShare (fallback option)
 | File Type | Location | Pattern | Example |
 |-----------|----------|---------|---------|
 | Data import scripts | `scripts/import/` | `import_<function>.py` | `import_realtime_data.py` |
-| Test scripts | `scripts/test/` | `test_<module>.py` | `test_trading_logic.py` |
+| Unit tests | `tests/unit/` | `test_<feature>.py` | `test_trading_logic.py` |
+| Integration tests | `tests/integration/` | `test_<feature>_integration.py` | `test_api_analysis.py` |
 | Validation scripts | `scripts/validation/` | `validate_<target>.py` | `validate_model_accuracy.py` |
 | Maintenance scripts | `scripts/maintenance/` | `<action>_<object>.py` | `cleanup_old_data.py` |
 | Database scripts | `scripts/database/` | `<operation>_<database>.py` | `migrate_mongodb.py` |
 | Core business logic | `tradingagents/` | By module | `tradingagents/agents/new_agent.py` |
+| Backend services | `app/services/` | `<service>_service.py` | `app/services/billing_service.py` |
 | Backend API routes | `app/routers/` | `<feature>.py` | `app/routers/new_feature.py` |
 | Frontend components | `frontend/src/components/` | `<ComponentName>.vue` | `StockAnalysis.vue` |
 | Frontend API clients | `frontend/src/api/` | `<feature>.ts` | `newApi.ts` |
 | Log files | `logs/` | `<module>_<date>.log` | `trading_2024-01-15.log` |
 | Report documents | `docs/reports/` | `<type>_report_<date>.md` | `performance_20240115.md` |
+| Service classes | `app/services/` | `<service>_service.py` | `progress_manager.py`, `billing_service.py` |
 | Technical docs | `docs/` | `<topic>.md` | `docs/architecture/new_feature.md` |
 | Analysis results | `results/` | `<type>_<code>_<date>/` | `results/analysis_000001_20240115/` |
 | Config files | `config/` | `<module>.json/.yaml` | `config/trading_params.yaml` |
@@ -364,6 +369,47 @@ git commit -m "refactor: restructure data flow architecture"
 2. **Error Handling**: Implement comprehensive exception handling and logging
 3. **Testing**: Write test scripts for new functionality
 4. **Documentation**: Update relevant docs when changing code
+
+### Testing Standards
+1. **Test Directory Structure**:
+   - `tests/unit/` - Unit tests (fast, no external dependencies)
+   - `tests/integration/` - Integration tests (requires database/API)
+   - `tests/legacy/` - Legacy test scripts (ignored by pytest, for reference only)
+
+2. **Test File Naming**:
+   - Unit tests: `test_<feature>.py`
+   - Integration tests: `test_<feature>_integration.py`
+
+3. **pytest Requirements**:
+   - All tests must use `pytest` framework
+   - Use `pytest.mark` decorators for marks (`@pytest.mark.unit`, `@pytest.mark.integration`)
+   - Add `pytest.ini` configuration for proper test discovery
+   - Avoid creating standalone test scripts outside `tests/` directory
+
+4. **Forbidden Practices**:
+   - ❌ Creating `test_*.py` in project root
+   - ❌ Creating standalone test scripts without pytest structure
+   - ❌ Creating `debug_*.py` or `*_fix.py` scripts anywhere in the project
+   - ❌ Leaving debug scripts in project root or `tests/`
+   - ❌ Mixing test scripts with production code
+
+5. **Temporary Debugging**:
+   - For temporary debugging, use `temp/` directory
+   - Name files with `temp_<purpose>_<random>.ext` pattern
+   - Delete immediately after debugging is complete
+   - Never commit temporary debug files to repository
+
+5. **Running Tests**:
+   ```bash
+   # Run all unit tests
+   python -m pytest tests/unit/ -v
+
+   # Run with coverage
+   python -m pytest tests/unit/ --cov=tradingagents --cov-report=term-missing
+
+   # Skip slow tests
+   python -m pytest -m "not slow"
+   ```
 
 ### Data Source Development
 1. **Unified Interface**: All data sources must implement `BaseStockDataProvider`

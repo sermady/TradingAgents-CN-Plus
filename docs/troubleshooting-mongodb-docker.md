@@ -90,16 +90,16 @@ docker exec -it tradingagents-backend nc -zv mongodb 27017
 
 ## 🛠️ 排查步骤
 
-### 步骤 1：运行调试脚本
+### 步骤 1：运行验证脚本
 
-在服务器上运行调试脚本：
+在服务器上运行验证脚本：
 
 ```bash
 # 进入应用容器
 docker exec -it tradingagents-backend bash
 
-# 运行调试脚本
-python3 scripts/debug_mongodb_connection.py
+# 运行验证脚本
+python3 scripts/validation/validate_mongodb_connection.py
 ```
 
 ### 步骤 2：检查 MongoDB 容器状态
