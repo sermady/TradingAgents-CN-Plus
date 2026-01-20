@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 历史数据同步问题诊断脚本
 分析为什么历史数据没有完整同步到MongoDB

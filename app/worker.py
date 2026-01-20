@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN WebAPI Worker
 

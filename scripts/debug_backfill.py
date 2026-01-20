@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import asyncio
 from app.core.config import settings
 from app.services.data_sources.manager import DataSourceManager

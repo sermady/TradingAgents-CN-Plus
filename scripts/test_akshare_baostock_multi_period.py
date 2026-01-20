@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试AKShare和BaoStock多周期数据同步功能
 """

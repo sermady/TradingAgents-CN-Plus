@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN 容器内快速初始化脚本
 直接在容器内执行，无需挂载外部文件

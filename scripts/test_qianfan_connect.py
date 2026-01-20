@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Quick connectivity test for Baidu Qianfan (ERNIE) via the OpenAI-compatible adapter.
 

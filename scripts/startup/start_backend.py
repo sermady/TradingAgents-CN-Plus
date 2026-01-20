@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN Backend Launcher
 快速启动脚本

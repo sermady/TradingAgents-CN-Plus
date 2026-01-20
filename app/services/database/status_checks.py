@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Database status and connection checks, extracted from DatabaseService.
 """

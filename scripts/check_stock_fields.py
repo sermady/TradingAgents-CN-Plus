@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """检查股票基础信息字段"""
 
 import asyncio

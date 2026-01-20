@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 版本管理工具
 用于管理TradingAgents项目的版本号和发布流程

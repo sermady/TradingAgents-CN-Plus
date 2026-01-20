@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
 from stockstats import wrap
 from typing import Annotated, Optional

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 测试新闻数据统一功能
 

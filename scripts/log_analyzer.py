@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 日志分析工具
 分析TradingAgents-CN的日志文件，提供统计和洞察

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试所有数据源的历史数据天数修复
 验证 Tushare、AKShare、BaoStock 的 historical_days 参数是否正确工作

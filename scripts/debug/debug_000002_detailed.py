@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
 详细调试000002股票PE计算问题

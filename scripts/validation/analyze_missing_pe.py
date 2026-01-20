@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 分析PE为空的股票
 了解为什么某些股票没有PE数据

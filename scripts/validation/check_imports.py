@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 静态检查 Python 文件的导入错误
 排除 tests 目录

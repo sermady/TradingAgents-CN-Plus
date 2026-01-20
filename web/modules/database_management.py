@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据库缓存管理页面
 MongoDB + Redis 缓存管理和监控

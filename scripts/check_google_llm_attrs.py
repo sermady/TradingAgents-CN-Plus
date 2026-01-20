@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查 ChatGoogleOpenAI 的属性
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 使用记录数据模型
 用于 Token 使用统计和成本跟踪

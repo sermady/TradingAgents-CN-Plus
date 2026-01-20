@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 .env 文件中的 API Key 验证
 

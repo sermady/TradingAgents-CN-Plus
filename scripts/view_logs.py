@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents 日志查看工具
 方便查看和分析应用日志

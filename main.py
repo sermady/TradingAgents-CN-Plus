@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 

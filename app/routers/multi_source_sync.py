@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Multi-source synchronization API routes
 Provides endpoints for multi-source stock data synchronization

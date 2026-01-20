@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 异步进度跟踪器
 支持Redis和文件两种存储方式，前端定时轮询获取进度

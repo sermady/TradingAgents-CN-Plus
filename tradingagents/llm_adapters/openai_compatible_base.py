@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 OpenAI兼容适配器基类
 为所有支持OpenAI接口的LLM提供商提供统一的基础实现

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents 中文演示脚本 - 使用阿里百炼大模型
 专门针对中文用户优化的股票分析演示

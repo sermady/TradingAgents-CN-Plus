@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 配置覆盖率检查脚本
 检查sidebar.py中的配置项是否都已包含在新的webapi配置系统中

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 WebSocket 通知系统
 替代 SSE + Redis PubSub，解决连接泄漏问题

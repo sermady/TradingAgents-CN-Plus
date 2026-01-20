@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 配置迁移验证脚本
 验证配置是否正确迁移到webapi数据库中

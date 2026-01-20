@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试历史数据天数修复
 验证 historical_days 参数是否正确工作

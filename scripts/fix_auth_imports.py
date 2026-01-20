@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 修复所有路由文件中的 auth 导入
 将 from app.routers.auth import 替换为 from app.routers.auth_db import

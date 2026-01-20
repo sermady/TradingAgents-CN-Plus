@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 创建新闻数据集合和索引
 根据设计文档创建stock_news集合的完整数据库结构

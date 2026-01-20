@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents 演示脚本 - 使用阿里百炼大模型（禁用记忆功能）
 这个脚本展示了如何使用阿里百炼大模型运行 TradingAgents 框架，临时禁用记忆功能

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试股票数据API
 验证新的股票数据模型和API接口是否正常工作

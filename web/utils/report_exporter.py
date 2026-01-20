@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 报告导出工具
 支持将分析结果导出为多种格式

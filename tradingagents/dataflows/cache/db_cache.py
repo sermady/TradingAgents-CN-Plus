@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 MongoDB + Redis 数据库缓存管理器
 提供高性能的股票数据缓存和持久化存储

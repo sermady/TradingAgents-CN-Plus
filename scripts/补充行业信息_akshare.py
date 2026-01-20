@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 使用 AKShare 补充 BaoStock 同步的股票的行业信息
 

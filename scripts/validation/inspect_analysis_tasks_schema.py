@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 快速检查 MongoDB 中 analysis_tasks 集合的字段结构与示例数据。
 

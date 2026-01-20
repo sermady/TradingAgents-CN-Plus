@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 环境变量解析工具
 提供兼容Python 3.13+的强健环境变量解析功能

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """测试定时任务管理功能"""
 
 import requests

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN v1.0.0-preview FastAPI Backend
 主应用程序入口

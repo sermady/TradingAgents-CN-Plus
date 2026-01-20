@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 自适应缓存管理器 - 根据可用服务自动选择最佳缓存策略
 支持文件缓存、Redis缓存、MongoDB缓存的智能切换

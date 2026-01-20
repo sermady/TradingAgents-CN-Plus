@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查平安银行（000001）的财务数据"""
 
 import asyncio

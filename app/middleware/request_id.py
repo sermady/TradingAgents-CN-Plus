@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 请求ID/Trace-ID 中间件
 - 为每个请求生成唯一 ID（trace_id），写入 request.state 与响应头

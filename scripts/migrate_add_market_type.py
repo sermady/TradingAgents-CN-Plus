@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据迁移脚本：为已有的分析报告添加 market_type 字段
 

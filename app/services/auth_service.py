@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import time
 from datetime import datetime, timedelta, timezone
 from app.utils.timezone import now_tz

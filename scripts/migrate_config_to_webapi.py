@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 配置数据迁移工具
 将现有的tradingagents/config配置迁移到webapi的MongoDB数据库中

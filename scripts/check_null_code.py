@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查 code=null 的记录"""
 
 import asyncio

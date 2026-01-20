@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试股票基本信息获取的降级机制
 验证当Tushare失败时是否有备用方案

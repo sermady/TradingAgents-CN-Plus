@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 报告导出工具 - 支持 Markdown、Word、PDF 格式
 

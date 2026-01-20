@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Data sources subpackage.
 Expose adapters and manager for backward-compatible imports.

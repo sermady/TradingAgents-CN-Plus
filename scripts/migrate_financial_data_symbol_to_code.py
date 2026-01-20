@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 将 stock_financial_data 集合的 symbol 字段统一改为 code
 

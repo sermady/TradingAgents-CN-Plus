@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 直接访问东方财富网新闻 API - 绕过 AKShare
 测试在 Docker 环境中是否能正常获取新闻数据

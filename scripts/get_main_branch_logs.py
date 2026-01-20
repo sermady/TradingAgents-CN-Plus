@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 获取TradingAgents主分支Docker容器日志
 适用于当前main分支的单体应用架构

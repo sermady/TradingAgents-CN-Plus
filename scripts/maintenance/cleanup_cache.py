@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 缓存清理工具
 清理过期的缓存文件和数据库记录

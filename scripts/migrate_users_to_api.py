@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 用户数据迁移脚本
 将老web系统的用户数据迁移到新的API系统

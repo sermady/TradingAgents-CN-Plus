@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN 后端直接启动脚本
 控制日志级别，减少不必要的文件监控日志

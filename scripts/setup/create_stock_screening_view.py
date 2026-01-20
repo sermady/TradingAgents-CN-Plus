@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 创建股票筛选视图
 将 stock_basic_info 和 market_quotes 两个集合通过 $lookup 关联，创建一个类似 MySQL 视图的 MongoDB View

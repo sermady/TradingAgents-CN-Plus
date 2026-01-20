@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查数据库中 gemini-2.5-flash 的 provider 配置
 """

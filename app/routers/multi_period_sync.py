@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 多周期数据同步API
 提供日线、周线、月线数据的同步管理接口

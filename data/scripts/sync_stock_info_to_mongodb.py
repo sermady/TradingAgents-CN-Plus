@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 A股股票基础信息同步到MongoDB
 从通达信获取股票基础信息并同步到MongoDB数据库

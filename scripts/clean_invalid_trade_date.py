@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 清理 stock_daily_quotes 集合中 trade_date 格式错误的数据
 """

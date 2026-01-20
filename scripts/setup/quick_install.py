@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents-CN 快速安装脚本
 自动检测环境并引导用户完成安装配置

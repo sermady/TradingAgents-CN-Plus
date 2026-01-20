@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 智能配置系统 - 自动检测和配置数据库依赖
 确保系统在有或没有MongoDB/Redis的情况下都能正常运行

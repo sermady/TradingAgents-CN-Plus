@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # TradingAgents/graph/trading_graph.py
 
 import os

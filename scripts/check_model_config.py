@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """检查数据库中的模型配置"""
 
 from pymongo import MongoClient

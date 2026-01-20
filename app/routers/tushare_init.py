@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Tushare数据初始化API路由
 提供Web界面的数据初始化功能

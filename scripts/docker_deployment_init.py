@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Docker 部署初始化脚本
 用于新机器部署后的系统初始化，准备必要的基础数据

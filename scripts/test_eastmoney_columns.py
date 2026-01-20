@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """测试东方财富接口返回的列名"""
 
 import akshare as ak

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 调试Tushare历史数据同步问题
 检查数据流的每个环节

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 美股数据提供器
 包含 Finnhub, Yahoo Finance 等美股数据源

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 DeepSeek V3股票分析演示
 展示如何使用DeepSeek V3进行股票投资分析

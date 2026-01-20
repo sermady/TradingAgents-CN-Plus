@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from typing import Annotated, Sequence
 from datetime import date, timedelta, datetime
 from typing_extensions import TypedDict, Optional

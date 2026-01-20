@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 API配置检查工具
 检查各种API密钥的配置状态和可用性

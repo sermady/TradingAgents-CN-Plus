@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 测试港股和美股数据源优先级配置
 验证是否正确从数据库读取优先级

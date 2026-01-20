@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查 llm_providers 集合的数据结构
 """

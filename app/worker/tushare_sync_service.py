@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Tushare数据同步服务
 负责将Tushare数据同步到MongoDB标准化集合

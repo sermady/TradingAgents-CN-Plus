@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试 monkey patch 是否在 Docker 环境中生效
 """

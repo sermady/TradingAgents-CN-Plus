@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 API密钥验证脚本
 用于验证配置的API密钥是否有效

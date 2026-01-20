@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """手动触发定价配置同步"""
 import asyncio
 from app.core.database import init_database

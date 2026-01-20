@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 创建股票历史数据集合
 为三数据源的历史K线数据创建专门的MongoDB集合

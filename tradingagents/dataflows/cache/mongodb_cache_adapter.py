@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 MongoDB 缓存适配器
 根据 TA_USE_APP_CACHE 配置，优先使用 MongoDB 中的同步数据

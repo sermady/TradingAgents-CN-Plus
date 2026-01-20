@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查 AKShare 返回的财务数据字段"""
 
 import asyncio

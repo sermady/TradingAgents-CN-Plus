@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 整理TradingAgentsCN项目的scripts目录结构
 将现有脚本按功能分类到子目录中

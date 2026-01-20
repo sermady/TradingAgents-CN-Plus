@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 清理脚本：删除旧的 system_config 集合
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 CLI工具中文化演示脚本
 展示TradingAgents CLI工具的中文支持功能

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 直接测试 MongoDB 读取
 """

@@ -1,0 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+添加测试相关依赖到项目
+"""
+
+[tool.poetry.dependencies]
+pytest = ">=7.4.0"
+pytest-asyncio = ">=0.21.0"
+pytest-cov = ">=4.0.0"
+pytest-mock = ">=3.12.0"
+httpx = {extras = ["testing"], version = ">=0.24.0"}
+
+[tool.poetry.dev-dependencies]
+# 开发依赖
+pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+pytest-mock = "*"

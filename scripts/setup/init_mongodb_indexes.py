@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 初始化 MongoDB 索引脚本
 - stock_basic_info: 为选股与查询优化字段建立索引

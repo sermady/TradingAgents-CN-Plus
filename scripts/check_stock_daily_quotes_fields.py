@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查 stock_daily_quotes 集合的字段
 """

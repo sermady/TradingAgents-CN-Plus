@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 内存状态管理器
 类似于 analysis-engine 的实现，提供快速的状态读写

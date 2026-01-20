@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 改进的港股数据获取工具
 解决API速率限制和数据获取问题

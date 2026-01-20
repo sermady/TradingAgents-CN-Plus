@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 修复logger变量位置脚本 (改进版)
 Fix logger variable position script (improved version)

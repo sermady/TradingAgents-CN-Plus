@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """将数据库中的模型配置同步到 JSON 文件"""
 
 import asyncio

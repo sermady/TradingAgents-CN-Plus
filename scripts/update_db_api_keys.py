@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 更新数据库中的 API Key
 从 .env 文件读取真实的 API Key，更新到 MongoDB 数据库中

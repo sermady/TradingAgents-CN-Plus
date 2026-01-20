@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 检查分支重叠和合并状态
 分析AKShare和Tushare相关分支的关系

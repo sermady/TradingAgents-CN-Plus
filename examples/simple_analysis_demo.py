@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 简单股票分析演示
 展示如何快速使用TradingAgents-CN进行投资分析

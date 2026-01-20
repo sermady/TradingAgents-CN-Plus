@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 批量修复app目录中的import语句
 将所有 webapi 引用改为 app

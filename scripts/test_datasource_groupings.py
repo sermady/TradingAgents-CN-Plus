@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 测试脚本：检查数据库中 datasource_groupings 集合的实际数据
 """

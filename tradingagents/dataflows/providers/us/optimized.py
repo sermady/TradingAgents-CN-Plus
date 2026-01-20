@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 优化的美股数据获取工具
 集成缓存策略，减少API调用，提高响应速度

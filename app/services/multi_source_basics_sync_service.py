@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Multi-source stock basics synchronization service
 - Supports multiple data sources with fallback mechanism

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试数据源降级机制
 验证当Tushare返回空数据时是否能正确降级到其他数据源

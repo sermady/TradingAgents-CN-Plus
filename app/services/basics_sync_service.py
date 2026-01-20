@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Stock basics synchronization service
 - Fetches A-share stock basic info from Tushare

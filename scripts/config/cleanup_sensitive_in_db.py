@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 扫描并清理配置相关集合中的敏感字段（默认 dry-run）。
 - 目标集合：system_configs、llm_providers

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # TradingAgents/graph/__init__.py
 
 from .trading_graph import TradingAgentsGraph

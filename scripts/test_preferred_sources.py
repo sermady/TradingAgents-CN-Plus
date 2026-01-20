@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 preferred_sources 参数是否生效
 """

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 修复MongoDB中不一致的分析报告数据结构
 

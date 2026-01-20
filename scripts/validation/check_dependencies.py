@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 检查和配置MongoDB等依赖项
 确保系统可以在有或没有MongoDB的情况下正常运行

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 MongoDB 连接调试脚本
 

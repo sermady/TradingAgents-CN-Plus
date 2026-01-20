@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 检查 stock_financial_data 集合中的数据
 验证 ROE 和负债率数据是否存在

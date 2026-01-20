@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Tushare数据初始化CLI工具
 用于首次部署时的数据初始化操作

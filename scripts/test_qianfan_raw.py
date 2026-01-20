@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 千帆API原生测试脚本
 直接使用千帆官方SDK测试连通性，不依赖项目集成代码

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 个人股票分析脚本
 根据您的需求自定义分析参数

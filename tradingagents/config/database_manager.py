@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 智能数据库管理器
 自动检测MongoDB和Redis可用性，提供降级方案

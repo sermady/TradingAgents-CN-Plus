@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据源管理器
 统一管理中国股票数据源的选择和切换，支持Tushare、AKShare、BaoStock等
@@ -6,11 +7,12 @@
 
 import os
 import time
-from typing import Dict, List, Optional, Any
-from enum import Enum
 import warnings
-import pandas as pd
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+import pandas as pd
 
 # 导入日志模块
 from tradingagents.utils.logging_manager import get_logger
@@ -25,9 +27,6 @@ logger = setup_dataflow_logging()
 
 # 导入统一数据源编码
 from tradingagents.constants import DataSourceCode
-
-# 导入基类用于类型提示
-from tradingagents.dataflows.providers.base_provider import BaseStockDataProvider
 
 
 class ChinaDataSource(Enum):
@@ -203,7 +202,7 @@ class DataSourceManager:
             return None
 
         try:
-            from tradingagents.utils.stock_utils import StockUtils, StockMarket
+            from tradingagents.utils.stock_utils import StockMarket, StockUtils
 
             market = StockUtils.identify_stock_market(symbol)
 
@@ -887,12 +886,41 @@ class DataSourceManager:
             change = latest_price - prev_close
             change_pct = (change / prev_close * 100) if prev_close != 0 else 0
 
+            # 获取最新数据的实际日期
+            latest_data_date = latest_data.get("date", "N/A")
+            if isinstance(latest_data_date, pd.Timestamp):
+                latest_data_date = latest_data_date.strftime("%Y-%m-%d")
+            elif isinstance(latest_data_date, str):
+                # 如果是YYYYMMDD格式，转换为YYYY-MM-DD
+                if len(latest_data_date) == 8 and latest_data_date.isdigit():
+                    latest_data_date = f"{latest_data_date[:4]}-{latest_data_date[4:6]}-{latest_data_date[6:8]}"
+
+            logger.info(
+                f"📅 [最新数据日期] 实际数据日期: {latest_data_date}, 请求结束日期: {end_date}"
+            )
+
+            # ⚠️ 检查数据日期是否为最新
+            date_warning = ""
+            if latest_data_date != "N/A" and latest_data_date != end_date:
+                logger.warning(
+                    f"⚠️ [数据延迟警告] 最新数据日期({latest_data_date})与请求日期({end_date})不一致，可能是非交易日或数据未更新"
+                )
+                date_warning = f"⚠️ 注意：最新数据日期为 {latest_data_date}，非当前分析日期 {end_date}\n"
+
             # 格式化数据报告
             result = f"📊 {stock_name}({symbol}) - 技术分析数据\n"
             result += f"数据期间: {start_date} 至 {end_date}\n"
-            result += f"数据条数: {original_data_count}条 (展示最近{display_rows}个交易日)\n\n"
+            result += f"最新数据日期: {latest_data_date}\n"
+            result += (
+                f"数据条数: {original_data_count}条 (展示最近{display_rows}个交易日)\n"
+            )
+            if date_warning:
+                result += f"\n{date_warning}"
+            result += f"\n"
 
-            result += f"💰 最新价格: ¥{latest_price:.2f}\n"
+            result += (
+                f"💰 最新价格: ¥{latest_price:.2f} (数据日期: {latest_data_date})\n"
+            )
             result += f"📈 涨跌额: {change:+.2f} ({change_pct:+.2f}%)\n\n"
 
             # 添加技术指标
@@ -1190,6 +1218,139 @@ class DataSourceManager:
 
         return out
 
+    def get_realtime_quote(self, symbol: str) -> Optional[Dict]:
+        """
+        获取实时行情数据
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            Dict: 实时行情数据，包含price, change, change_pct, volume等
+        """
+        logger.info(f"📊 [实时行情] 获取实时行情: {symbol}")
+
+        try:
+            # 优先使用MongoDB缓存的实时行情
+            if self.use_mongodb_cache:
+                try:
+                    from tradingagents.dataflows.cache.app_adapter import (
+                        get_market_quote_dataframe,
+                    )
+
+                    df = get_market_quote_dataframe(symbol)
+                    if df is not None and not df.empty:
+                        row = df.iloc[-1]
+                        quote = {
+                            "symbol": symbol,
+                            "price": row.get("close"),
+                            "open": row.get("open"),
+                            "high": row.get("high"),
+                            "low": row.get("low"),
+                            "volume": row.get("volume"),
+                            "amount": row.get("amount"),
+                            "change": row.get("change"),
+                            "change_pct": row.get("pct_chg"),
+                            "date": row.get("date"),
+                            "time": row.get("time"),
+                            "source": "mongodb_realtime",
+                            "is_realtime": True,
+                        }
+                        logger.info(
+                            f"✅ [实时行情-MongoDB] {symbol} 价格={quote['price']:.2f}"
+                        )
+                        return quote
+                except Exception as e:
+                    logger.debug(f"MongoDB实时行情获取失败: {e}")
+
+            # 使用当前数据源的实时行情接口
+            if self.current_source == ChinaDataSource.TUSHARE:
+                return self._get_tushare_realtime_quote(symbol)
+            elif self.current_source == ChinaDataSource.AKSHARE:
+                return self._get_akshare_realtime_quote(symbol)
+            else:
+                logger.warning(f"⚠️ {self.current_source.value}不支持实时行情")
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ 获取实时行情失败: {e}", exc_info=True)
+            return None
+
+    def _get_tushare_realtime_quote(self, symbol: str) -> Optional[Dict]:
+        """使用Tushare获取实时行情"""
+        try:
+            provider = self._get_tushare_adapter()
+            if not provider:
+                return None
+
+            # Tushare的实时行情接口
+            import asyncio
+
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # 使用Tushare的实时行情接口（需要高级权限）
+            # 这里先返回None，因为Tushare实时行情需要特殊权限
+            logger.warning("⚠️ Tushare实时行情需要高级权限，暂不支持")
+            return None
+
+        except Exception as e:
+            logger.error(f"❌ Tushare实时行情获取失败: {e}")
+            return None
+
+    def _get_akshare_realtime_quote(self, symbol: str) -> Optional[Dict]:
+        """使用AKShare获取实时行情"""
+        try:
+            import akshare as ak
+
+            # AKShare的实时行情接口
+            # 转换股票代码格式
+            if symbol.startswith("6"):
+                ak_symbol = f"sh{symbol}"
+            elif symbol.startswith(("0", "3", "2")):
+                ak_symbol = f"sz{symbol}"
+            elif symbol.startswith(("8", "4")):
+                ak_symbol = f"bj{symbol}"
+            else:
+                ak_symbol = symbol
+
+            # 获取实时行情
+            df = ak.stock_zh_a_spot_em()
+            stock_data = df[df["代码"] == symbol]
+
+            if not stock_data.empty:
+                row = stock_data.iloc[0]
+                quote = {
+                    "symbol": symbol,
+                    "price": float(row["最新价"]),
+                    "open": float(row["今开"]),
+                    "high": float(row["最高"]),
+                    "low": float(row["最低"]),
+                    "volume": float(row["成交量"]),
+                    "amount": float(row["成交额"]),
+                    "change": float(row["涨跌额"]),
+                    "change_pct": float(row["涨跌幅"]),
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "source": "akshare_realtime",
+                    "is_realtime": True,
+                }
+                logger.info(f"✅ [实时行情-AKShare] {symbol} 价格={quote['price']:.2f}")
+                return quote
+            else:
+                logger.warning(f"⚠️ AKShare未找到{symbol}的实时行情")
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ AKShare实时行情获取失败: {e}", exc_info=True)
+            return None
+
     def get_stock_data(
         self,
         symbol: str,
@@ -1200,6 +1361,8 @@ class DataSourceManager:
         """
         获取股票数据的统一接口，支持多周期数据
 
+        🔥 重要更新：盘中交易时间自动使用实时行情
+
         Args:
             symbol: 股票代码
             start_date: 开始日期
@@ -1209,6 +1372,27 @@ class DataSourceManager:
         Returns:
             str: 格式化的股票数据
         """
+        # 🔥 检查是否需要使用实时行情
+        try:
+            from tradingagents.utils.market_time import MarketTimeUtils
+
+            should_use_rt, reason = MarketTimeUtils.should_use_realtime_quote(symbol)
+            logger.info(f"📊 [实时行情检查] {symbol}: {reason}")
+
+            if should_use_rt:
+                # 盘中交易时间，优先使用实时行情
+                realtime_quote = self.get_realtime_quote(symbol)
+                if realtime_quote:
+                    logger.info(
+                        f"✅ [实时行情] 使用实时价格: {realtime_quote['price']:.2f}"
+                    )
+                    # 将实时行情整合到返回结果中
+                    # 仍然获取历史数据用于技术指标计算，但最新价格使用实时数据
+        except Exception as e:
+            logger.debug(f"实时行情检查失败（继续使用历史数据）: {e}")
+            should_use_rt = False
+            realtime_quote = None
+
         # 记录详细的输入参数
         logger.info(
             f"📊 [数据来源: {self.current_source.value}] 开始获取{period}数据: {symbol}",
@@ -1283,6 +1467,13 @@ class DataSourceManager:
                         "event_type": "data_fetch_success",
                     },
                 )
+
+                # 🔥 如果有实时行情，替换最新价格
+                if should_use_rt and realtime_quote:
+                    result = self._merge_realtime_quote_to_result(
+                        result, realtime_quote, symbol
+                    )
+
                 return result
             else:
                 logger.warning(
@@ -1335,134 +1526,66 @@ class DataSourceManager:
             )
             return self._try_fallback_sources(symbol, start_date, end_date)
 
-    def _merge_realtime_data(
-        self, df: pd.DataFrame, symbol: str, provider: BaseStockDataProvider
-    ) -> pd.DataFrame:
+    def _merge_realtime_quote_to_result(
+        self, historical_result: str, realtime_quote: Dict, symbol: str
+    ) -> str:
         """
-        [新增] 将实时行情合并到历史数据中
-        解决盘中分析数据滞后的问题
+        将实时行情数据合并到历史数据结果中
+
+        Args:
+            historical_result: 历史数据格式化结果
+            realtime_quote: 实时行情数据
+            symbol: 股票代码
+
+        Returns:
+            str: 合并后的结果
         """
         try:
-            # 1. 运行异步获取实时行情
-            import asyncio
+            # 在结果开头添加实时行情标识
+            realtime_notice = f"""
+⚡ 实时行情（盘中）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 实时价格: ¥{realtime_quote["price"]:.2f}
+📈 涨跌: {realtime_quote["change"]:+.2f} ({realtime_quote["change_pct"]:+.2f}%)
+📊 今开: ¥{realtime_quote["open"]:.2f}  |  最高: ¥{realtime_quote["high"]:.2f}  |  最低: ¥{realtime_quote["low"]:.2f}
+🕐 更新时间: {realtime_quote["date"]} {realtime_quote.get("time", "实时")}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            # 创建独立事件循环，避免修改全局循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+"""
+            # 替换原有的最新价格部分
+            lines = historical_result.split("\n")
+            new_lines = []
+            skip_next_price_lines = False
 
-            # 调用 provider 的实时接口
-            quote = loop.run_until_complete(provider.get_stock_quotes(symbol))
-            loop.close()
+            for i, line in enumerate(lines):
+                # 在标题后插入实时行情
+                if i == 0 and "技术分析数据" in line:
+                    new_lines.append(line)
+                    # 找到数据期间行后插入
+                    continue
+                elif "数据期间:" in line:
+                    new_lines.append(line)
+                    # 插入实时行情通知
+                    new_lines.append(realtime_notice)
+                    continue
+                # 跳过原有的最新价格行，因为实时行情已包含
+                elif "💰 最新价格:" in line and not skip_next_price_lines:
+                    skip_next_price_lines = True
+                    continue
+                elif skip_next_price_lines and "📈 涨跌额:" in line:
+                    skip_next_price_lines = False
+                    continue
+                elif skip_next_price_lines:
+                    continue
+                else:
+                    new_lines.append(line)
 
-            if not quote:
-                return df
-
-            # 2. 检查日期是否需要合并
-            # [标准化] 如果 df 使用日期索引（如 Tushare），先重置为普通列
-            # 这样统一了 Tushare 和 AkShare 的数据结构，修复了合并逻辑和下游日志显示
-            if isinstance(df.index, pd.DatetimeIndex):
-                df = df.reset_index()
-
-            # 检查 DataFrame 是否为空
-            if len(df) == 0:
-                logger.warning(
-                    f"⚠️ [数据融合] 历史数据为空（{symbol}），跳过实时数据合并"
-                )
-                return df
-
-            # 获取历史数据最后一天 (支持 date 或 trade_date 列)
-            if "trade_date" in df.columns:
-                last_date_val = df.iloc[-1]["trade_date"]
-                date_col = "trade_date"
-            elif "date" in df.columns:
-                last_date_val = df.iloc[-1]["date"]
-                date_col = "date"
-            else:
-                return df  # 无法确定日期，跳过
-
-            last_date = pd.to_datetime(str(last_date_val)).strftime("%Y%m%d")
-
-            # 获取实时数据日期
-            current_date_str = str(quote.get("trade_date", "")).replace("-", "")
-            if not current_date_str:
-                return df
-
-            current_date = pd.to_datetime(current_date_str).strftime("%Y%m%d")
-
-            # 如果实时日期 > 历史日期，说明历史数据缺今天的数据
-            # 注意：这里假设 df 已经是按日期排序的
-            if current_date > last_date:
-                logger.info(
-                    f"🔄 [数据融合] 检测到新行情 ({current_date} > {last_date})，正在合并实时数据..."
-                )
-
-                # 3. 构造新行 (字段映射)
-                new_row = {}
-
-                # 日期列映射
-                new_row[date_col] = quote.get("trade_date")
-
-                # 价格列映射
-                new_row["open"] = float(quote.get("open", 0))
-                new_row["high"] = float(quote.get("high", 0))
-                new_row["low"] = float(quote.get("low", 0))
-                new_row["close"] = float(quote.get("price", 0))  # 最新价即为当前收盘价
-
-                # 成交量映射 (provider.get_stock_quotes 返回的是股，历史数据通常是手)
-                # 统一除以 100 转换为手
-                vol_shares = float(quote.get("volume", 0))
-
-                if "vol" in df.columns:
-                    new_row["vol"] = vol_shares / 100
-                elif "volume" in df.columns:
-                    new_row["volume"] = vol_shares / 100
-
-                # 成交额映射 (provider.get_stock_quotes 返回的是元，历史数据通常是千元)
-                # Tushare daily amount 是千元
-                amount_yuan = float(quote.get("amount", 0))
-
-                if "amount" in df.columns:
-                    new_row["amount"] = amount_yuan / 1000
-
-                # 4. 拼接到 DataFrame
-                new_df = pd.DataFrame([new_row])
-
-                # 确保其他列存在 (填充 NaN 或 0)
-                for col in df.columns:
-                    if col not in new_df.columns:
-                        new_df[col] = 0 if col in ["change", "pct_chg"] else None
-
-                # 如果有 pct_chg, change，尝试从 quote 获取
-                if "pct_chg" in df.columns:
-                    new_df["pct_chg"] = float(
-                        quote.get("change_pct", quote.get("pct_chg", 0))
-                    )
-                if "change" in df.columns:
-                    new_df["change"] = float(quote.get("change", 0))
-
-                # 确保日期格式一致
-                if date_col in new_df.columns:
-                    if pd.api.types.is_datetime64_any_dtype(df[date_col]):
-                        new_df[date_col] = pd.to_datetime(new_df[date_col])
-
-                # 使用 concat 合并
-                df = pd.concat([df, new_df], ignore_index=True)
-
-                # 重新设置索引（如果原始DF是日期索引，需要恢复）
-                # 这里 df 是 reset_index 后的吗？ get_historical_data 通常返回 RangeIndex 或 DateIndex
-                # 如果 df index 是日期，concat 后可能丢失索引连续性，最好 reset_index
-                # 但这里我们只关注数据内容用于计算指标
-
-                logger.info(
-                    f"✅ [数据融合] 已合并实时数据: 现价={new_row['close']}, 日期={current_date}"
-                )
-                return df
-
-            return df
+            return "\n".join(new_lines)
 
         except Exception as e:
-            logger.warning(f"⚠️ [数据融合] 合并失败: {e}")
-            return df
+            logger.error(f"❌ 合并实时行情失败: {e}")
+            # 如果合并失败，返回原始结果
+            return historical_result
 
     def _get_mongodb_data(
         self, symbol: str, start_date: str, end_date: str, period: str = "daily"
@@ -1576,9 +1699,6 @@ class DataSourceManager:
                 else:
                     stock_name = f"股票{symbol}"
 
-                # [新增] 尝试合并实时数据
-                cached_data = self._merge_realtime_data(cached_data, symbol, provider)
-
                 # 格式化返回
                 return self._format_stock_data_response(
                     cached_data, symbol, stock_name, start_date, end_date
@@ -1614,9 +1734,6 @@ class DataSourceManager:
             if data is not None and not data.empty:
                 # 保存到缓存
                 self._save_to_cache(symbol, data, start_date, end_date)
-
-                # [新增] 尝试合并实时数据
-                data = self._merge_realtime_data(data, symbol, provider)
 
                 # 获取股票基本信息（异步）
                 stock_info = loop.run_until_complete(
@@ -1699,9 +1816,6 @@ class DataSourceManager:
             duration = time.time() - start_time
 
             if data is not None and not data.empty:
-                # [新增] 尝试合并实时数据
-                data = self._merge_realtime_data(data, symbol, provider)
-
                 # 🔧 修复：使用统一的格式化方法，包含技术指标计算
                 # 获取股票基本信息
                 stock_info = loop.run_until_complete(
@@ -1880,7 +1994,9 @@ class DataSourceManager:
 
         # 优先使用 App Mongo 缓存（当 ta_use_app_cache=True）
         try:
-            from tradingagents.config.runtime_settings import use_app_cache_enabled  # type: ignore
+            from tradingagents.config.runtime_settings import (
+                use_app_cache_enabled,  # type: ignore
+            )
 
             use_cache = use_app_cache_enabled(False)
             logger.info(f"🔧 [配置检查] use_app_cache_enabled() 返回值: {use_cache}")
@@ -2293,10 +2409,11 @@ class DataSourceManager:
         logger.debug(f"📊 [MongoDB] 调用参数: symbol={symbol}")
 
         try:
+            import pandas as pd
+
             from tradingagents.dataflows.cache.mongodb_cache_adapter import (
                 get_mongodb_cache_adapter,
             )
-            import pandas as pd
 
             adapter = get_mongodb_cache_adapter()
 
@@ -2670,125 +2787,6 @@ class DataSourceManager:
             f"⚠️ [数据来源: 所有数据源失败] 无法获取新闻: {symbol or '市场新闻'}"
         )
         return []
-
-    # ==================== 实时行情接口 ====================
-
-    def get_realtime_quote(
-        self, symbol: str, market_type: str = "A股"
-    ) -> Optional[Dict[str, Any]]:
-        """
-        获取单只股票的实时行情
-
-        优先使用 AkShare（免费），失败时降级到 Tushare。
-        交易时段返回实时价格，非交易时段返回最新收盘价。
-
-        Args:
-            symbol: 股票代码（6位数字，如 '000001'）
-            market_type: 市场类型（A股/港股/美股）
-
-        Returns:
-            dict: 实时行情数据，包含 price, change, change_pct, volume 等
-            None: 获取失败时返回
-        """
-        from tradingagents.default_config import DEFAULT_CONFIG
-
-        # 检查是否启用实时行情功能
-        realtime_config = DEFAULT_CONFIG.get("realtime_data", {})
-        if not realtime_config.get("enabled", True):
-            logger.debug("⚠️ 实时行情功能已禁用")
-            return None
-
-        # 获取首选数据源
-        preferred_source = realtime_config.get("preferred_source", "akshare")
-
-        result = None
-
-        # 尝试首选数据源
-        if preferred_source == "akshare":
-            result = self._get_akshare_realtime_quote(symbol)
-            if result is None and ChinaDataSource.TUSHARE in self.available_sources:
-                logger.info(f"🔄 AkShare 实时行情失败，尝试降级到 Tushare: {symbol}")
-                result = self._get_tushare_realtime_quote(symbol)
-        else:  # tushare
-            result = self._get_tushare_realtime_quote(symbol)
-            if result is None:
-                logger.info(f"🔄 Tushare 实时行情失败，尝试降级到 AkShare: {symbol}")
-                result = self._get_akshare_realtime_quote(symbol)
-
-        if result:
-            # 添加市场状态信息
-            from tradingagents.utils.trading_hours import get_market_status
-
-            status, status_desc = get_market_status(market_type)
-            result["market_status"] = status
-            result["market_status_desc"] = status_desc
-            result["is_realtime"] = status == "trading"
-
-        return result
-
-    def _get_akshare_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """使用 AkShare 获取实时行情"""
-        try:
-            from .providers.china.akshare import get_realtime_quote as akshare_realtime
-
-            return akshare_realtime(symbol)
-        except Exception as e:
-            logger.warning(f"⚠️ AkShare 实时行情获取失败: {e}")
-            return None
-
-    def _get_tushare_realtime_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """使用 Tushare 获取实时行情"""
-        try:
-            from .providers.china.tushare import get_realtime_quote as tushare_realtime
-
-            return tushare_realtime(symbol)
-        except Exception as e:
-            logger.warning(f"⚠️ Tushare 实时行情获取失败: {e}")
-            return None
-
-    def should_use_realtime_data(
-        self, analysis_date: str, market_type: str = "A股"
-    ) -> bool:
-        """
-        判断是否应该使用实时行情数据
-
-        条件：
-        1. 分析日期是今天
-        2. 当前在交易时段内
-        3. 实时行情功能已启用
-
-        Args:
-            analysis_date: 分析日期（YYYY-MM-DD 格式或 'today'）
-            market_type: 市场类型
-
-        Returns:
-            bool: 是否应使用实时数据
-        """
-        from datetime import datetime
-        from tradingagents.default_config import DEFAULT_CONFIG
-
-        # 检查是否启用实时行情
-        realtime_config = DEFAULT_CONFIG.get("realtime_data", {})
-        if not realtime_config.get("enabled", True):
-            return False
-
-        # 检查是否自动检测交易时段
-        auto_detect = realtime_config.get("auto_detect_trading_hours", True)
-
-        # 判断分析日期是否是今天
-        today = datetime.now().strftime("%Y-%m-%d")
-        is_today = analysis_date == "today" or analysis_date == today
-
-        if not is_today:
-            return False
-
-        # 如果启用自动检测，检查是否在交易时段
-        if auto_detect:
-            from tradingagents.utils.trading_hours import is_trading_hours
-
-            return is_trading_hours(market_type)
-
-        return True
 
 
 # 全局数据源管理器实例

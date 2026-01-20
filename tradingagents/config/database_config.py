@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 数据库配置管理模块
 统一管理MongoDB和Redis的连接配置

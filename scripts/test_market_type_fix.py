@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试市场类型修复
 验证报告保存和查询时是否正确包含 market_type 字段

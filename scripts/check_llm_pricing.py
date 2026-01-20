@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """检查数据库中的 LLM 定价配置"""
 import asyncio
 from app.core.database import init_database, get_mongo_db

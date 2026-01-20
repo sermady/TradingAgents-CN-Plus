@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 进度日志处理器
 监控TradingAgents的日志输出，自动更新进度跟踪器

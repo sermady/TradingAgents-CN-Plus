@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """检查数据库中的 config_reports 集合"""
 
 import asyncio

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Cookie管理器 - 解决Streamlit session state页面刷新丢失的问题
 """

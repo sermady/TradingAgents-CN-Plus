@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 测试A股数据准备功能
 验证数据库检查和自动同步功能

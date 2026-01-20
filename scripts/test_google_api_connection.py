@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 Google API 连接
 直接调用 .env 中的 GOOGLE_API_KEY，测试 gemini-2.5-flash 模型

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 TradingAgents 简化演示脚本 - 使用阿里百炼大模型
 这个脚本展示了如何使用阿里百炼大模型进行简单的LLM测试

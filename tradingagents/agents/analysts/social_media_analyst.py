@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json

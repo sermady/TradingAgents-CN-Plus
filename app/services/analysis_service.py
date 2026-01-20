@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 股票分析服务
 将现有的TradingAgents分析功能包装成API服务

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Web界面截图捕获脚本
 用于自动化捕获TradingAgents-CN Web界面的截图
