@@ -56,6 +56,7 @@ from app.services.progress_manager import get_progress_manager
 from app.services.billing_service import get_billing_service
 from app.models.config import UsageRecord
 from app.core.config import settings
+from app.core.unified_config_service import get_config_manager
 
 import logging
 
@@ -772,312 +773,25 @@ class AnalysisService:
             # 🔧 从数据库读取模型的完整配置参数
             quick_model_config = None
             deep_model_config = None
-            llm_configs = unified_config.get_llm_configs()
+            # 🔧 使用统一配置管理器获取模型配置
+            config_mgr = get_config_manager()
+            model_config = config_mgr.get_model_config(quick_model)
+            quick_model_config = {
+                "max_tokens": model_config.get("max_tokens"),
+                "temperature": model_config.get("temperature"),
+                "timeout": model_config.get("timeout"),
+            }
+            model_config = config_mgr.get_model_config(deep_model)
+            deep_model_config = {
+                "max_tokens": model_config.get("max_tokens"),
+                "temperature": model_config.get("temperature"),
+                "timeout": model_config.get("timeout"),
+            }
 
-            for llm_config in llm_configs:
-                if llm_config.model_name == quick_model:
-                    quick_model_config = {
-                        "max_tokens": llm_config.max_tokens,
-                        "temperature": llm_config.temperature,
-                        "timeout": llm_config.timeout,
-                        "retry_times": llm_config.retry_times,
-                        "api_base": llm_config.api_base,
-                    }
-
-                if llm_config.model_name == deep_model:
-                    deep_model_config = {
-                        "max_tokens": llm_config.max_tokens,
-                        "temperature": llm_config.temperature,
-                        "timeout": llm_config.timeout,
-                        "retry_times": llm_config.retry_times,
-                        "api_base": llm_config.api_base,
-                    }
-
-            # 根据模型名称动态查找供应商
-            llm_provider = await get_provider_by_model_name(quick_model)
-
-            # 使用标准配置函数创建完整配置
-            config = create_analysis_config(
-                research_depth=task.parameters.research_depth,
-                selected_analysts=task.parameters.selected_analysts
-                or ["market", "fundamentals"],
-                quick_model=quick_model,
-                deep_model=deep_model,
-                llm_provider=llm_provider,
-                market_type=getattr(task.parameters, "market_type", "A股"),
-                quick_model_config=quick_model_config,  # 传递模型配置
-                deep_model_config=deep_model_config,  # 传递模型配置
-            )
-
-            if progress_callback:
-                progress_callback(30, "创建分析图...")
-
-            # 获取TradingAgents实例
-            trading_graph = self._get_trading_graph(config)
-
-            if progress_callback:
-                progress_callback(50, "执行股票分析...")
-
-            # 执行分析
-            start_time = datetime.utcnow()
-            analysis_date = task.parameters.analysis_date or datetime.now().strftime(
-                "%Y-%m-%d"
-            )
-
-            # 调用现有的分析方法
-            _, decision = trading_graph.propagate(task.symbol, analysis_date)
-
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-
-            if progress_callback:
-                progress_callback(80, "处理分析结果...")
-
-            # 从决策中提取模型信息
-            model_info = (
-                decision.get("model_info", "Unknown")
-                if isinstance(decision, dict)
-                else "Unknown"
-            )
-
-            # 构建结果
-            result = AnalysisResult(
-                analysis_id=str(uuid.uuid4()),
-                summary=decision.get("summary", ""),
-                recommendation=decision.get("recommendation", ""),
-                confidence_score=decision.get("confidence_score", 0.0),
-                risk_level=decision.get("risk_level", "中等"),
-                key_points=decision.get("key_points", []),
-                detailed_analysis=decision,
-                execution_time=execution_time,
-                tokens_used=decision.get("tokens_used", 0),
-                model_info=model_info,  # 🔥 添加模型信息字段
-            )
-
-            if progress_callback:
-                progress_callback(100, "分析完成")
-
-            # 更新任务状态
-            await self._update_task_status(
-                task.task_id, AnalysisStatus.COMPLETED, 100, result
-            )
-
-            # 记录 token 使用
-            try:
-                # 记录使用情况
-                await self._record_token_usage(
-                    task, result, llm_provider, deep_model or quick_model
-                )
-            except Exception as e:
-                logger.error(f"⚠️  记录 token 使用失败: {e}")
-
-            logger.info(f"分析任务完成: {task.task_id} - 耗时{execution_time:.2f}秒")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"执行分析任务失败: {task.task_id} - {e}")
-
-            # 更新任务状态为失败
-            error_result = AnalysisResult(error_message=str(e))
-            await self._update_task_status(
-                task.task_id, AnalysisStatus.FAILED, 0, error_result
-            )
-
-            raise
-
-    async def _update_task_status(
-        self,
-        task_id: str,
-        status: AnalysisStatus,
-        progress: int,
-        result: Optional[AnalysisResult] = None,
-    ) -> None:
-        """更新任务状态（委托至拆分的工具函数）"""
-        try:
-            from app.services.analysis.status_update_utils import (
-                perform_update_task_status,
-            )
-
-            await perform_update_task_status(task_id, status, progress, result)
-        except Exception as e:
-            logger.error(f"更新任务状态失败: {task_id} - {e}")
-
-    async def _update_task_status_with_tracker(
-        self,
-        task_id: str,
-        status: AnalysisStatus,
-        progress_tracker: RedisProgressTracker,
-        result: Optional[AnalysisResult] = None,
-    ) -> None:
-        """使用进度跟踪器更新任务状态（委托至拆分的工具函数）"""
-        try:
-            from app.services.analysis.status_update_utils import (
-                perform_update_task_status_with_tracker,
-            )
-
-            await perform_update_task_status_with_tracker(
-                task_id, status, progress_tracker, result
-            )
-        except Exception as e:
-            logger.error(f"更新任务状态失败: {task_id} - {e}")
-
-    async def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """获取任务状态"""
-        try:
-            # 先检查内存中的进度跟踪器
-            if task_id in self._progress_trackers:
-                progress_tracker = self._progress_trackers[task_id]
-                progress_data = progress_tracker.to_dict()
-
-                # 从数据库获取任务基本信息
-                db = get_mongo_db()
-                task = await db.analysis_tasks.find_one({"task_id": task_id})
-
-                if task:
-                    # 合并数据库信息和进度跟踪器信息
-                    return {
-                        "task_id": task_id,
-                        "user_id": task.get("user_id"),
-                        "symbol": task.get("stock_symbol") or task.get("symbol"),
-                        "stock_code": task.get("stock_symbol")
-                        or task.get("symbol"),  # 兼容字段
-                        "status": progress_data["status"],
-                        "progress": progress_data["progress"],
-                        "current_step": progress_data["current_step"],
-                        "message": progress_data["message"],
-                        "elapsed_time": progress_data["elapsed_time"],
-                        "remaining_time": progress_data["remaining_time"],
-                        "estimated_total_time": progress_data.get(
-                            "estimated_total_time", 0
-                        ),
-                        "steps": progress_data["steps"],
-                        "start_time": progress_data["start_time"],
-                        "end_time": None,
-                        "last_update": progress_data["last_update"],
-                        "parameters": task.get("parameters", {}),
-                        "execution_time": None,
-                        "tokens_used": None,
-                        "result_data": task.get("result"),
-                        "error_message": None,
-                    }
-
-            # 从Redis缓存获取
-            redis_service = get_redis_service()
-            progress_key = RedisKeys.TASK_PROGRESS.format(task_id=task_id)
-            cached_status = await redis_service.get_json(progress_key)
-
-            if cached_status:
-                return cached_status
-
-            # 从数据库获取
-            db = get_mongo_db()
-            task = await db.analysis_tasks.find_one({"task_id": task_id})
-
-            if task:
-                # 计算已用时间
-                elapsed_time = 0
-                remaining_time = 0
-                estimated_total_time = 0
-
-                if task.get("started_at"):
-                    from datetime import datetime
-
-                    start_time = task.get("started_at")
-                    if task.get("completed_at"):
-                        # 任务已完成
-                        elapsed_time = (
-                            task.get("completed_at") - start_time
-                        ).total_seconds()
-                        estimated_total_time = (
-                            elapsed_time  # 已完成任务的总时长就是已用时间
-                        )
-                        remaining_time = 0
-                    else:
-                        # 任务进行中
-                        elapsed_time = (datetime.utcnow() - start_time).total_seconds()
-
-                        # 使用任务的预估时长，如果没有则使用默认值（5分钟）
-                        estimated_total_time = task.get("estimated_duration", 300)
-
-                        # 预计剩余 = 预估总时长 - 已用时间
-                        remaining_time = max(0, estimated_total_time - elapsed_time)
-
-                return {
-                    "task_id": task_id,
-                    "status": task.get("status"),
-                    "progress": task.get("progress", 0),
-                    "current_step": task.get("current_step", ""),
-                    "message": task.get("message", ""),
-                    "elapsed_time": elapsed_time,
-                    "remaining_time": remaining_time,
-                    "estimated_total_time": estimated_total_time,
-                    "start_time": task.get("started_at").isoformat()
-                    if task.get("started_at")
-                    else None,
-                    "updated_at": task.get("updated_at", "").isoformat()
-                    if task.get("updated_at")
-                    else None,
-                    "result_data": task.get("result"),
-                }
-
-            return None
-
-        except Exception as e:
-            logger.error(f"获取任务状态失败: {task_id} - {e}")
-            return None
-
-    async def cancel_task(self, task_id: str) -> bool:
-        """取消任务"""
-        try:
-            # 更新任务状态
-            await self._update_task_status(task_id, AnalysisStatus.CANCELLED, 0)
-
-            # 从队列中移除（如果还在队列中）
-            await self.queue_service.remove_task(task_id)
-
-            logger.info(f"任务已取消: {task_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"取消任务失败: {task_id} - {e}")
-            return False
-
-    async def _record_token_usage(
-        self, task: AnalysisTask, result: AnalysisResult, provider: str, model_name: str
-    ):
-        """记录 token 使用情况"""
-        try:
-            # 从结果中提取 token 使用信息
-            # 注意：这里需要从 LLM 响应中获取实际的 token 使用量
-            # 目前使用估算值
-            input_tokens = result.tokens_used // 2 if result.tokens_used > 0 else 0
-            output_tokens = (
-                result.tokens_used - input_tokens if result.tokens_used > 0 else 0
-            )
-
-            # 如果没有 token 使用信息，使用默认估算
-            if result.tokens_used == 0:
-                # 根据分析类型估算
-                input_tokens = 2000  # 默认输入 token
-                output_tokens = 1000  # 默认输出 token
-
-            # 获取模型价格配置
-            from app.services.config_service import config_service
-
-            config = await config_service.get_system_config()
-
-            # 查找对应的 LLM 配置
-            llm_config = None
-            if config and config.llm_configs:
-                for cfg in config.llm_configs:
-                    if cfg.provider == provider and cfg.model_name == model_name:
-                        llm_config = cfg
-                        break
-
-            # 计算成本
+            # 🔧 使用统一配置管理器计算成本
+            config_mgr = get_config_manager()
             cost = 0.0
             currency = "CNY"  # 默认货币单位
-            if llm_config:
                 input_price = llm_config.input_price_per_1k or 0.0
                 output_price = llm_config.output_price_per_1k or 0.0
                 cost = (input_tokens / 1000 * input_price) + (
