@@ -140,15 +140,15 @@ class AnalysisService:
             progress_tracker.update_progress("🔧 检查环境配置")
 
             # 使用标准配置函数创建完整配置
-            from app.core.unified_config import unified_config
-
+            # 🔧 使用统一配置管理器
+            config_mgr = get_config_manager()
             quick_model = (
                 getattr(task.parameters, "quick_analysis_model", None)
-                or unified_config.get_quick_analysis_model()
+                or config_mgr.get_quick_analysis_model()
             )
             deep_model = (
                 getattr(task.parameters, "deep_analysis_model", None)
-                or unified_config.get_deep_analysis_model()
+                or config_mgr.get_deep_analysis_model()
             )
 
             # 🔧 从 MongoDB 数据库读取模型的完整配置参数（而不是从 JSON 文件）
@@ -293,15 +293,15 @@ class AnalysisService:
             logger.info(f"🔄 [线程池] 开始执行分析任务: {task.task_id} - {task.symbol}")
 
             # 使用标准配置函数创建完整配置
-            from app.core.unified_config import unified_config
-
+            # 🔧 使用统一配置管理器
+            config_mgr = get_config_manager()
             quick_model = (
                 getattr(task.parameters, "quick_analysis_model", None)
-                or unified_config.get_quick_analysis_model()
+                or config_mgr.get_quick_analysis_model()
             )
             deep_model = (
                 getattr(task.parameters, "deep_analysis_model", None)
-                or unified_config.get_deep_analysis_model()
+                or config_mgr.get_deep_analysis_model()
             )
 
             # 🔧 从 MongoDB 数据库读取模型的完整配置参数（而不是从 JSON 文件）
@@ -759,15 +759,15 @@ class AnalysisService:
                 progress_callback(10, "初始化分析引擎...")
 
             # 使用标准配置函数创建完整配置 - 与单股分析保持一致
-            from app.core.unified_config import unified_config
-
+            # 🔧 使用统一配置管理器
+            config_mgr = get_config_manager()
             quick_model = (
                 getattr(task.parameters, "quick_analysis_model", None)
-                or unified_config.get_quick_analysis_model()
+                or config_mgr.get_quick_analysis_model()
             )
             deep_model = (
                 getattr(task.parameters, "deep_analysis_model", None)
-                or unified_config.get_deep_analysis_model()
+                or config_mgr.get_deep_analysis_model()
             )
 
             # 🔧 从数据库读取模型的完整配置参数

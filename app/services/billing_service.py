@@ -11,7 +11,7 @@ from datetime import datetime
 from app.models.config import LLMConfig
 from app.models.usage_record import UsageRecord
 from app.services.usage_statistics_service import UsageStatisticsService
-from app.core.config_manager import ConfigManager
+from app.core.unified_config_service import get_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class BillingService:
     def __init__(self):
         """初始化计费服务"""
         self.usage_service = UsageStatisticsService()
-        self.config_manager = ConfigManager()
+        self.config_manager = get_config_manager()
 
     def calculate_cost(
         self, provider: str, model_name: str, input_tokens: int, output_tokens: int
