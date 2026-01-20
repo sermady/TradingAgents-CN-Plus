@@ -488,3 +488,8 @@ def get_config_manager() -> UnifiedConfigManager:
     if _config_manager is None:
         _config_manager = UnifiedConfigManager()
     return _config_manager
+
+
+# 为了向后兼容，保留UnifiedConfigManager类名
+# 使用get_config_manager()获取实例
+UnifiedConfigManager = UnifiedConfigManager  # 警告：这不是真正的类，只是函数别名

@@ -12,7 +12,7 @@ from app.utils.timezone import now_tz
 from bson import ObjectId
 
 from app.core.database import get_mongo_db
-from app.core.unified_config import unified_config
+from app.core.unified_config_service import get_config_manager
 from app.models.config import (
     SystemConfig, LLMConfig, DataSourceConfig, DatabaseConfig,
     ModelProvider, DataSourceType, DatabaseType, LLMProvider,
@@ -385,7 +385,7 @@ class ConfigService:
 
             # 作为最后的回退，尝试从统一配置管理器获取
             try:
-                unified_system_config = await unified_config.get_unified_system_config()
+                unified_system_config = await get_config_manager().get_unified_system_config()
                 if unified_system_config:
                     print("🔄 回退到统一配置管理器")
                     return unified_system_config
@@ -560,7 +560,7 @@ class ConfigService:
                 print(f"✅ 配置保存成功，验证LLM配置数量: {len(saved_config.get('llm_configs', []))}")
 
                 # 暂时跳过统一配置同步，避免冲突
-                # unified_config.sync_to_legacy_format(config)
+                # get_config_manager().sync_to_legacy_format(config)
 
                 return True
             else:
@@ -694,8 +694,8 @@ class ConfigService:
             # 同步到文件系统（供 unified_config 使用）
             if result:
                 try:
-                    from app.core.unified_config import unified_config
-                    unified_config.sync_to_legacy_format(config)
+                    from app.core.unified_config_service import get_config_manager
+                    get_config_manager().sync_to_legacy_format(config)
                     print(f"✅ 系统设置已同步到文件系统")
                 except Exception as e:
                     print(f"⚠️  同步系统设置到文件系统失败: {e}")
@@ -853,7 +853,7 @@ class ConfigService:
         """更新大模型配置"""
         try:
             # 直接保存到统一配置管理器
-            success = unified_config.save_llm_config(llm_config)
+            success = get_config_manager().save_llm_config(llm_config)
             if not success:
                 return False
 

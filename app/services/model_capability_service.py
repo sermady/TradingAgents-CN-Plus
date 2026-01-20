@@ -13,7 +13,7 @@ from app.constants.model_capabilities import (
     ModelRole,
     ModelFeature
 )
-from app.core.unified_config import unified_config
+from app.core.unified_config_service import get_config_manager
 import logging
 import re
 
@@ -97,7 +97,7 @@ class ModelCapabilityService:
         """
         # 1. 优先从数据库配置读取
         try:
-            llm_configs = unified_config.get_llm_configs()
+            llm_configs = get_config_manager().get_llm_configs()
             for config in llm_configs:
                 if config.model_name == model_name:
                     return getattr(config, 'capability_level', 2)
@@ -327,7 +327,7 @@ class ModelCapabilityService:
         
         # 获取所有启用的模型
         try:
-            llm_configs = unified_config.get_llm_configs()
+            llm_configs = get_config_manager().get_llm_configs()
             enabled_models = [c for c in llm_configs if c.enabled]
         except Exception as e:
             logger.error(f"获取模型配置失败: {e}")
@@ -396,8 +396,8 @@ class ModelCapabilityService:
     def _get_default_models(self) -> Tuple[str, str]:
         """获取默认模型对"""
         try:
-            quick_model = unified_config.get_quick_analysis_model()
-            deep_model = unified_config.get_deep_analysis_model()
+            quick_model = get_config_manager().get_quick_analysis_model()
+            deep_model = get_config_manager().get_deep_analysis_model()
             logger.info(f"使用系统默认模型: quick={quick_model}, deep={deep_model}")
             return quick_model, deep_model
         except Exception as e:
@@ -407,7 +407,7 @@ class ModelCapabilityService:
     def _recommend_model(self, model_type: str, min_level: int) -> str:
         """推荐满足要求的模型"""
         try:
-            llm_configs = unified_config.get_llm_configs()
+            llm_configs = get_config_manager().get_llm_configs()
             for config in llm_configs:
                 if config.enabled and getattr(config, 'capability_level', 2) >= min_level:
                     display_name = config.model_display_name or config.model_name

@@ -42,7 +42,7 @@ def get_stock_name(stock_code: str) -> str:
         code6 = str(stock_code).zfill(6)
 
         # 🔥 按数据源优先级查询
-        config = UnifiedConfigManager()
+        config = get_config_manager()
         data_source_configs = config.get_data_source_configs()
 
         # 提取启用的数据源，按优先级排序

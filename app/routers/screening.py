@@ -282,13 +282,13 @@ async def get_industries(user: dict = Depends(get_current_user)):
     """
     try:
         from app.core.database import get_mongo_db
-        from app.core.unified_config import UnifiedConfigManager
+        from app.core.unified_config_service import get_config_manager
 
         db = get_mongo_db()
         collection = db["stock_basic_info"]
 
         # 🔥 获取数据源优先级配置（使用统一配置管理器的异步方法）
-        config = UnifiedConfigManager()
+        config = get_config_manager()
         data_source_configs = await config.get_data_source_configs_async()
 
         # 提取启用的数据源，按优先级排序（已排序）

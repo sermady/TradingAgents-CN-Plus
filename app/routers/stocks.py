@@ -123,8 +123,8 @@ async def get_quote(
         logger.info(f"  ❌ 未找到数据")
 
     # 🔥 基础信息 - 按数据源优先级查询
-    from app.core.unified_config import UnifiedConfigManager
-    config = UnifiedConfigManager()
+    from app.core.unified_config_service import get_config_manager
+    config = get_config_manager()
     data_source_configs = await config.get_data_source_configs_async()
 
     # 提取启用的数据源，按优先级排序
@@ -294,8 +294,8 @@ async def get_fundamentals(
     financial_data = None
     try:
         # 获取数据源优先级配置
-        from app.core.unified_config import UnifiedConfigManager
-        config = UnifiedConfigManager()
+        from app.core.unified_config_service import get_config_manager
+        config = get_config_manager()
         data_source_configs = await config.get_data_source_configs_async()
 
         # 提取启用的数据源，按优先级排序
