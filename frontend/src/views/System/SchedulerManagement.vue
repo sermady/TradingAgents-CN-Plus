@@ -635,7 +635,7 @@ const currentJob = ref<Job | null>(null)
 // 执行历史
 const historyDialogVisible = ref(false)
 const historyLoading = ref(false)
-const historyList = ref<JobHistory[]>([])
+const historyList = ref<(JobHistory | JobExecution)[]>([])
 const historyTotal = ref(0)
 const historyPage = ref(1)
 const historyPageSize = ref(20)
@@ -863,8 +863,9 @@ const handleHistoryPageChange = (page: number) => {
   loadHistory()
 }
 
-const handleHistoryTabChange = (tabName: string) => {
-  if (tabName === 'execution') {
+const handleHistoryTabChange = (tabName: string | number) => {
+  const name = String(tabName)
+  if (name === 'execution') {
     executionPage.value = 1
     loadExecutions()
   } else {
@@ -994,14 +995,9 @@ const formatTrigger = (trigger: string) => {
   return trigger
 }
 
-const formatAction = (action: string) => {
-  const actionMap: Record<string, string> = {
-    pause: '暂停',
-    resume: '恢复',
-    trigger: '手动触发',
-    execute: '执行'
-  }
-  return actionMap[action] || action
+// 格式化操作类型（预留）
+const _formatAction = (_action: string) => {
+  return _action
 }
 
 const handleSearch = () => {

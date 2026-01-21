@@ -41,7 +41,6 @@
 
         <el-form-item label="操作状态">
           <el-select v-model="filterForm.success" clearable placeholder="全部状态" style="width: 120px">
-            <el-option label="全部状态" value="" />
             <el-option label="成功" :value="true" />
             <el-option label="失败" :value="false" />
           </el-select>
@@ -329,7 +328,7 @@ import {
 // 响应式数据
 const loading = ref(false)
 const detailDialogVisible = ref(false)
-const selectedLog = ref(null)
+const selectedLog = ref<OperationLog | null>(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalLogs = ref(0)
@@ -342,7 +341,7 @@ const operationTrendChart = ref()
 const filterForm = reactive({
   dateRange: [],
   actionType: '',
-  success: '',
+  success: undefined as boolean | undefined,
   keyword: ''
 })
 
@@ -361,7 +360,7 @@ const logs = ref<OperationLog[]>([])
 const statsData = ref<OperationLogStats | null>(null)
 
 // 方法
-const getActionTypeTag = (actionType: string): string => {
+const getActionTypeTag = (actionType: string): 'success' | 'warning' | 'info' | 'danger' | 'primary' | undefined => {
   return getActionTypeTagColor(actionType)
 }
 
@@ -375,7 +374,7 @@ const loadLogs = async () => {
       start_date: filterForm.dateRange[0] || undefined,
       end_date: filterForm.dateRange[1] || undefined,
       action_type: filterForm.actionType || undefined,
-      success: filterForm.success !== '' ? filterForm.success : undefined,
+      success: filterForm.success,
       keyword: filterForm.keyword || undefined
     }
 

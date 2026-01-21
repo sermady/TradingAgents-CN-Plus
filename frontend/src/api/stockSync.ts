@@ -28,6 +28,7 @@ export interface SyncResult {
   records?: number
   message?: string
   error?: string
+  data_source_used?: string  // 自动切换数据源时使用的数据源
 }
 
 export interface SingleStockSyncResponse {

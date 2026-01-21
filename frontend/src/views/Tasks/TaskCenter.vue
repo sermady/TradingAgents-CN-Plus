@@ -155,8 +155,9 @@ import TaskReportDialog from '@/components/Global/TaskReportDialog.vue'
 
 
 marked.setOptions({ breaks: true, gfm: true })
-const renderMarkdown = (s: string) => {
-  try { return marked.parse(s||'') as string } catch { return s }
+// renderMarkdown函数预留用于Markdown渲染（目前未使用）
+const _renderMarkdown = (_s: string) => {
+  return _s
 }
 
 const router = useRouter()
@@ -368,9 +369,10 @@ const openReport = (row:any) => {
   const id = row?.task_id || row?.analysis_id || row?.id
   if (!id) return ElMessage.warning('未找到报告ID')
   router.push({ name: 'ReportDetail', params: { id } })
+  return true
 }
 
-const retryTask = (row:any) => { ElMessage.info('重试功能待实现') }
+const retryTask = (_row: any) => { ElMessage.info('重试功能待实现') }
 
 // 显示错误详情
 const showErrorDetail = async (row: any) => {

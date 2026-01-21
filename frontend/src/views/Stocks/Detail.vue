@@ -387,7 +387,7 @@ const router = useRouter()
 const analysisStatus = ref<'idle' | 'running' | 'completed' | 'failed'>('idle')
 const analysisProgress = ref(0)
 const analysisMessage = ref('')
-const currentTaskId = ref<string | null>(null)
+const _currentTaskId = ref<string | null>(null)  // 预留用于WebSocket连接
 const lastAnalysis = ref<any | null>(null)
 const lastTaskInfo = ref<any | null>(null) // 保存任务信息（包含 end_time 等）
 
@@ -395,9 +395,9 @@ const lastTaskInfo = ref<any | null>(null) // 保存任务信息（包含 end_ti
 const showReportsDialog = ref(false)
 const activeReportTab = ref('')
 
-const notifStore = useNotificationStore()
+const _notifStore = useNotificationStore()  // 预留用于通知功能
 
-const lastAnalysisTagType = computed(() => {
+const _lastAnalysisTagType = computed(() => {
   const reco = String(lastAnalysis.value?.recommendation || '').toLowerCase()
   if (reco.includes('买') || reco.includes('buy') || reco.includes('增持') || reco.includes('强')) return 'success'
   if (reco.includes('卖') || reco.includes('sell')) return 'danger'
@@ -891,7 +891,8 @@ function goPaperTrading() {
   router.push({ name: 'PaperTradingHome', query: { code: code.value } })
 }
 
-function scrollToDetail() {
+// 跳转到详情区域（预留功能）
+const _scrollToDetail = () => {
   const el = document.getElementById('analysis-detail')
   if (el) el.scrollIntoView({ behavior: 'smooth' })
 }
@@ -1078,7 +1079,8 @@ function formatNewsTime(dateStr: string | null | undefined): string {
 }
 
 // 格式化报告名称
-function formatReportName(key: string): string {
+function formatReportName(key: string | number): string {
+  const strKey = String(key)
   // 完整的13个报告映射
   const nameMap: Record<string, string> = {
     // 分析师团队 (4个)
@@ -1109,7 +1111,7 @@ function formatReportName(key: string): string {
     'investment_debate_state': '🔬 研究团队决策（旧）',
     'risk_debate_state': '⚖️ 风险管理团队（旧）'
   }
-  return nameMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  return nameMap[strKey] || strKey.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
 }
 
 // 渲染Markdown
@@ -1124,9 +1126,9 @@ function renderMarkdown(content: string): string {
 }
 
 // 打开指定报告
-function openReport(reportKey: string) {
+function openReport(reportKey: string | number) {
   showReportsDialog.value = true
-  activeReportTab.value = reportKey
+  activeReportTab.value = String(reportKey)
 }
 
 // 导出报告

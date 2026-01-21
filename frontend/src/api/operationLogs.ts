@@ -202,7 +202,7 @@ export const ActionTypeNames = {
 
 // 操作类型标签颜色映射
 export const ActionTypeTagColors = {
-  [ActionTypes.STOCK_ANALYSIS]: 'primary',
+  [ActionTypes.STOCK_ANALYSIS]: 'success',
   [ActionTypes.CONFIG_MANAGEMENT]: 'success',
   [ActionTypes.CACHE_OPERATION]: 'warning',
   [ActionTypes.DATA_IMPORT]: 'info',
@@ -210,10 +210,10 @@ export const ActionTypeTagColors = {
   [ActionTypes.SYSTEM_SETTINGS]: 'danger',
   [ActionTypes.USER_LOGIN]: 'success',
   [ActionTypes.USER_LOGOUT]: 'warning',
-  [ActionTypes.USER_MANAGEMENT]: 'warning',  // 🔧 添加用户管理操作类型颜色
-  [ActionTypes.DATABASE_OPERATION]: 'primary',
+  [ActionTypes.USER_MANAGEMENT]: 'warning',
+  [ActionTypes.DATABASE_OPERATION]: 'info',
   [ActionTypes.SCREENING]: 'info',
-  [ActionTypes.REPORT_GENERATION]: 'primary'
+  [ActionTypes.REPORT_GENERATION]: 'info'
 } as const
 
 // 便捷函数
@@ -221,7 +221,7 @@ export const getActionTypeName = (actionType: string): string => {
   return ActionTypeNames[actionType as keyof typeof ActionTypeNames] || actionType
 }
 
-export const getActionTypeTagColor = (actionType: string): string => {
+export const getActionTypeTagColor = (actionType: string): 'success' | 'warning' | 'info' | 'danger' => {
   return ActionTypeTagColors[actionType as keyof typeof ActionTypeTagColors] || 'info'
 }
 
