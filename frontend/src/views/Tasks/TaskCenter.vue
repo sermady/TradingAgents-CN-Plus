@@ -195,11 +195,12 @@ const connectTaskWebSocket = (taskId: string) => {
     return // 已连接
   }
 
-  try {
-    const token = localStorage.getItem('token') || ''
+   try {
+    const token = localStorage.getItem('auth-token') || localStorage.getItem('token') || ''
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${wsProtocol}//${host}/api/ws/task/${taskId}`
+    // 添加 token 参数到 WebSocket URL
+    const wsUrl = `${wsProtocol}//${host}/api/ws/task/${taskId}?token=${encodeURIComponent(token)}`
 
     const ws = new WebSocket(wsUrl)
 

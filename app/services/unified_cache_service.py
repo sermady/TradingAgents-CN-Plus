@@ -193,12 +193,45 @@ class UnifiedCacheService:
     # ==================== Redis缓存 ====================
 
     def _get_redis_client(self) -> Optional[redis.Redis]:
-        """获取Redis客户端"""
+        """获取Redis客户端
+
+        带健康检查和降级策略的Redis连接管理
+
+        Returns:
+            Redis客户端，如果不可用则返回None
+        """
         if self._redis_client is None:
             try:
                 self._redis_client = get_redis_client()
-            except Exception as e:
+
+                # 健康检查：尝试ping Redis
+                if self._redis_client:
+                    self._redis_client.ping()
+                    logger.info("✅ Redis连接成功")
+                else:
+                    logger.warning("⚠️ Redis连接失败: ping失败")
+                    self._redis_client = None
+
+            except redis.ConnectionError as e:
                 logger.warning(f"⚠️ Redis连接失败: {e}")
+                logger.info("💡 将自动降级到MongoDB缓存")
+                self._redis_client = None
+            except redis.TimeoutError as e:
+                logger.warning(f"⚠️ Redis连接超时: {e}")
+                logger.info("💡 将自动降级到MongoDB缓存")
+                self._redis_client = None
+            except Exception as e:
+                logger.warning(f"⚠️ Redis初始化异常: {e}")
+                self._redis_client = None
+        else:
+            # 已有客户端，定期检查健康状态
+            try:
+                self._redis_client.ping()
+            except Exception as e:
+                logger.warning(f"⚠️ Redis健康检查失败: {e}")
+                logger.info("💡 将自动降级到MongoDB缓存")
+                self._redis_client = None
+
         return self._redis_client
 
     def _get_from_redis(self, key: str) -> Tuple[Optional[Any], str]:

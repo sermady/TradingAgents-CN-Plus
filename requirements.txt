@@ -35,7 +35,8 @@ google-genai>=0.1.0
 dashscope
 streamlit
 plotly
-psutil
+httpx>=0.24.0  # 异步HTTP客户端，用于AlertManager Webhook通知
+psutil>=5.9.0  # 系统资源监控，用于ProgressManager内存泄漏检测
 pytdx  # 通达信数据接口（已弃用，保留兼容性）
 pymongo  # MongoDB数据库支持，用于Token使用记录存储
 motor>=3.3.0  # 异步MongoDB驱动，用于FastAPI后端
@@ -53,6 +54,5 @@ PyJWT>=2.0.0  # JWT令牌处理
 bcrypt>=4.0.0  # 密码加密
 apscheduler>=3.10.0  # 任务调度器，用于定时任务
 aiofiles>=0.8.0  # 异步文件操作
-httpx>=0.24.0  # 异步HTTP客户端
 sse-starlette>=1.0.0  # Server-Sent Events支持
 concurrent-log-handler>=0.9.24  # Windows 友好的日志轮转处理器
