@@ -93,7 +93,6 @@ class DatabaseManager:
                 socket_connect_timeout=10,  # 10秒连接超时（从5秒增加）
                 socket_timeout=30,  # 30秒套接字超时（从10秒增加）
                 health_check_interval=300,  # 300秒健康检查间隔（从30秒增加，减少频繁检查）
-                max_connections_per_node=20,  # 每个节点最大连接数
                 socket_keepalive=True,  # 启用TCP keepalive
             )
 

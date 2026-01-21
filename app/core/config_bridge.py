@@ -27,11 +27,14 @@ def bridge_config_to_env():
     这样 TradingAgents 核心库就能通过环境变量读取到用户配置的数据
     """
     try:
-        from app.core.unified_config import unified_config
+        from app.core.unified_config_service import get_config_manager
         from app.services.config_service import config_service
 
         logger.info("🔧 开始桥接配置到环境变量...")
         bridged_count = 0
+
+        # 获取配置管理器实例
+        unified_config = get_config_manager()
 
         # 强制启用 MongoDB 存储（用于 Token 使用统计）
         # 从 .env 文件读取配置，如果未设置则默认启用
@@ -44,7 +47,9 @@ def bridge_config_to_env():
         mongodb_conn_str = os.getenv("MONGODB_CONNECTION_STRING")
         if mongodb_conn_str:
             os.environ["MONGODB_CONNECTION_STRING"] = mongodb_conn_str
-            logger.info(f"  ✓ 桥接 MONGODB_CONNECTION_STRING (长度: {len(mongodb_conn_str)})")
+            logger.info(
+                f"  ✓ 桥接 MONGODB_CONNECTION_STRING (长度: {len(mongodb_conn_str)})"
+            )
             bridged_count += 1
 
         # 桥接 MongoDB 数据库名称
@@ -84,12 +89,16 @@ def bridge_config_to_env():
 
                 # 检查环境变量是否已存在且有效（不是占位符）
                 if existing_env_value and not existing_env_value.startswith("your_"):
-                    logger.info(f"  ✓ 使用 .env 文件中的 {env_key} (长度: {len(existing_env_value)})")
+                    logger.info(
+                        f"  ✓ 使用 .env 文件中的 {env_key} (长度: {len(existing_env_value)})"
+                    )
                     bridged_count += 1
                 elif provider.api_key and not provider.api_key.startswith("your_"):
                     # 只有当环境变量不存在或为占位符时，才使用数据库配置
                     os.environ[env_key] = provider.api_key
-                    logger.info(f"  ✓ 使用数据库厂家配置的 {env_key} (长度: {len(provider.api_key)})")
+                    logger.info(
+                        f"  ✓ 使用数据库厂家配置的 {env_key} (长度: {len(provider.api_key)})"
+                    )
                     bridged_count += 1
                 else:
                     logger.debug(f"  ⏭️  {env_key} 未配置有效的 API Key")
@@ -110,35 +119,41 @@ def bridge_config_to_env():
 
                 # 检查环境变量是否已存在且有效（不是占位符）
                 if existing_env_value and not existing_env_value.startswith("your_"):
-                    logger.info(f"  ✓ 使用 .env 文件中的 {env_key} (长度: {len(existing_env_value)})")
+                    logger.info(
+                        f"  ✓ 使用 .env 文件中的 {env_key} (长度: {len(existing_env_value)})"
+                    )
                     bridged_count += 1
                 elif llm_config.enabled and llm_config.api_key:
                     # 只有当环境变量不存在或为占位符时，才使用数据库配置
                     if not llm_config.api_key.startswith("your_"):
                         os.environ[env_key] = llm_config.api_key
-                        logger.info(f"  ✓ 使用 JSON 文件中的 {env_key} (长度: {len(llm_config.api_key)})")
+                        logger.info(
+                            f"  ✓ 使用 JSON 文件中的 {env_key} (长度: {len(llm_config.api_key)})"
+                        )
                         bridged_count += 1
                     else:
-                        logger.warning(f"  ⚠️  {env_key} 在 .env 和 JSON 文件中都是占位符，跳过")
+                        logger.warning(
+                            f"  ⚠️  {env_key} 在 .env 和 JSON 文件中都是占位符，跳过"
+                        )
                 else:
                     logger.debug(f"  ⏭️  {env_key} 未配置")
 
         # 2. 桥接默认模型配置
         default_model = unified_config.get_default_model()
         if default_model:
-            os.environ['TRADINGAGENTS_DEFAULT_MODEL'] = default_model
+            os.environ["TRADINGAGENTS_DEFAULT_MODEL"] = default_model
             logger.info(f"  ✓ 桥接默认模型: {default_model}")
             bridged_count += 1
 
         quick_model = unified_config.get_quick_analysis_model()
         if quick_model:
-            os.environ['TRADINGAGENTS_QUICK_MODEL'] = quick_model
+            os.environ["TRADINGAGENTS_QUICK_MODEL"] = quick_model
             logger.info(f"  ✓ 桥接快速分析模型: {quick_model}")
             bridged_count += 1
 
         deep_model = unified_config.get_deep_analysis_model()
         if deep_model:
-            os.environ['TRADINGAGENTS_DEEP_MODEL'] = deep_model
+            os.environ["TRADINGAGENTS_DEEP_MODEL"] = deep_model
             logger.info(f"  ✓ 桥接深度分析模型: {deep_model}")
             bridged_count += 1
 
@@ -158,14 +173,15 @@ def bridge_config_to_env():
 
             # 查询最新的系统配置
             config_data = config_collection.find_one(
-                {"is_active": True},
-                sort=[("version", -1)]
+                {"is_active": True}, sort=[("version", -1)]
             )
 
-            if config_data and config_data.get('data_source_configs'):
+            if config_data and config_data.get("data_source_configs"):
                 system_config = SystemConfig(**config_data)
                 data_source_configs = system_config.data_source_configs
-                logger.info(f"  📊 从数据库读取到 {len(data_source_configs)} 个数据源配置")
+                logger.info(
+                    f"  📊 从数据库读取到 {len(data_source_configs)} 个数据源配置"
+                )
             else:
                 logger.warning("  ⚠️  数据库中没有数据源配置，使用 JSON 文件配置")
                 data_source_configs = unified_config.get_data_source_configs()
@@ -182,41 +198,57 @@ def bridge_config_to_env():
             if ds_config.enabled and ds_config.api_key:
                 # Tushare Token
                 # 🔥 优先级：数据库配置 > .env 文件（用户在 Web 后台修改后立即生效）
-                if ds_config.type.value == 'tushare':
-                    existing_token = os.getenv('TUSHARE_TOKEN')
+                if ds_config.type.value == "tushare":
+                    existing_token = os.getenv("TUSHARE_TOKEN")
 
                     # 优先使用数据库配置
                     if ds_config.api_key and not ds_config.api_key.startswith("your_"):
-                        os.environ['TUSHARE_TOKEN'] = ds_config.api_key
-                        logger.info(f"  ✓ 使用数据库中的 TUSHARE_TOKEN (长度: {len(ds_config.api_key)})")
+                        os.environ["TUSHARE_TOKEN"] = ds_config.api_key
+                        logger.info(
+                            f"  ✓ 使用数据库中的 TUSHARE_TOKEN (长度: {len(ds_config.api_key)})"
+                        )
                         if existing_token and existing_token != ds_config.api_key:
                             logger.info(f"  ℹ️  已覆盖 .env 文件中的 TUSHARE_TOKEN")
                     # 降级到 .env 文件配置
                     elif existing_token and not existing_token.startswith("your_"):
-                        logger.info(f"  ✓ 使用 .env 文件中的 TUSHARE_TOKEN (长度: {len(existing_token)})")
-                        logger.info(f"  ℹ️  数据库中未配置有效的 TUSHARE_TOKEN，使用 .env 降级方案")
+                        logger.info(
+                            f"  ✓ 使用 .env 文件中的 TUSHARE_TOKEN (长度: {len(existing_token)})"
+                        )
+                        logger.info(
+                            f"  ℹ️  数据库中未配置有效的 TUSHARE_TOKEN，使用 .env 降级方案"
+                        )
                     else:
-                        logger.warning(f"  ⚠️  TUSHARE_TOKEN 在数据库和 .env 中都未配置有效值")
+                        logger.warning(
+                            f"  ⚠️  TUSHARE_TOKEN 在数据库和 .env 中都未配置有效值"
+                        )
                         continue
                     bridged_count += 1
 
                 # FinnHub API Key
                 # 🔥 优先级：数据库配置 > .env 文件
-                elif ds_config.type.value == 'finnhub':
-                    existing_key = os.getenv('FINNHUB_API_KEY')
+                elif ds_config.type.value == "finnhub":
+                    existing_key = os.getenv("FINNHUB_API_KEY")
 
                     # 优先使用数据库配置
                     if ds_config.api_key and not ds_config.api_key.startswith("your_"):
-                        os.environ['FINNHUB_API_KEY'] = ds_config.api_key
-                        logger.info(f"  ✓ 使用数据库中的 FINNHUB_API_KEY (长度: {len(ds_config.api_key)})")
+                        os.environ["FINNHUB_API_KEY"] = ds_config.api_key
+                        logger.info(
+                            f"  ✓ 使用数据库中的 FINNHUB_API_KEY (长度: {len(ds_config.api_key)})"
+                        )
                         if existing_key and existing_key != ds_config.api_key:
                             logger.info(f"  ℹ️  已覆盖 .env 文件中的 FINNHUB_API_KEY")
                     # 降级到 .env 文件配置
                     elif existing_key and not existing_key.startswith("your_"):
-                        logger.info(f"  ✓ 使用 .env 文件中的 FINNHUB_API_KEY (长度: {len(existing_key)})")
-                        logger.info(f"  ℹ️  数据库中未配置有效的 FINNHUB_API_KEY，使用 .env 降级方案")
+                        logger.info(
+                            f"  ✓ 使用 .env 文件中的 FINNHUB_API_KEY (长度: {len(existing_key)})"
+                        )
+                        logger.info(
+                            f"  ℹ️  数据库中未配置有效的 FINNHUB_API_KEY，使用 .env 降级方案"
+                        )
                     else:
-                        logger.warning(f"  ⚠️  FINNHUB_API_KEY 在数据库和 .env 中都未配置有效值")
+                        logger.warning(
+                            f"  ⚠️  FINNHUB_API_KEY 在数据库和 .env 中都未配置有效值"
+                        )
                         continue
                     bridged_count += 1
 
@@ -231,6 +263,7 @@ def bridge_config_to_env():
         try:
             from tradingagents.config.config_manager import config_manager
             from tradingagents.config.mongodb_storage import MongoDBStorage
+
             logger.info("🔄 重新初始化 tradingagents MongoDB 存储...")
 
             # 调试：检查环境变量
@@ -238,7 +271,11 @@ def bridge_config_to_env():
             mongodb_conn = os.getenv("MONGODB_CONNECTION_STRING", "未设置")
             mongodb_db = os.getenv("MONGODB_DATABASE_NAME", "tradingagents")
             logger.info(f"  📋 USE_MONGODB_STORAGE: {use_mongodb}")
-            logger.info(f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn[:30]}..." if len(mongodb_conn) > 30 else f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn}")
+            logger.info(
+                f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn[:30]}..."
+                if len(mongodb_conn) > 30
+                else f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn}"
+            )
             logger.info(f"  📋 MONGODB_DATABASE_NAME: {mongodb_db}")
 
             # 直接创建 MongoDBStorage 实例，而不是调用 _init_mongodb_storage()
@@ -250,17 +287,19 @@ def bridge_config_to_env():
                     logger.info(f"  🔍 实际传入的数据库名称: {mongodb_db}")
 
                     config_manager.mongodb_storage = MongoDBStorage(
-                        connection_string=mongodb_conn,
-                        database_name=mongodb_db
+                        connection_string=mongodb_conn, database_name=mongodb_db
                     )
                     if config_manager.mongodb_storage.is_connected():
                         logger.info("✅ tradingagents MongoDB 存储已启用")
                     else:
-                        logger.warning("⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储")
+                        logger.warning(
+                            "⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储"
+                        )
                         config_manager.mongodb_storage = None
                 except Exception as e:
                     logger.error(f"❌ 创建 MongoDBStorage 实例失败: {e}")
                     import traceback
+
                     logger.error(traceback.format_exc())
                     config_manager.mongodb_storage = None
             else:
@@ -268,12 +307,14 @@ def bridge_config_to_env():
         except Exception as e:
             logger.error(f"❌ 重新初始化 tradingagents MongoDB 存储失败: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
 
         # 7. 同步定价配置到 tradingagents 的 config/pricing.json
         # 注意：这里需要从数据库读取配置，因为文件中的配置没有定价信息
         # 使用异步方式同步定价配置
         import asyncio
+
         try:
             loop = asyncio.get_running_loop()
             # 在异步上下文中，创建后台任务
@@ -327,24 +368,28 @@ def _bridge_datasource_details(data_source_configs) -> int:
             bridged_count += 1
 
         # 最大重试次数（从 config_params 中获取）
-        if ds_config.config_params and 'max_retries' in ds_config.config_params:
+        if ds_config.config_params and "max_retries" in ds_config.config_params:
             env_key = f"{source_type}_MAX_RETRIES"
-            os.environ[env_key] = str(ds_config.config_params['max_retries'])
-            logger.debug(f"  ✓ 桥接 {env_key}: {ds_config.config_params['max_retries']}")
+            os.environ[env_key] = str(ds_config.config_params["max_retries"])
+            logger.debug(
+                f"  ✓ 桥接 {env_key}: {ds_config.config_params['max_retries']}"
+            )
             bridged_count += 1
 
         # 缓存 TTL（从 config_params 中获取）
-        if ds_config.config_params and 'cache_ttl' in ds_config.config_params:
+        if ds_config.config_params and "cache_ttl" in ds_config.config_params:
             env_key = f"{source_type}_CACHE_TTL"
-            os.environ[env_key] = str(ds_config.config_params['cache_ttl'])
+            os.environ[env_key] = str(ds_config.config_params["cache_ttl"])
             logger.debug(f"  ✓ 桥接 {env_key}: {ds_config.config_params['cache_ttl']}")
             bridged_count += 1
 
         # 是否启用缓存（从 config_params 中获取）
-        if ds_config.config_params and 'cache_enabled' in ds_config.config_params:
+        if ds_config.config_params and "cache_enabled" in ds_config.config_params:
             env_key = f"{source_type}_CACHE_ENABLED"
-            os.environ[env_key] = str(ds_config.config_params['cache_enabled']).lower()
-            logger.debug(f"  ✓ 桥接 {env_key}: {ds_config.config_params['cache_enabled']}")
+            os.environ[env_key] = str(ds_config.config_params["cache_enabled"]).lower()
+            logger.debug(
+                f"  ✓ 桥接 {env_key}: {ds_config.config_params['cache_enabled']}"
+            )
             bridged_count += 1
 
     if bridged_count > 0:
@@ -367,9 +412,7 @@ def _bridge_system_settings() -> int:
 
         # 创建同步客户端
         client = MongoClient(
-            settings.MONGO_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000
+            settings.MONGO_URI, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000
         )
 
         try:
@@ -377,14 +420,15 @@ def _bridge_system_settings() -> int:
             # 从 system_configs 集合中读取激活的配置
             config_doc = db.system_configs.find_one({"is_active": True})
 
-            if not config_doc or 'system_settings' not in config_doc:
+            if not config_doc or "system_settings" not in config_doc:
                 logger.debug("  ⚠️  系统设置为空，跳过桥接")
                 return 0
 
-            system_settings = config_doc['system_settings']
+            system_settings = config_doc["system_settings"]
         except Exception as e:
             logger.debug(f"  ⚠️  无法从数据库获取系统设置: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
             return 0
         finally:
@@ -399,18 +443,18 @@ def _bridge_system_settings() -> int:
 
         # TradingAgents 运行时配置
         ta_settings = {
-            'ta_hk_min_request_interval_seconds': 'TA_HK_MIN_REQUEST_INTERVAL_SECONDS',
-            'ta_hk_timeout_seconds': 'TA_HK_TIMEOUT_SECONDS',
-            'ta_hk_max_retries': 'TA_HK_MAX_RETRIES',
-            'ta_hk_rate_limit_wait_seconds': 'TA_HK_RATE_LIMIT_WAIT_SECONDS',
-            'ta_hk_cache_ttl_seconds': 'TA_HK_CACHE_TTL_SECONDS',
-            'ta_use_app_cache': 'TA_USE_APP_CACHE',
+            "ta_hk_min_request_interval_seconds": "TA_HK_MIN_REQUEST_INTERVAL_SECONDS",
+            "ta_hk_timeout_seconds": "TA_HK_TIMEOUT_SECONDS",
+            "ta_hk_max_retries": "TA_HK_MAX_RETRIES",
+            "ta_hk_rate_limit_wait_seconds": "TA_HK_RATE_LIMIT_WAIT_SECONDS",
+            "ta_hk_cache_ttl_seconds": "TA_HK_CACHE_TTL_SECONDS",
+            "ta_use_app_cache": "TA_USE_APP_CACHE",
         }
 
         # Token 使用统计配置
         token_tracking_settings = {
-            'enable_cost_tracking': 'ENABLE_COST_TRACKING',
-            'auto_save_usage': 'AUTO_SAVE_USAGE',
+            "enable_cost_tracking": "ENABLE_COST_TRACKING",
+            "auto_save_usage": "AUTO_SAVE_USAGE",
         }
 
         for setting_key, env_key in ta_settings.items():
@@ -423,7 +467,9 @@ def _bridge_system_settings() -> int:
             elif setting_key in system_settings:
                 # .env 文件中未设置，使用数据库中的值
                 value = system_settings[setting_key]
-                os.environ[env_key] = str(value).lower() if isinstance(value, bool) else str(value)
+                os.environ[env_key] = (
+                    str(value).lower() if isinstance(value, bool) else str(value)
+                )
                 logger.info(f"  ✓ 桥接 {env_key}: {value}")
                 bridged_count += 1
             else:
@@ -433,22 +479,26 @@ def _bridge_system_settings() -> int:
         for setting_key, env_key in token_tracking_settings.items():
             if setting_key in system_settings:
                 value = system_settings[setting_key]
-                os.environ[env_key] = str(value).lower() if isinstance(value, bool) else str(value)
+                os.environ[env_key] = (
+                    str(value).lower() if isinstance(value, bool) else str(value)
+                )
                 logger.info(f"  ✓ 桥接 {env_key}: {value}")
                 bridged_count += 1
             else:
                 logger.debug(f"  ⚠️  配置键 {setting_key} 不存在于系统设置中")
 
         # 时区配置
-        if 'app_timezone' in system_settings:
-            os.environ['APP_TIMEZONE'] = system_settings['app_timezone']
+        if "app_timezone" in system_settings:
+            os.environ["APP_TIMEZONE"] = system_settings["app_timezone"]
             logger.debug(f"  ✓ 桥接 APP_TIMEZONE: {system_settings['app_timezone']}")
             bridged_count += 1
 
         # 货币偏好
-        if 'currency_preference' in system_settings:
-            os.environ['CURRENCY_PREFERENCE'] = system_settings['currency_preference']
-            logger.debug(f"  ✓ 桥接 CURRENCY_PREFERENCE: {system_settings['currency_preference']}")
+        if "currency_preference" in system_settings:
+            os.environ["CURRENCY_PREFERENCE"] = system_settings["currency_preference"]
+            logger.debug(
+                f"  ✓ 桥接 CURRENCY_PREFERENCE: {system_settings['currency_preference']}"
+            )
             bridged_count += 1
 
         if bridged_count > 0:
@@ -461,16 +511,23 @@ def _bridge_system_settings() -> int:
 
             # 检查关键字段
             if "quick_analysis_model" in system_settings:
-                print(f"  ✓ [config_bridge] 包含 quick_analysis_model: {system_settings['quick_analysis_model']}")
+                print(
+                    f"  ✓ [config_bridge] 包含 quick_analysis_model: {system_settings['quick_analysis_model']}"
+                )
             else:
                 print(f"  ⚠️  [config_bridge] 不包含 quick_analysis_model")
 
             if "deep_analysis_model" in system_settings:
-                print(f"  ✓ [config_bridge] 包含 deep_analysis_model: {system_settings['deep_analysis_model']}")
+                print(
+                    f"  ✓ [config_bridge] 包含 deep_analysis_model: {system_settings['deep_analysis_model']}"
+                )
             else:
                 print(f"  ⚠️  [config_bridge] 不包含 deep_analysis_model")
 
-            from app.core.unified_config import unified_config
+            from app.core.unified_config_service import get_config_manager
+
+            unified_config = get_config_manager()
+
             result = unified_config.save_system_settings(system_settings)
 
             if result:
@@ -483,6 +540,7 @@ def _bridge_system_settings() -> int:
             logger.warning(f"  ⚠️  同步系统设置到文件系统失败: {e}")
             print(f"❌ [config_bridge] 同步系统设置到文件系统失败: {e}")
             import traceback
+
             print(traceback.format_exc())
 
         return bridged_count
@@ -495,10 +553,10 @@ def _bridge_system_settings() -> int:
 def get_bridged_api_key(provider: str) -> Optional[str]:
     """
     获取桥接的 API 密钥
-    
+
     Args:
         provider: 提供商名称 (如: openai, deepseek, dashscope)
-    
+
     Returns:
         API 密钥，如果不存在返回 None
     """
@@ -509,19 +567,19 @@ def get_bridged_api_key(provider: str) -> Optional[str]:
 def get_bridged_model(model_type: str = "default") -> Optional[str]:
     """
     获取桥接的模型名称
-    
+
     Args:
         model_type: 模型类型 (default, quick, deep)
-    
+
     Returns:
         模型名称，如果不存在返回 None
     """
     if model_type == "quick":
-        return os.environ.get('TRADINGAGENTS_QUICK_MODEL')
+        return os.environ.get("TRADINGAGENTS_QUICK_MODEL")
     elif model_type == "deep":
-        return os.environ.get('TRADINGAGENTS_DEEP_MODEL')
+        return os.environ.get("TRADINGAGENTS_DEEP_MODEL")
     else:
-        return os.environ.get('TRADINGAGENTS_DEFAULT_MODEL')
+        return os.environ.get("TRADINGAGENTS_DEFAULT_MODEL")
 
 
 def clear_bridged_config():
@@ -532,41 +590,43 @@ def clear_bridged_config():
     """
     keys_to_clear = [
         # 模型配置
-        'TRADINGAGENTS_DEFAULT_MODEL',
-        'TRADINGAGENTS_QUICK_MODEL',
-        'TRADINGAGENTS_DEEP_MODEL',
+        "TRADINGAGENTS_DEFAULT_MODEL",
+        "TRADINGAGENTS_QUICK_MODEL",
+        "TRADINGAGENTS_DEEP_MODEL",
         # 数据源 API 密钥
-        'TUSHARE_TOKEN',
-        'FINNHUB_API_KEY',
+        "TUSHARE_TOKEN",
+        "FINNHUB_API_KEY",
         # 系统配置
-        'APP_TIMEZONE',
-        'CURRENCY_PREFERENCE',
+        "APP_TIMEZONE",
+        "CURRENCY_PREFERENCE",
     ]
 
     # 清除所有可能的 API 密钥
-    providers = ['OPENAI', 'ANTHROPIC', 'GOOGLE', 'DEEPSEEK', 'DASHSCOPE', 'QIANFAN']
+    providers = ["OPENAI", "ANTHROPIC", "GOOGLE", "DEEPSEEK", "DASHSCOPE", "QIANFAN"]
     for provider in providers:
-        keys_to_clear.append(f'{provider}_API_KEY')
+        keys_to_clear.append(f"{provider}_API_KEY")
 
     # 清除数据源细节配置
-    data_sources = ['TUSHARE', 'AKSHARE', 'FINNHUB']
+    data_sources = ["TUSHARE", "AKSHARE", "FINNHUB"]
     for ds in data_sources:
-        keys_to_clear.extend([
-            f'{ds}_TIMEOUT',
-            f'{ds}_RATE_LIMIT',
-            f'{ds}_MAX_RETRIES',
-            f'{ds}_CACHE_TTL',
-            f'{ds}_CACHE_ENABLED',
-        ])
+        keys_to_clear.extend(
+            [
+                f"{ds}_TIMEOUT",
+                f"{ds}_RATE_LIMIT",
+                f"{ds}_MAX_RETRIES",
+                f"{ds}_CACHE_TTL",
+                f"{ds}_CACHE_ENABLED",
+            ]
+        )
 
     # 清除 TradingAgents 运行时配置
     ta_runtime_keys = [
-        'TA_HK_MIN_REQUEST_INTERVAL_SECONDS',
-        'TA_HK_TIMEOUT_SECONDS',
-        'TA_HK_MAX_RETRIES',
-        'TA_HK_RATE_LIMIT_WAIT_SECONDS',
-        'TA_HK_CACHE_TTL_SECONDS',
-        'TA_USE_APP_CACHE',
+        "TA_HK_MIN_REQUEST_INTERVAL_SECONDS",
+        "TA_HK_TIMEOUT_SECONDS",
+        "TA_HK_MAX_RETRIES",
+        "TA_HK_RATE_LIMIT_WAIT_SECONDS",
+        "TA_HK_CACHE_TTL_SECONDS",
+        "TA_USE_APP_CACHE",
     ]
     keys_to_clear.extend(ta_runtime_keys)
 
@@ -614,12 +674,12 @@ def _sync_pricing_config(llm_configs):
                     "model_name": llm_config.model_name,
                     "input_price_per_1k": llm_config.input_price_per_1k or 0.0,
                     "output_price_per_1k": llm_config.output_price_per_1k or 0.0,
-                    "currency": llm_config.currency or "CNY"
+                    "currency": llm_config.currency or "CNY",
                 }
                 pricing_configs.append(pricing_config)
 
         # 保存到文件
-        with open(pricing_file, 'w', encoding='utf-8') as f:
+        with open(pricing_file, "w", encoding="utf-8") as f:
             json.dump(pricing_configs, f, ensure_ascii=False, indent=2)
 
         logger.info(f"  ✓ 同步定价配置到 {pricing_file}: {len(pricing_configs)} 个模型")
@@ -653,6 +713,7 @@ def sync_pricing_config_now():
     except Exception as e:
         logger.error(f"❌ 立即同步定价配置失败: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 
@@ -664,6 +725,7 @@ def _handle_sync_task_result(task):
     except Exception as e:
         logger.error(f"❌ 定价配置同步任务执行失败: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
 
 
@@ -678,9 +740,8 @@ async def _sync_pricing_config_from_db():
         db = get_mongo_db()
 
         # 获取最新的激活配置
-        config = await db['system_configs'].find_one(
-            {'is_active': True},
-            sort=[('version', -1)]
+        config = await db["system_configs"].find_one(
+            {"is_active": True}, sort=[("version", -1)]
         )
 
         if not config:
@@ -696,26 +757,26 @@ async def _sync_pricing_config_from_db():
 
         # 构建定价配置列表
         pricing_configs = []
-        for llm_config in config.get('llm_configs', []):
-            if llm_config.get('enabled', False):
+        for llm_config in config.get("llm_configs", []):
+            if llm_config.get("enabled", False):
                 # 从数据库读取的是字典，直接使用字符串 provider
-                provider = llm_config.get('provider')
+                provider = llm_config.get("provider")
 
                 # 如果 provider 是枚举类型，转换为字符串
-                if hasattr(provider, 'value'):
+                if hasattr(provider, "value"):
                     provider = provider.value
 
                 pricing_config = {
                     "provider": provider,
-                    "model_name": llm_config.get('model_name'),
-                    "input_price_per_1k": llm_config.get('input_price_per_1k') or 0.0,
-                    "output_price_per_1k": llm_config.get('output_price_per_1k') or 0.0,
-                    "currency": llm_config.get('currency') or "CNY"
+                    "model_name": llm_config.get("model_name"),
+                    "input_price_per_1k": llm_config.get("input_price_per_1k") or 0.0,
+                    "output_price_per_1k": llm_config.get("output_price_per_1k") or 0.0,
+                    "currency": llm_config.get("currency") or "CNY",
                 }
                 pricing_configs.append(pricing_config)
 
         # 保存到文件
-        with open(pricing_file, 'w', encoding='utf-8') as f:
+        with open(pricing_file, "w", encoding="utf-8") as f:
             json.dump(pricing_configs, f, ensure_ascii=False, indent=2)
 
         logger.info(f"✅ 同步定价配置到 {pricing_file}: {len(pricing_configs)} 个模型")
@@ -723,16 +784,16 @@ async def _sync_pricing_config_from_db():
     except Exception as e:
         logger.error(f"❌ 从数据库同步定价配置失败: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
 
 
 # 导出函数
 __all__ = [
-    'bridge_config_to_env',
-    'get_bridged_api_key',
-    'get_bridged_model',
-    'clear_bridged_config',
-    'reload_bridged_config',
-    'sync_pricing_config_now',
+    "bridge_config_to_env",
+    "get_bridged_api_key",
+    "get_bridged_model",
+    "clear_bridged_config",
+    "reload_bridged_config",
+    "sync_pricing_config_now",
 ]
-

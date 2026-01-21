@@ -124,13 +124,16 @@ class UnifiedConfigManager:
         return default
 
     def _get_mongodb_config(
-        self, key: str, default: Any = None, force_refresh: bool = False
+        self,
+        key: Optional[str] = None,
+        default: Any = None,
+        force_refresh: bool = False,
     ) -> Optional[Any]:
         """
         从MongoDB获取配置
 
         Args:
-            key: 配置键
+            key: 配置键，如果为None则返回整个配置文档
             default: 默认值
             force_refresh: 强制刷新缓存
 
@@ -145,6 +148,9 @@ class UnifiedConfigManager:
                         datetime.now(timezone.utc) - self._db_config_cache_timestamp
                     ).total_seconds()
                     if cache_age < self._db_cache_ttl:
+                        # 如果key为None，返回整个配置文档
+                        if key is None:
+                            return self._db_config_cache
                         # 从缓存中获取
                         return self._db_config_cache.get(key, default)
 
@@ -162,6 +168,10 @@ class UnifiedConfigManager:
                 # 缓存整个配置文档
                 self._db_config_cache = doc
                 self._db_config_cache_timestamp = datetime.now(timezone.utc)
+
+                # 如果key为None，返回整个配置文档
+                if key is None:
+                    return doc
 
                 # 从system_settings或llm_configs中获取
                 if key in doc:
@@ -427,6 +437,105 @@ class UnifiedConfigManager:
         """
         config = self.get_model_config(model_name)
         return config.get("provider", "dashscope")
+
+    # ==================== 向后兼容方法 ====================
+
+    def get_llm_configs(self) -> List[Any]:
+        """
+        获取所有LLM配置（向后兼容方法）
+
+        Returns:
+            LLM配置列表（从MongoDB或文件）
+        """
+        # 尝试从MongoDB获取
+        db_config = self._get_mongodb_config(force_refresh=False)
+        if db_config and "llm_configs" in db_config:
+            llm_configs = db_config["llm_configs"]
+            logger.info(f"📊 从MongoDB获取到 {len(llm_configs)} 个LLM配置")
+            return llm_configs
+
+        # 降级到文件配置
+        file_models = self._get_file_config("models")
+        if file_models:
+            logger.info(f"📊 从文件获取到 {len(file_models)} 个LLM配置")
+            return file_models
+
+        return []
+
+    def get_default_model(self) -> str:
+        """
+        获取默认模型名称（向后兼容方法）
+
+        Returns:
+            默认模型名称
+        """
+        # 优先使用系统设置中的default_model
+        default_model = self.get_system_setting("default_model")
+        if default_model:
+            return default_model
+
+        # 降级到快速分析模型
+        return self.get_quick_analysis_model()
+
+    def get_data_source_configs(self) -> List[Any]:
+        """
+        获取数据源配置（向后兼容方法）
+
+        Returns:
+            数据源配置列表（从MongoDB或文件）
+        """
+        # 尝试从MongoDB获取
+        db_config = self._get_mongodb_config(force_refresh=False)
+        if db_config and "data_source_configs" in db_config:
+            ds_configs = db_config["data_source_configs"]
+            logger.info(f"📊 从MongoDB获取到 {len(ds_configs)} 个数据源配置")
+            return ds_configs
+
+        # 降级到文件配置
+        settings_data = self._get_file_config("settings")
+        if settings_data and "data_sources" in settings_data:
+            ds_configs = settings_data["data_sources"]
+            logger.info(f"📊 从文件获取到 {len(ds_configs)} 个数据源配置")
+            return ds_configs
+
+        return []
+
+    def save_system_settings(self, settings: Dict[str, Any]) -> bool:
+        """
+        保存系统设置到文件（向后兼容方法）
+
+        Args:
+            settings: 系统设置字典
+
+        Returns:
+            是否保存成功
+        """
+        try:
+            settings_file = self._config_paths["settings"]
+            settings_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # 读取现有文件
+            existing_data = {}
+            if settings_file.exists():
+                try:
+                    with open(settings_file, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                except Exception as e:
+                    logger.warning(f"读取现有设置文件失败: {e}")
+
+            # 更新system_settings
+            existing_data["system_settings"] = settings
+
+            # 保存文件
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(existing_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"✅ 系统设置已保存到文件: {settings_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 保存系统设置失败: {e}")
+            return False
 
     # ==================== 缓存管理 ====================
 
