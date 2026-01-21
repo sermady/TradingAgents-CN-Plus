@@ -481,7 +481,7 @@ class AlertManager:
                 return
 
             # 构建邮件内容
-            subject = f"[{alert_data['level'].upper()}] {alert_data['title']}"
+            subject = f"[{str(alert_data['level']).upper()}] {alert_data['title']}"
 
             # 邮件正文
             body = f"""
