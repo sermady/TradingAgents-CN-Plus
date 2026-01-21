@@ -44,6 +44,14 @@ class ConfigCacheEntry:
         return (datetime.now(timezone.utc) - self.timestamp).total_seconds() > self.ttl
 
 
+# ==================== 统一配置管理器 ====================
+
+# 类级别变量（线程安全单例模式）
+_config_manager_instance: Optional["UnifiedConfigManager"] = None
+_config_manager_lock = Lock()
+_config_manager_initialized = False
+
+
 class UnifiedConfigManager:
     """
     统一配置管理器
@@ -52,17 +60,17 @@ class UnifiedConfigManager:
     配置优先级：环境变量 > MongoDB > 文件 > 默认值
     """
 
-    _instance: Optional["UnifiedConfigManager"] = None
-    _lock: Lock = Lock()
-
     def __new__(cls):
-        """单例模式"""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
+        """线程安全的单例模式"""
+        global _config_manager_instance
+
+        # 使用类级别锁确保线程安全
+        with _config_manager_lock:
+            if _config_manager_instance is None:
+                _config_manager_instance = super().__new__(cls)
+                _config_manager_instance._initialized = False
+
+        return _config_manager_instance
 
     def __init__(self):
         if self._initialized:
@@ -86,7 +94,8 @@ class UnifiedConfigManager:
         self._env_settings = EnvSettings()
 
         # MongoDB配置缓存TTL（秒）
-        self._db_cache_ttl = 60
+        # 生产环境建议300-600秒，开发环境60秒
+        self._db_cache_ttl = 300  # 从60秒提升到300秒，减少数据库查询频率
 
         self._initialized = True
         logger.info("✅ 统一配置管理器初始化完成")
