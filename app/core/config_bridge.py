@@ -139,23 +139,51 @@ def bridge_config_to_env():
                     logger.debug(f"  ⏭️  {env_key} 未配置")
 
         # 2. 桥接默认模型配置
+        # 辅助函数：确保模型值是字符串
+        def _ensure_model_str(model_value: Any) -> Optional[str]:
+            """确保模型值是字符串"""
+            if model_value is None:
+                return None
+            if isinstance(model_value, str):
+                return model_value
+            if isinstance(model_value, dict):
+                # 如果是字典，尝试提取 model_name 字段
+                return model_value.get("model_name") or model_value.get("name")
+            # 尝试转换为字符串
+            return str(model_value)
+
         default_model = unified_config.get_default_model()
-        if default_model:
-            os.environ["TRADINGAGENTS_DEFAULT_MODEL"] = default_model
-            logger.info(f"  ✓ 桥接默认模型: {default_model}")
+        default_model_str = _ensure_model_str(default_model)
+        if default_model_str:
+            os.environ["TRADINGAGENTS_DEFAULT_MODEL"] = default_model_str
+            logger.info(f"  ✓ 桥接默认模型: {default_model_str}")
             bridged_count += 1
+        elif default_model is not None:
+            logger.warning(
+                f"  ⚠️  默认模型配置格式错误: {type(default_model).__name__}, 值: {default_model}"
+            )
 
         quick_model = unified_config.get_quick_analysis_model()
-        if quick_model:
-            os.environ["TRADINGAGENTS_QUICK_MODEL"] = quick_model
-            logger.info(f"  ✓ 桥接快速分析模型: {quick_model}")
+        quick_model_str = _ensure_model_str(quick_model)
+        if quick_model_str:
+            os.environ["TRADINGAGENTS_QUICK_MODEL"] = quick_model_str
+            logger.info(f"  ✓ 桥接快速分析模型: {quick_model_str}")
             bridged_count += 1
+        elif quick_model is not None:
+            logger.warning(
+                f"  ⚠️  快速分析模型配置格式错误: {type(quick_model).__name__}, 值: {quick_model}"
+            )
 
         deep_model = unified_config.get_deep_analysis_model()
-        if deep_model:
-            os.environ["TRADINGAGENTS_DEEP_MODEL"] = deep_model
-            logger.info(f"  ✓ 桥接深度分析模型: {deep_model}")
+        deep_model_str = _ensure_model_str(deep_model)
+        if deep_model_str:
+            os.environ["TRADINGAGENTS_DEEP_MODEL"] = deep_model_str
+            logger.info(f"  ✓ 桥接深度分析模型: {deep_model_str}")
             bridged_count += 1
+        elif deep_model is not None:
+            logger.warning(
+                f"  ⚠️  深度分析模型配置格式错误: {type(deep_model).__name__}, 值: {deep_model}"
+            )
 
         # 3. 桥接数据源配置（基础 API 密钥）
         # 🔧 [优先级] .env 文件 > 数据库配置

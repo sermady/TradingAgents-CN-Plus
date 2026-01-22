@@ -259,15 +259,15 @@
 
         <el-table-column prop="close" label="当前价格" width="100" align="right">
           <template #default="{ row }">
-            <span v-if="row.close">¥{{ row.close?.toFixed(2) }}</span>
+            <span v-if="typeof row.close === 'number' && Number.isFinite(row.close)">¥{{ row.close.toFixed(2) }}</span>
             <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
 
         <el-table-column prop="pct_chg" label="涨跌幅" width="100" align="right">
           <template #default="{ row }">
-            <span v-if="row.pct_chg !== null && row.pct_chg !== undefined" :class="getChangeClass(row.pct_chg)">
-              {{ row.pct_chg > 0 ? '+' : '' }}{{ row.pct_chg?.toFixed(2) }}%
+            <span v-if="typeof row.pct_chg === 'number' && Number.isFinite(row.pct_chg)" :class="getChangeClass(row.pct_chg)">
+              {{ row.pct_chg > 0 ? '+' : '' }}{{ row.pct_chg.toFixed(2) }}%
             </span>
             <span v-else class="text-gray-400">-</span>
           </template>
@@ -281,8 +281,8 @@
 
         <el-table-column prop="pe" label="市盈率" width="130" align="right">
           <template #default="{ row }">
-            <span v-if="row.pe">
-              {{ row.pe?.toFixed(2) }}
+            <span v-if="typeof row.pe === 'number' && Number.isFinite(row.pe)">
+              {{ row.pe.toFixed(2) }}
               <el-tag v-if="row.pe_is_realtime" type="success" size="small" style="margin-left: 4px">实时</el-tag>
             </span>
             <span v-else class="text-gray-400">-</span>
@@ -291,8 +291,8 @@
 
         <el-table-column prop="pb" label="市净率" width="130" align="right">
           <template #default="{ row }">
-            <span v-if="row.pb">
-              {{ row.pb?.toFixed(2) }}
+            <span v-if="typeof row.pb === 'number' && Number.isFinite(row.pb)">
+              {{ row.pb.toFixed(2) }}
               <el-tag v-if="row.pe_is_realtime" type="success" size="small" style="margin-left: 4px">实时</el-tag>
             </span>
             <span v-else class="text-gray-400">-</span>
@@ -300,7 +300,7 @@
         </el-table-column>
         <el-table-column prop="roe" label="ROE(%)" width="110" align="right">
           <template #default="{ row }">
-            <span v-if="row.roe !== null && row.roe !== undefined">{{ row.roe?.toFixed(2) }}%</span>
+            <span v-if="typeof row.roe === 'number' && Number.isFinite(row.roe)">{{ row.roe.toFixed(2) }}%</span>
             <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
@@ -687,11 +687,11 @@ const getChangeClass = (changePercent: number) => {
 }
 
 const formatMarketCap = (marketCap: number) => {
-  if (marketCap >= 10000) {
-    return `${(marketCap / 10000).toFixed(2)}万亿`
-  } else {
-    return `${marketCap.toFixed(2)}亿`
-  }
+  if (typeof marketCap !== 'number' || !Number.isFinite(marketCap)) return '-'
+  if (marketCap >= 1e12) return (marketCap / 1e12).toFixed(2) + '万亿'
+  if (marketCap >= 1e8) return (marketCap / 1e8).toFixed(2) + '亿'
+  if (marketCap >= 1e4) return (marketCap / 1e4).toFixed(2) + '万'
+  return marketCap.toFixed(0)
 }
 
 const handleSizeChange = (size: number) => {

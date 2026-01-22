@@ -185,9 +185,9 @@ class TushareProvider(BaseStockDataProvider):
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
 
-                    # 🔥 根据 tushareReadme.txt 要求，设置必要的属性
+                    # 🔥 使用官方 API 地址
                     self.api._DataApi__token = env_token
-                    self.api._DataApi__http_url = "https://jiaoch.site"
+                    self.api._DataApi__http_url = "http://api.tushare.pro"
                     self.logger.info(
                         "✅ [步骤4] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
                     )
@@ -252,9 +252,9 @@ class TushareProvider(BaseStockDataProvider):
                     ts.set_token(db_token)
                     self.api = ts.pro_api()
 
-                    # 🔥 根据 tushareReadme.txt 要求，设置必要的属性
+                    # 🔥 使用官方 API 地址
                     self.api._DataApi__token = db_token
-                    self.api._DataApi__http_url = "https://jiaoch.site"
+                    self.api._DataApi__http_url = "http://api.tushare.pro"
                     self.logger.info(
                         "✅ [步骤3] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
                     )
@@ -296,11 +296,11 @@ class TushareProvider(BaseStockDataProvider):
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
 
-                    # 🔥 根据 tushareReadme.txt 要求，设置必要的属性
-                    self.api._DataApi__token = env_token
-                    self.api._DataApi__http_url = "https://jiaoch.site"
+                    # 🔥 使用官方 API 地址
+                    self.api._DataApi__token = db_token
+                    self.api._DataApi__http_url = "http://api.tushare.pro"
                     self.logger.info(
-                        "✅ 已设置 _DataApi__token 和 _DataApi__http_url 属性"
+                        "✅ [步骤1] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
                     )
 
                     # 测试连接（异步）- 使用超时

@@ -1170,14 +1170,11 @@ const getChangeClass = (changePercent: number) => {
 
 const formatPrice = (value: any): string => {
   const n = Number(value)
-  return Number.isFinite(n) ? n.toFixed(2) : '-'
+  return typeof n === 'number' && Number.isFinite(n) ? n.toFixed(2) : '-'
 }
-
-const formatPercent = (value: any): string => {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  const sign = n > 0 ? '+' : ''
-  return `${sign}${n.toFixed(2)}%`
+const formatPercent = (n: any) => {
+  const num = typeof n === 'number' && Number.isFinite(n) ? n : 0
+  return `${sign}${num.toFixed(2)}%`
 }
 
 const formatDate = (dateStr: string) => {

@@ -75,7 +75,7 @@
           <div class="item">
             <span>振幅</span>
             <b>
-              {{ Number.isFinite(quote.amplitude) ? quote.amplitude.toFixed(2) + '%' : '-' }}
+              {{ typeof quote.amplitude === 'number' && Number.isFinite(quote.amplitude) ? quote.amplitude.toFixed(2) + '%' : '-' }}
               <el-tooltip v-if="quote.amplitudeDate && !isToday(quote.amplitudeDate)" :content="`数据日期: ${quote.amplitudeDate}`" placement="top">
                 <el-tag size="small" type="warning" style="margin-left: 4px;">{{ formatDateTag(quote.amplitudeDate) }}</el-tag>
               </el-tooltip>
@@ -250,18 +250,18 @@
             <div class="fact">
               <span>PE(TTM)</span>
               <b>
-                {{ Number.isFinite(basics.pe) ? basics.pe.toFixed(2) : '-' }}
+                {{ typeof basics.pe === 'number' && Number.isFinite(basics.pe) ? basics.pe.toFixed(2) : '-' }}
                 <el-tag v-if="basics.peIsRealtime" type="success" size="small" style="margin-left: 4px">实时</el-tag>
               </b>
             </div>
             <div class="fact">
               <span>PB(市净率)</span>
               <b>
-                {{ Number.isFinite(basics.pb) ? basics.pb.toFixed(2) : '-' }}
+                {{ typeof basics.pb === 'number' && Number.isFinite(basics.pb) ? basics.pb.toFixed(2) : '-' }}
                 <el-tag v-if="basics.peIsRealtime" type="success" size="small" style="margin-left: 4px">实时</el-tag>
               </b>
             </div>
-            <div class="fact"><span>PS(TTM)</span><b>{{ Number.isFinite(basics.ps) ? basics.ps.toFixed(2) : '-' }}</b></div>
+            <div class="fact"><span>PS(TTM)</span><b>                {{ typeof basics.ps === 'number' && Number.isFinite(basics.ps) ? basics.ps.toFixed(2) : '-' }}</b></div>
             <div class="fact"><span>ROE</span><b>{{ fmtPercent(basics.roe) }}</b></div>
             <div class="fact"><span>负债率</span><b>{{ fmtPercent(basics.debtRatio) }}</b></div>
           </div>
@@ -645,7 +645,8 @@ async function fetchQuote() {
 
   try {
     const res = await stocksApi.getQuote(code.value)
-    const d: any = (res as any)?.data || {}
+    // ApiClient interceptor 已经 unwrap 了 response.data，这里 res 就是 ApiResponse 本身
+    const d: any = (res as any)?.data || (res as any) || {}
     // 后端为 snake_case，前端状态为 camelCase，这里进行映射
     quote.price = Number(d.price ?? d.close ?? quote.price)
     quote.changePercent = Number(d.change_percent ?? quote.changePercent)
@@ -977,16 +978,26 @@ async function fetchLatestAnalysis() {
 }
 
 // 格式化
-function fmtPrice(v: any) { const n = Number(v); return Number.isFinite(n) ? n.toFixed(2) : '-' }
-function fmtPercent(v: any) { const n = Number(v); return Number.isFinite(n) ? `${n>0?'+':''}${n.toFixed(2)}%` : '-' }
-function fmtVolume(v: any) {
-  const n = Number(v)
-  if (!Number.isFinite(n)) return '-'
-
-  // 🔥 数据库存储的是"股"，直接显示为"万股"或"亿股"
-  if (n >= 1e8) return (n/1e8).toFixed(2) + '亿股'
-  if (n >= 1e4) return (n/1e4).toFixed(2) + '万股'
-  return n.toFixed(0) + '股'
+function fmtPrice(v: any) { 
+  if (typeof v !== 'number') return '-'
+  return Number.isFinite(v) ? v.toFixed(2) : '-' 
+}
+function fmtPercent(v: any) { 
+  if (typeof v !== 'number') return '-'
+  return Number.isFinite(v) ? `${v>0?'+':''}${v.toFixed(2)}%` : '-' 
+}
+function fmtVolume(v: any) { 
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '-'
+  if (v >= 1e8) return (v/1e8).toFixed(2) + '亿股'
+  if (v >= 1e4) return (v/1e4).toFixed(2) + '万股'
+  return v.toFixed(0) + '股'
+}
+function fmtMoney(v: any) { 
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '-'
+  if (v >= 1e12) return (v/1e12).toFixed(2) + '万亿'
+  if (v >= 1e8) return (v/1e8).toFixed(2) + '亿'
+  if (v >= 1e4) return (v/1e4).toFixed(2) + '万'
+  return v.toFixed(0)
 }
 function fmtAmount(v: any) {
   const n = Number(v)

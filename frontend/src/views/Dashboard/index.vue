@@ -205,7 +205,7 @@
                   class="change-percent"
                   :class="getPriceChangeClass(stock.change_percent)"
                 >
-                  {{ stock.change_percent > 0 ? '+' : '' }}{{ Number(stock.change_percent).toFixed(2) }}%
+                  {{ stock.change_percent > 0 ? '+' : '' }}{{ typeof stock.change_percent === 'number' && Number.isFinite(stock.change_percent) ? stock.change_percent.toFixed(2) : '0.00' }}%
                 </div>
               </div>
             </div>
@@ -492,8 +492,8 @@ const loadFavoriteStocks = async () => {
       favoriteStocks.value = response.data.map((item: any) => ({
         stock_code: item.stock_code,
         stock_name: item.stock_name,
-        current_price: item.current_price || 0,
-        change_percent: item.change_percent || 0
+        current_price: typeof item.current_price === 'number' ? item.current_price : 0,
+        change_percent: typeof item.change_percent === 'number' ? item.change_percent : 0
       }))
     }
   } catch (error) {
@@ -555,8 +555,9 @@ const loadMarketNews = async () => {
 const loadPaperAccount = async () => {
   try {
     const response = await paperApi.getAccount()
-    if (response.success && response.data) {
-      paperAccount.value = response.data.account
+    // ApiClient interceptor 已经 unwrap 了 response.data，这里直接检查 response
+    if ((response as any)?.success && (response as any)?.data?.account) {
+      paperAccount.value = (response as any).data.account
     }
   } catch (error) {
     console.error('加载模拟交易账户失败:', error)
@@ -571,6 +572,9 @@ const goToPaperTrading = () => {
 
 // 格式化金额
 const formatMoney = (value: number) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '0.00'
+  }
   return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
