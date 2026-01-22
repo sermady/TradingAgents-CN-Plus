@@ -53,14 +53,14 @@ export const useAppStore = defineStore('app', {
     currentRoute: null,
 
     preferences: useStorage('user-preferences', {
-      defaultMarket: 'A股',
-      defaultDepth: '3',  // 3级为标准分析（推荐）
+      defaultMarket: 'A股' as const,
+      defaultDepth: '3' as const,
       autoRefresh: true,
       refreshInterval: 30,
       showWelcome: true
     }).value || {
-      defaultMarket: 'A股',
-      defaultDepth: '3',  // 3级为标准分析（推荐）
+      defaultMarket: 'A股' as const,
+      defaultDepth: '3' as const,
       autoRefresh: true,
       refreshInterval: 30,
       showWelcome: true
@@ -184,8 +184,8 @@ export const useAppStore = defineStore('app', {
     // 重置偏好设置
     resetPreferences() {
       this.preferences = {
-        defaultMarket: 'A股',
-        defaultDepth: '标准',
+        defaultMarket: 'A股' as const,
+        defaultDepth: '3' as const,
         autoRefresh: true,
         refreshInterval: 30,
         showWelcome: true

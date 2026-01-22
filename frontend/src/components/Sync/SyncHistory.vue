@@ -199,8 +199,8 @@ const refreshHistory = async () => {
 }
 
 // 获取状态类型
-const getStatusType = (status: string) => {
-  const typeMap: Record<string, string> = {
+const getStatusType = (status: string): 'success' | 'warning' | 'info' | 'danger' | 'primary' => {
+  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'primary'> = {
     idle: 'info',
     running: 'warning',
     success: 'success',

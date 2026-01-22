@@ -407,11 +407,12 @@ export const useAuthStore = defineStore('auth', {
     },
 
     // 修改密码
-    async changePassword(oldPassword: string, newPassword: string) {
+    async changePassword(oldPassword: string, newPassword: string, confirmPassword: string) {
       try {
         const response = await authApi.changePassword({
           old_password: oldPassword,
-          new_password: newPassword
+          new_password: newPassword,
+          confirm_password: confirmPassword
         })
 
         if (response.success) {

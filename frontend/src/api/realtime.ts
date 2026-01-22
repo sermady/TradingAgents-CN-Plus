@@ -4,7 +4,7 @@
  * 提供股票实时行情数据和市场状态查询功能
  */
 
-import { ApiClient, ApiResponse } from './request'
+import { ApiClient, type ApiResponse } from './request'
 
 // 实时行情数据接口
 export interface RealtimeQuote {
