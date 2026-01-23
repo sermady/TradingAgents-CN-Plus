@@ -73,23 +73,23 @@ class ModelCapabilityService:
         Returns:
             (能力等级, 映射的原模型名) 元组
         """
-        # 1. 先尝试直接匹配
-        if model_name in DEFAULT_MODEL_CAPABILITIES:
-            return DEFAULT_MODEL_CAPABILITIES[model_name]["capability_level"], None
-
-        # 2. 尝试解析聚合渠道模型名
-        provider, original_model = self._parse_aggregator_model_name(model_name)
-
-        if original_model and original_model != model_name:
-            # 尝试用原模型名查找
-            if original_model in DEFAULT_MODEL_CAPABILITIES:
-                logger.info(f"🔄 聚合渠道模型映射: {model_name} -> {original_model}")
-                return DEFAULT_MODEL_CAPABILITIES[original_model][
-                    "capability_level"
-                ], original_model
-
-        # 3. 返回默认值
-        return 2, None
+            # 从默认映射表读取（直接匹配字典中的配置）
+            if model_name in DEFAULT_MODEL_CAPABILITIES:
+                logger.info(f"✅ 从默认映射找到模型 {model_name} 的配置")
+                default_config = DEFAULT_MODEL_CAPABILITIES[model_name]
+                return default_config["capability_level"], None
+            
+            # 4. 尝试解析聚合渠道模型名
+            provider, original_model = self._parse_aggregator_model_name(model_name)
+            if original_model and original_model != model_name:
+                # 尝试用原模型名查找
+                if original_model in DEFAULT_MODEL_CAPABILITIES:
+                    logger.info(f"🔄 聚合渠道模型映射: {model_name} -> {original_model}")
+                    return DEFAULT_MODEL_CAPABILITIES[original_model]["capability_level"], original_model
+            
+            # 5. 返回默认值
+            logger.warning(f"未找到模型 {model_name} 的配置，使用默认能力等级 2")
+            return 2, None
 
     def get_model_capability(self, model_name: str) -> int:
         """
