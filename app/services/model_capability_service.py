@@ -163,10 +163,10 @@ class ModelCapabilityService:
                         if not roles_enum:
                             roles_enum = [ModelRole.BOTH]
 
-                        logger.info(
-                            f"📊 [MongoDB配置] {model_name}: features={features_enum}, roles={roles_enum}"
+                logger.info(
+                            f"📊 [MongoDB配置] {model_name}: features={features_enum}, roles={roles_enum}, enabled={is_enabled}"
                         )
-
+                        
                         return {
                             "model_name": config_dict.get("model_name"),
                             "capability_level": config_dict.get("capability_level", 2),
@@ -178,6 +178,7 @@ class ModelCapabilityService:
                             "performance_metrics": config_dict.get(
                                 "performance_metrics", None
                             ),
+                            "enabled": is_enabled,  # 添加 enabled 属性
                         }
 
             logger.warning(f"未从 MongoDB 找到模型 {model_name} 的配置，尝试其他方法")
