@@ -1228,60 +1228,10 @@ async def get_user_analysis_history(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# WebSocket 端点
-@router.websocket("/ws/task/{task_id}")
-async def websocket_task_progress(
-    websocket: WebSocket, task_id: str, token: str = Query(...)
-):
-    """WebSocket 端点：实时获取任务进度
-
-    客户端连接: ws://localhost:8000/api/ws/task/<task_id>?token=<jwt_token>
-    """
-    import json
-    from app.services.auth_service import AuthService
-
-    # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        logger.warning(f"⚠️ [WS-Task] Token验证失败: task={task_id}")
-        await websocket.close(code=1008, reason="Unauthorized")
-        return
-
-    websocket_manager = get_websocket_manager()
-
-    try:
-        await websocket_manager.connect(websocket, task_id)
-
-        # 发送连接确认消息
-        await websocket.send_text(
-            json.dumps(
-                {
-                    "type": "connection_established",
-                    "task_id": task_id,
-                    "message": "WebSocket 连接已建立",
-                }
-            )
-        )
-
-        # 保持连接活跃
-        while True:
-            try:
-                # 接收客户端的心跳消息
-                data = await websocket.receive_text()
-                # 可以处理客户端发送的消息
-                logger.debug(f"📡 收到 WebSocket 消息: {data}")
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.warning(f"⚠️ WebSocket 消息处理错误: {e}")
-                break
-
-    except WebSocketDisconnect:
-        logger.info(f"🔌 WebSocket 客户端断开连接: {task_id}")
-    except Exception as e:
-        logger.error(f"❌ WebSocket 连接错误: {e}")
-    finally:
-        await websocket_manager.disconnect(websocket, task_id)
+# WebSocket 端点已迁移到 app/routers/websocket_notifications.py
+# 新端点路径: /api/ws/task/{task_id}
+# 迁移日期: 2026-01-23
+# 迁移原因: 统一 WebSocket 命名空间，修复前端路由不匹配问题
 
 
 # 任务详情查询路由（放在最后避免与 /tasks/{task_id}/status 冲突）

@@ -8,7 +8,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger("app.config_bridge")
 

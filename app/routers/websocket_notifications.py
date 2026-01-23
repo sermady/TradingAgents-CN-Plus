@@ -307,6 +307,78 @@ async def get_websocket_stats():
     return manager.get_stats()
 
 
+@router.websocket("/ws/task/{task_id}")
+async def websocket_task_progress_endpoint_v2(
+    websocket: WebSocket, task_id: str, token: str = Query(...)
+):
+    """
+    WebSocket 任务进度端点 (统一命名空间版本)
+
+    客户端连接: ws://localhost:8000/api/ws/task/<task_id>?token=<jwt_token>
+
+    消息格式:
+    {
+        "type": "progress",  // 消息类型: progress, completed, error, heartbeat
+        "data": {
+            "task_id": "...",
+            "message": "正在分析...",
+            "step": 1,
+            "total_steps": 5,
+            "progress": 20.0,
+            "timestamp": "2025-10-23T12:00:00"
+        }
+    }
+    """
+    # 验证 token
+    token_data = AuthService.verify_token(token)
+    if not token_data:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
+    user_id = token_data.sub
+
+    # 连接 WebSocket
+    await websocket.accept()
+    logger.info(f"✅ [WS-Task] 新连接: task={task_id}, user={user_id}")
+
+    # 发送连接确认
+    await websocket.send_json(
+        {
+            "type": "connection_established",
+            "data": {
+                "task_id": task_id,
+                "user_id": user_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "message": "WebSocket 连接已建立",
+            },
+        }
+    )
+
+    try:
+        # 保持连接活跃
+        while True:
+            try:
+                # 接收客户端的心跳消息
+                data = await websocket.receive_text()
+                # 可以处理客户端发送的消息
+                logger.debug(
+                    f"📡 [WS-Task] 收到客户端消息: task={task_id}, data={data}"
+                )
+            except WebSocketDisconnect:
+                logger.info(f"🔌 [WS-Task] 客户端主动断开: task={task_id}")
+                break
+            except Exception as e:
+                logger.warning(f"⚠️ [WS-Task] 消息处理错误: {e}")
+                break
+
+    except WebSocketDisconnect:
+        logger.info(f"🔌 [WS-Task] 客户端断开连接: task={task_id}")
+    except Exception as e:
+        logger.error(f"❌ [WS-Task] 连接错误: {e}")
+    finally:
+        logger.info(f"🔌 [WS-Task] 断开连接: task={task_id}")
+
+
 # 🔥 辅助函数：供其他模块调用，发送通知
 async def send_notification_via_websocket(user_id: str, notification: dict):
     """
