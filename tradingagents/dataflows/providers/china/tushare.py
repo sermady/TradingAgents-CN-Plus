@@ -185,11 +185,11 @@ class TushareProvider(BaseStockDataProvider):
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
 
-                    # 🔥 使用官方 API 地址
+                    # 🔥 使用官方 API 地址 (强制 HTTPS)
                     self.api._DataApi__token = env_token
-                    self.api._DataApi__http_url = "http://api.tushare.pro"
+                    self.api._DataApi__http_url = "https://api.tushare.pro"
                     self.logger.info(
-                        "✅ [步骤4] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
+                        "✅ [步骤4] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
                     )
 
                     # 测试连接 - 直接调用同步方法（不使用 asyncio.run）
@@ -202,7 +202,20 @@ class TushareProvider(BaseStockDataProvider):
                             f"✅ [步骤4.1] API 调用成功，返回数据: {len(test_data) if test_data is not None else 0} 条"
                         )
                     except Exception as e:
-                        self.logger.error(f"❌ [步骤4.1] .env Token 测试失败: {e}")
+                        self.logger.error(f"❌ [步骤4.1] .env Token 测试异常: {e}")
+                        return False
+
+                    if test_data is not None and not test_data.empty:
+                        self.connected = True
+                        self.token_source = "env"
+                        self.logger.info(
+                            f"✅ [步骤4.2] Tushare连接成功 (Token来源: .env 环境变量)"
+                        )
+                        return True
+                    else:
+                        self.logger.error(
+                            f"❌ [步骤4.2] .env Token 测试失败: API返回空数据。请检查Token是否正确: {env_token[:10]}***"
+                        )
                         return False
 
                     if test_data is not None and not test_data.empty:
@@ -254,9 +267,9 @@ class TushareProvider(BaseStockDataProvider):
 
                     # 🔥 使用官方 API 地址
                     self.api._DataApi__token = db_token
-                    self.api._DataApi__http_url = "http://api.tushare.pro"
+                    self.api._DataApi__http_url = "https://api.tushare.pro"
                     self.logger.info(
-                        "✅ [步骤3] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
+                        "✅ [步骤3] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
                     )
 
                     # 测试连接 - 直接调用同步方法（不使用 asyncio.run）
@@ -264,7 +277,8 @@ class TushareProvider(BaseStockDataProvider):
                         self.logger.info(
                             "🔄 [步骤3.1] 调用 stock_basic API 测试连接..."
                         )
-                        test_data = self.api.stock_basic(list_status="L", limit=1)
+                        # 🔥 移除 limit=1，防止偶然空数据
+                        test_data = self.api.stock_basic(list_status="L", limit=5)
                         self.logger.info(
                             f"✅ [步骤3.1] API 调用成功，返回数据: {len(test_data) if test_data is not None else 0} 条"
                         )
@@ -280,39 +294,79 @@ class TushareProvider(BaseStockDataProvider):
                         return True
                     else:
                         self.logger.warning(
-                            "⚠️ 数据库 Token 测试失败，尝试降级到 .env 配置..."
+                            "⚠️ [步骤3.2] 数据库 Token 测试失败 (返回空数据)，尝试降级到 .env 配置..."
                         )
                 except Exception as e:
                     self.logger.warning(
-                        f"⚠️ 数据库 Token 连接失败: {e}，尝试降级到 .env 配置..."
+                        f"⚠️ [步骤3] 数据库 Token 连接失败: {e}，尝试降级到 .env 配置..."
                     )
 
             # 降级到环境变量 Token
             if env_token:
                 try:
                     self.logger.info(
-                        f"🔄 尝试使用 .env 中的 Tushare Token (超时: {test_timeout}秒)..."
+                        f"🔄 [步骤4] 尝试使用 .env 中的 Tushare Token (超时: {test_timeout}秒)..."
                     )
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
 
                     # 🔥 使用官方 API 地址
-                    self.api._DataApi__token = db_token
-                    self.api._DataApi__http_url = "http://api.tushare.pro"
+                    self.api._DataApi__token = env_token
+                    self.api._DataApi__http_url = "https://api.tushare.pro"
                     self.logger.info(
-                        "✅ [步骤1] 已设置 _DataApi__token 和 _DataApi__http_url 属性"
+                        "✅ [步骤4] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
                     )
 
-                    # 测试连接（异步）- 使用超时
-                    try:
-                        test_data = await asyncio.wait_for(
-                            asyncio.to_thread(
-                                self.api.stock_basic, list_status="L", limit=1
-                            ),
-                            timeout=test_timeout,
+                    # 测试连接（异步）- 使用超时和重试机制
+                    retry_count = 0
+                    while retry_count < max_retries:
+                        try:
+                            self.logger.info(
+                                f"🔄 [步骤4.1] 调用 stock_basic API 测试连接... (尝试 {retry_count + 1}/{max_retries})"
+                            )
+                            # 🔥 移除 limit=1，使用 limit=5 防止偶然空数据
+                            test_data = await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    self.api.stock_basic, list_status="L", limit=5
+                                ),
+                                timeout=test_timeout,
+                            )
+                            self.logger.info(
+                                f"✅ [步骤4.1] API 调用成功，返回数据: {len(test_data) if test_data is not None else 0} 条"
+                            )
+                            # 成功，退出重试循环
+                            break
+                        except asyncio.TimeoutError:
+                            retry_count += 1
+                            self.logger.warning(
+                                f"⚠️ [步骤4.1] .env Token 测试超时 ({test_timeout}秒)，重试 {retry_count}/{max_retries}..."
+                            )
+                            if retry_count >= max_retries:
+                                self.logger.error(
+                                    f"❌ [步骤4.1] .env Token 测试超时 ({test_timeout}秒)，已达最大重试次数"
+                                )
+                                return False
+                        except Exception as e:
+                            retry_count += 1
+                            self.logger.warning(
+                                f"⚠️ [步骤4.1] .env Token 测试异常 (尝试 {retry_count}/{max_retries}): {e}"
+                            )
+                            if retry_count >= max_retries:
+                                self.logger.error(
+                                    f"❌ [步骤4.1] .env Token 测试异常: {e}"
+                                )
+                                return False
+
+                    if test_data is not None and not test_data.empty:
+                        self.connected = True
+                        self.logger.info(
+                            f"✅ [步骤4.2] Tushare连接成功 (Token来源: .env 环境变量)"
                         )
-                    except asyncio.TimeoutError:
-                        self.logger.error(f"❌ .env Token 测试超时 ({test_timeout}秒)")
+                        return True
+                    else:
+                        self.logger.error(
+                            f"❌ [步骤4.2] .env Token 测试失败: API返回空数据"
+                        )
                         return False
 
                     if test_data is not None and not test_data.empty:
@@ -1017,8 +1071,8 @@ class TushareProvider(BaseStockDataProvider):
                     self.logger.debug(f"从 {source} 获取新闻失败: {e}")
                     continue
 
-                # API限流
-                await asyncio.sleep(0.2)
+                # API限流 (已由上层调用者控制)
+                # await asyncio.sleep(0.2)
 
             # 去重和排序
             if all_news:
@@ -1343,8 +1397,8 @@ class TushareProvider(BaseStockDataProvider):
                 if period_data:
                     financial_data_list.append(period_data)
 
-                # API限流
-                await asyncio.sleep(0.1)
+                # API限流 (已由上层调用者控制)
+                # await asyncio.sleep(0.1)
 
             self.logger.info(
                 f"✅ {ts_code} 按期间获取财务数据完成: {len(financial_data_list)} 个报告期"

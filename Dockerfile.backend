@@ -16,42 +16,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 创建必需的目录并安装系统依赖
-# - curl: 健康检查
-# - pandoc: 从 GitHub 下载最新版本（避免 Debian 仓库问题）
-# - wkhtmltopdf: 从官方下载（用于 PDF 生成）
-# - 中文字体: 用于 PDF 中文显示
+# 优化：回归官方源但增加重试，直接使用apt安装所有依赖
 RUN mkdir -p /app/logs /app/data /app/config && \
     # 配置 apt 重试和超时
-    echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::http::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::https::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries && \
-    # 更新软件源，允许失败后继续
-    (apt-get update || apt-get update || apt-get update) && \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries && \
+    echo 'Acquire::http::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries && \
+    echo 'Acquire::https::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries && \
+    # 更新软件源 (允许失败重试)
+    (apt-get update || apt-get update) && \
+    # 安装基础工具
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        wget \
         fontconfig \
         fonts-noto-cjk \
-        wget \
         xvfb && \
-    # 根据架构设置变量
-    if [ "$TARGETARCH" = "arm64" ]; then \
-        PANDOC_ARCH="arm64"; \
-        WKHTMLTOPDF_ARCH="arm64"; \
-    else \
-        PANDOC_ARCH="amd64"; \
-        WKHTMLTOPDF_ARCH="amd64"; \
-    fi && \
-    # 下载并安装 pandoc
-    wget -q https://github.com/jgm/pandoc/releases/download/3.8.2.1/pandoc-3.8.2.1-1-${PANDOC_ARCH}.deb && \
-    dpkg -i pandoc-3.8.2.1-1-${PANDOC_ARCH}.deb && \
-    rm pandoc-3.8.2.1-1-${PANDOC_ARCH}.deb && \
-    # 下载并安装 wkhtmltopdf
-    wget -q https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_${WKHTMLTOPDF_ARCH}.deb && \
-    apt-get install -y --no-install-recommends \
-        ./wkhtmltox_0.12.6.1-3.bookworm_${WKHTMLTOPDF_ARCH}.deb && \
-    rm wkhtmltox_0.12.6.1-3.bookworm_${WKHTMLTOPDF_ARCH}.deb && \
-    # 更新字体缓存
+    # 尝试安装 pandoc 和 wkhtmltopdf (如果失败则跳过，不阻断构建)
+    (apt-get install -y --no-install-recommends pandoc wkhtmltopdf || echo "⚠️ Warning: Failed to install PDF tools, skipping...") && \
+    # 清理缓存
     fc-cache -fv && \
     rm -rf /var/lib/apt/lists/*
 

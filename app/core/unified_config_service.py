@@ -537,6 +537,131 @@ class UnifiedConfigManager:
             logger.error(f"❌ 保存系统设置失败: {e}")
             return False
 
+    def save_llm_config(self, llm_config: Any) -> bool:
+        """
+        保存LLM配置到MongoDB（向后兼容方法）
+
+        Args:
+            llm_config: LLM配置（字典或LLMConfig对象）
+
+        Returns:
+            是否保存成功
+        """
+        try:
+            # 转换为字典格式（兼容LLMConfig对象和字典）
+            if hasattr(llm_config, "model_name"):
+                # LLMConfig 对象
+                config_dict = {
+                    "model_name": getattr(llm_config, "model_name", None),
+                    "model_display_name": getattr(
+                        llm_config, "model_display_name", None
+                    ),
+                    "provider": getattr(llm_config, "provider", None),
+                    "api_key": getattr(llm_config, "api_key", None),
+                    "api_base": getattr(llm_config, "api_base", None),
+                    "max_tokens": getattr(llm_config, "max_tokens", 4000),
+                    "temperature": getattr(llm_config, "temperature", 0.7),
+                    "timeout": getattr(llm_config, "timeout", 180),
+                    "retry_times": getattr(llm_config, "retry_times", 3),
+                    "enabled": getattr(llm_config, "enabled", True),
+                    "description": getattr(llm_config, "description", None),
+                    "enable_memory": getattr(llm_config, "enable_memory", False),
+                    "enable_debug": getattr(llm_config, "enable_debug", False),
+                    "priority": getattr(llm_config, "priority", 0),
+                    "model_category": getattr(llm_config, "model_category", None),
+                    "input_price_per_1k": getattr(
+                        llm_config, "input_price_per_1k", None
+                    ),
+                    "output_price_per_1k": getattr(
+                        llm_config, "output_price_per_1k", None
+                    ),
+                    "currency": getattr(llm_config, "currency", "CNY"),
+                    "capability_level": getattr(llm_config, "capability_level", 2),
+                    "suitable_roles": getattr(llm_config, "suitable_roles", ["both"]),
+                    "features": getattr(llm_config, "features", []),
+                    "recommended_depths": getattr(
+                        llm_config, "recommended_depths", ["快速", "基础", "标准"]
+                    ),
+                    "performance_metrics": getattr(
+                        llm_config, "performance_metrics", None
+                    ),
+                }
+            else:
+                # 已经是字典
+                config_dict = llm_config
+
+            model_name = (
+                config_dict.get("model_name") if isinstance(config_dict, dict) else None
+            )
+            if not model_name:
+                logger.error("❌ LLM配置缺少model_name字段")
+                return False
+
+            # 获取MongoDB连接
+            db = get_mongo_db_sync()
+            if db is None:
+                logger.error("❌ MongoDB连接失败，无法保存LLM配置")
+                return False
+
+            # 获取或创建系统配置文档
+            collection = db.system_configs
+            doc = collection.find_one({"is_active": True}, sort=[("version", -1)])
+
+            if not doc:
+                # 创建新的配置文档
+                doc = {
+                    "version": 1,
+                    "is_active": True,
+                    "llm_configs": [],
+                    "data_source_configs": [],
+                    "system_settings": {},
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+            # 更新或添加LLM配置
+            llm_configs = doc.get("llm_configs", [])
+
+            # 查找是否已存在相同模型名的配置
+            existing_index = None
+            for i, config in enumerate(llm_configs):
+                config_model_name = (
+                    config.get("model_name")
+                    if isinstance(config, dict)
+                    else getattr(config, "model_name", None)
+                )
+                if config_model_name == model_name:
+                    existing_index = i
+                    break
+
+            if existing_index is not None:
+                # 更新现有配置
+                llm_configs[existing_index] = config_dict
+                logger.info(f"🔄 更新LLM配置: {model_name}")
+            else:
+                # 添加新配置
+                llm_configs.append(config_dict)
+                logger.info(f"➕ 添加LLM配置: {model_name}")
+
+            doc["llm_configs"] = llm_configs
+            doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            # 保存到MongoDB
+            if "_id" in doc:
+                collection.replace_one({"_id": doc["_id"]}, doc)
+            else:
+                collection.insert_one(doc)
+
+            # 清除缓存
+            self._db_config_cache = None
+
+            logger.info(f"✅ LLM配置已保存到MongoDB: {model_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 保存LLM配置失败: {e}")
+            return False
+
     # ==================== 缓存管理 ====================
 
     def clear_cache(self, pattern: Optional[str] = None):

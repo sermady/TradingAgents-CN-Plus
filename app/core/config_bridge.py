@@ -147,8 +147,25 @@ def bridge_config_to_env():
             if isinstance(model_value, str):
                 return model_value
             if isinstance(model_value, dict):
-                # 如果是字典，尝试提取 model_name 字段
-                return model_value.get("model_name") or model_value.get("name")
+                # 如果是字典，尝试从多个可能的字段名中提取模型名称
+                # 支持多种字段名以适应不同的配置结构
+                for key in [
+                    "model_name",
+                    "name",
+                    "deep_think_llm",
+                    "quick_think_llm",
+                    "default_model",
+                ]:
+                    if key in model_value:
+                        value = model_value[key]
+                        # 如果值本身就是字符串，直接返回
+                        if isinstance(value, str):
+                            return value
+                        # 如果值是对象（如LLMConfig），提取model_name
+                        elif hasattr(value, "model_name"):
+                            return value.model_name
+                # 如果所有尝试都失败，返回None
+                return None
             # 尝试转换为字符串
             return str(model_value)
 

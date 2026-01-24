@@ -285,6 +285,18 @@ async def lifespan(app: FastAPI):
 
     await init_db()
 
+    # 初始化聚合渠道厂家配置（302.AI、OpenRouter等）
+    try:
+        from app.services.config_service import config_service
+
+        result = await config_service.init_aggregator_providers()
+        logger.info(
+            f"✅ 聚合渠道厂家初始化完成: 添加={result.get('added', 0)}, 跳过={result.get('skipped', 0)}, 更新={result.get('updated', 0)}"
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ 聚合渠道厂家初始化失败: {e}")
+        logger.warning("⚠️ 聚合渠道功能可能不可用")
+
     #  配置桥接：将统一配置写入环境变量，供 TradingAgents 核心库使用
     try:
         from app.core.config_bridge import bridge_config_to_env

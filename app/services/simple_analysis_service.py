@@ -1198,6 +1198,9 @@ class SimpleAnalysisService:
         progress_tracker: Optional[RedisProgressTracker] = None,
     ) -> Dict[str, Any]:
         """同步执行分析的具体实现"""
+        # ✅ 关键修复：在线程池中显式导入datetime，确保在任何日志操作前可用
+        from datetime import datetime
+
         try:
             # 在线程中重新初始化日志系统
             from tradingagents.utils.logging_init import init_logging, get_logger
@@ -2587,7 +2590,7 @@ class SimpleAnalysisService:
 
             # 2) 清理 MongoDB 中的僵尸任务
             db = get_mongo_db()
-            from datetime import timedelta
+            from datetime import datetime, timedelta
 
             cutoff_time = datetime.utcnow() - timedelta(hours=max_running_hours)
 
@@ -2650,7 +2653,7 @@ class SimpleAnalysisService:
         """
         try:
             db = get_mongo_db()
-            from datetime import timedelta
+            from datetime import datetime, timedelta
 
             cutoff_time = datetime.utcnow() - timedelta(hours=max_running_hours)
 

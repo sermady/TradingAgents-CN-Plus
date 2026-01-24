@@ -14,8 +14,11 @@ RUN corepack enable && corepack prepare yarn@1.22.22 --activate
 COPY frontend/package.json frontend/yarn.lock frontend/.yarnrc ./
 
 # 安装依赖（使用yarn.lock确保版本一致）
-# 增加网络超时时间到5分钟，适应跨平台构建的网络延迟
-RUN yarn install --frozen-lockfile --production=false --network-timeout 300000
+# 优化：强制使用淘宝镜像源，增加重试机制，防止网络超时
+RUN yarn config set registry https://registry.npmmirror.com && \
+    (yarn install --frozen-lockfile --production=false --network-timeout 300000 || \
+     yarn install --frozen-lockfile --production=false --network-timeout 300000 || \
+     yarn install --frozen-lockfile --production=false --network-timeout 300000)
 
 # 复制前端源代码
 COPY frontend/. ./
