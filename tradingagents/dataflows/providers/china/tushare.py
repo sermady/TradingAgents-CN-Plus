@@ -1488,6 +1488,9 @@ class TushareProvider(BaseStockDataProvider):
         ts_code = raw_data.get("ts_code", "")
         symbol = ts_code.split(".")[0] if "." in ts_code else ts_code
 
+        # 🔧 统一处理 volume/vol 字段，支持多种数据源格式
+        raw_volume = raw_data.get("volume") or raw_data.get("vol")
+
         return {
             # 基础字段
             "code": symbol,
@@ -1506,9 +1509,8 @@ class TushareProvider(BaseStockDataProvider):
             "pct_chg": self._convert_to_float(raw_data.get("pct_chg")),
             # 成交数据
             # 🔥 成交量单位转换：Tushare 返回的是手，需要转换为股
-            "volume": self._convert_to_float(raw_data.get("vol")) * 100
-            if raw_data.get("vol")
-            else None,
+            # 🔧 统一处理 volume/vol 字段
+            "volume": self._convert_to_float(raw_volume) * 100 if raw_volume else None,
             # 🔥 成交额单位转换：Tushare daily 接口返回的是千元，需要转换为元
             "amount": self._convert_to_float(raw_data.get("amount")) * 1000
             if raw_data.get("amount")
@@ -1595,8 +1597,20 @@ class TushareProvider(BaseStockDataProvider):
 
     def _standardize_historical_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """标准化历史数据"""
-        # 重命名列
-        column_mapping = {"trade_date": "date", "vol": "volume"}
+        # 🔧 统一列名映射，与 AKShare 保持一致
+        column_mapping = {
+            "trade_date": "date",
+            "vol": "volume",
+            "open": "open",
+            "close": "close",
+            "high": "high",
+            "low": "low",
+            "amount": "amount",
+            "pre_close": "pre_close",
+            "change": "change",
+            "pct_chg": "pct_chg",
+            "turnover_rate": "turnover_rate",
+        }
         df = df.rename(columns=column_mapping)
 
         # 格式化日期
