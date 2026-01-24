@@ -62,7 +62,7 @@ class TradingDateManager:
 
         # 确定目标日期
         if requested_date:
-            target_date = datetime.strptime(requested_date, '%Y-%m-%d')
+            target_date = datetime.strptime(requested_date, "%Y-%m-%d")
         else:
             target_date = now
 
@@ -71,7 +71,7 @@ class TradingDateManager:
         while target_date.weekday() >= 5:  # 5=周六, 6=周日
             target_date = target_date - timedelta(days=1)
 
-        latest_trading_date = target_date.strftime('%Y-%m-%d')
+        latest_trading_date = target_date.strftime("%Y-%m-%d")
 
         # 更新缓存
         self._cached_date = latest_trading_date
@@ -79,6 +79,61 @@ class TradingDateManager:
 
         logger.info(f"📅 [交易日管理器] 确定最新交易日: {latest_trading_date}")
         return latest_trading_date
+
+    def get_trading_date_range(
+        self, target_date=None, lookback_days: int = 10
+    ) -> tuple:
+        """
+        获取用于查询交易数据的日期范围
+
+        策略：获取最近N天的数据，以确保能获取到最后一个交易日的数据
+        自动调整周末日期到最近的交易日，处理周末、节假日和数据延迟的情况
+
+        使用统一的交易日管理器，确保所有分析师使用相同的日期基准
+
+        Args:
+            target_date: 目标日期（datetime对象或字符串YYYY-MM-DD），默认为今天
+            lookback_days: 向前查找的天数，默认10天（可以覆盖周末+小长假）
+
+        Returns:
+            tuple: (start_date, end_date) 两个字符串，格式YYYY-MM-DD
+
+        Example:
+            >>> mgr.get_trading_date_range("2025-10-13", 10)
+            ("2025-10-03", "2025-10-13")
+
+            >>> mgr.get_trading_date_range("2025-10-12", 10)  # 周日
+            ("2025-10-02", "2025-10-10")  # 自动调整到周五
+        """
+        from datetime import datetime as dt
+
+        # 处理输入日期
+        if target_date is None:
+            target_date = dt.now()
+        elif isinstance(target_date, str):
+            target_date = dt.strptime(target_date, "%Y-%m-%d")
+
+        # 如果是未来日期，使用今天
+        today = dt.now()
+        if target_date.date() > today.date():
+            target_date = today
+
+        # 🔧 调整：使用统一的交易日管理器处理周末
+        # 调用 get_latest_trading_date 获取有效交易日（带缓存）
+        if target_date.weekday() >= 5:  # 5=周六, 6=周日
+            # 使用交易日管理器调整到最近的工作日
+            adjusted_date_str = self.get_latest_trading_date(
+                target_date.strftime("%Y-%m-%d")
+            )
+            target_date = dt.strptime(adjusted_date_str, "%Y-%m-%d")
+            logger.info(
+                f"📅 [交易日管理器] target_date={adjusted_date_str} (原始是周末，已调整为最近交易日)"
+            )
+
+        # 计算开始日期（向前推N天）
+        start_date = target_date - timedelta(days=lookback_days)
+
+        return start_date.strftime("%Y-%m-%d"), target_date.strftime("%Y-%m-%d")
 
     def clear_cache(self):
         """清除缓存"""
@@ -89,6 +144,7 @@ class TradingDateManager:
 
 # 全局访问函数
 _trading_date_manager_instance = None
+
 
 def get_trading_date_manager() -> TradingDateManager:
     """获取交易日管理器实例"""

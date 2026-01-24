@@ -1429,10 +1429,14 @@ class SimpleAnalysisService:
                 logger.info(f"📅 使用当前日期作为分析日期: {analysis_date}")
 
             # 🔧 智能日期范围处理：获取最近10天的数据，自动处理周末/节假日
+            # 🔧 统一使用交易日管理器，确保所有分析师使用相同的日期基准
             # 这样可以确保即使是周末或节假日，也能获取到最后一个交易日的数据
-            from tradingagents.utils.dataflow_utils import get_trading_date_range
+            from tradingagents.utils.trading_date_manager import (
+                get_trading_date_manager,
+            )
 
-            data_start_date, data_end_date = get_trading_date_range(
+            date_mgr = get_trading_date_manager()
+            data_start_date, data_end_date = date_mgr.get_trading_date_range(
                 analysis_date, lookback_days=10
             )
 
