@@ -288,6 +288,178 @@ class DataConsistencyChecker:
             }
         )
 
+
+    def validate_volume_consistency(
+        self,
+        volume_value: float,
+        price: float,
+        expected_amount: float = None,
+        tolerance_pct: float = 0.15
+    ) -> Tuple[bool, str, Dict]:
+        """
+        验证成交量数据的合理性
+        
+        由于不同数据源可能使用不同的成交量单位（手 vs 股），
+        需要验证数据是否在合理范围内
+        
+        Args:
+            volume_value: 成交量（可能是股或手）
+            price: 收盘价
+            expected_amount: 预期成交额（如果有）
+            tolerance_pct: 允许差异百分比
+        
+        Returns:
+            Tuple[bool, str, Dict]: (是否合理, 错误信息, 诊断信息)
+        """
+        try:
+            diagnostic = {
+                "input_volume": volume_value,
+                "price": price,
+                "input_unit": "unknown"
+            }
+            
+            # A股单日成交额通常在 1000万 - 100亿 之间
+            MIN_AMOUNT = 10_000_000  # 1000万
+            MAX_AMOUNT = 10_000_000_000  # 100亿
+            
+            # 情况1：成交量单位是"手"（1手=100股）
+            volume_as_hand = volume_value
+            volume_in_shares = volume_as_hand * 100
+            calculated_amount_hand = volume_in_shares * price
+            diagnostic["volume_as_hand"] = volume_as_hand
+            diagnostic["volume_in_shares"] = volume_in_shares
+            diagnostic["calculated_amount_hand"] = calculated_amount_hand
+            
+            # 情况2：成交量单位已经是"股"
+            volume_as_share = volume_value
+            calculated_amount_share = volume_as_share * price
+            diagnostic["volume_as_share"] = volume_as_share
+            diagnostic["calculated_amount_share"] = calculated_amount_share
+            
+            # 判断哪个假设更合理
+            hand_is_reasonable = MIN_AMOUNT <= calculated_amount_hand <= MAX_AMOUNT
+            share_is_reasonable = MIN_AMOUNT <= calculated_amount_share <= MAX_AMOUNT
+            
+            if hand_is_reasonable and not share_is_reasonable:
+                diagnostic["input_unit"] = "hand"
+                diagnostic["corrected_volume"] = volume_in_shares
+                diagnostic["corrected_amount"] = calculated_amount_hand
+                if expected_amount:
+                    diff_pct = abs(calculated_amount_hand - expected_amount) / expected_amount
+                    diagnostic["amount_difference_pct"] = diff_pct
+                    is_consistent = diff_pct <= tolerance_pct
+                    return is_consistent, "", diagnostic
+                return True, "", diagnostic
+                
+            elif share_is_reasonable and not hand_is_reasonable:
+                diagnostic["input_unit"] = "share"
+                diagnostic["corrected_volume"] = volume_as_share
+                diagnostic["corrected_amount"] = calculated_amount_share
+                if expected_amount:
+                    diff_pct = abs(calculated_amount_share - expected_amount) / expected_amount
+                    diagnostic["amount_difference_pct"] = diff_pct
+                    is_consistent = diff_pct <= tolerance_pct
+                    return is_consistent, "", diagnostic
+                return True, "", diagnostic
+                
+            elif hand_is_reasonable and share_is_reasonable:
+                if expected_amount:
+                    hand_diff = abs(calculated_amount_hand - expected_amount)
+                    share_diff = abs(calculated_amount_share - expected_amount)
+                    if hand_diff < share_diff:
+                        diagnostic["input_unit"] = "hand (closer to expected)"
+                        diagnostic["corrected_volume"] = volume_in_shares
+                        return True, "", diagnostic
+                    else:
+                        diagnostic["input_unit"] = "share (closer to expected)"
+                        diagnostic["corrected_volume"] = volume_as_share
+                        return True, "", diagnostic
+                diagnostic["input_unit"] = "share (default)"
+                diagnostic["corrected_volume"] = volume_as_share
+                return True, "", diagnostic
+                
+            else:
+                error_msg = f"成交量数据异常: volume={volume_value}, price={price}"
+                diagnostic["input_unit"] = "invalid"
+                return False, error_msg, diagnostic
+                
+        except Exception as e:
+            return False, f"成交量验证失败: {e}", {}
+
+    def validate_pe_calculation(
+        self,
+        symbol: str,
+        reported_pe: float,
+        current_price: float,
+        total_shares: float,
+        net_profit: float,
+        profit_period: str = "TTM"
+    ) -> Tuple[bool, str, Dict]:
+        """
+        验证PE计算是否正确
+        
+        Args:
+            symbol: 股票代码
+            reported_pe: 报告中的PE值
+            current_price: 当前股价
+            total_shares: 总股本（股）
+            net_profit: 净利润（元）
+            profit_period: 净利润期间
+        
+        Returns:
+            Tuple[bool, str, Dict]: (是否正确, 错误信息, 诊断信息)
+        """
+        try:
+            diagnostic = {
+                "symbol": symbol,
+                "reported_pe": reported_pe,
+                "current_price": current_price,
+                "total_shares": total_shares,
+                "net_profit": net_profit,
+                "profit_period": profit_period
+            }
+            
+            # 计算EPS（每股收益）
+            if total_shares <= 0:
+                return False, f"总股本无效: {total_shares}", diagnostic
+            
+            eps = net_profit / total_shares
+            diagnostic["calculated_eps"] = eps
+            
+            if eps <= 0:
+                return False, f"EPS计算结果无效（净利润可能为负或零）: eps={eps}", diagnostic
+            
+            # 计算PE
+            calculated_pe = current_price / eps
+            diagnostic["calculated_pe"] = calculated_pe
+            
+            # 对比
+            pe_diff = abs(calculated_pe - reported_pe)
+            pe_diff_pct = pe_diff / reported_pe if reported_pe > 0 else float('inf')
+            diagnostic["pe_difference"] = pe_diff
+            diagnostic["pe_difference_pct"] = pe_diff_pct
+            
+            # 判断是否在合理误差范围内（5%）
+            is_correct = pe_diff_pct <= 0.05
+            
+            if is_correct:
+                return True, "", diagnostic
+            else:
+                error_msg = (
+                    f"PE计算异常: symbol={symbol}\n"
+                    f"  报告PE: {reported_pe}\n"
+                    f"  计算PE: {calculated_pe:.2f}\n"
+                    f"  差异: {pe_diff_pct*100:.1f}%\n"
+                    f"  可能原因:\n"
+                    f"    - 净利润期间不匹配（报告用{profit_period}，但计算用不同期间）\n"
+                    f"    - 总股本数据过时（有增发/回购）\n"
+                    f"    - 数据源返回的PE计算公式不同"
+                )
+                return False, error_msg, diagnostic
+                
+        except Exception as e:
+            return False, f"PE验证失败: {e}", {}
+
     def resolve_data_conflicts(
         self, 
         primary_data: pd.DataFrame,
