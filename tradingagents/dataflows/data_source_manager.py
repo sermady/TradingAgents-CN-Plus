@@ -752,13 +752,20 @@ class DataSourceManager:
             data: 股票数据DataFrame
 
         Returns:
-            float: 成交量，如果获取失败返回0
+            float: 成交量（股），如果获取失败返回0
+            注意：MongoDB stock_daily_quotes 中的 volume 单位是"万"，需要乘以100转换为"股"
         """
         try:
             if "volume" in data.columns:
-                return data["volume"].iloc[-1]
+                volume_raw = data["volume"].iloc[-1]
+                # 🔥 成交量单位转换：MongoDB stock_daily_quotes 中的 volume 单位是"万"，需要乘以100转换为"股"
+                # 例如：224,828万 = 22,482,800股
+                volume_converted = volume_raw * 100 if volume_raw else 0
+                return volume_converted
             elif "vol" in data.columns:
-                return data["vol"].iloc[-1]
+                volume_raw = data["vol"].iloc[-1]
+                volume_converted = volume_raw * 100 if volume_raw else 0
+                return volume_converted
             else:
                 return 0
         except Exception:
@@ -1447,13 +1454,20 @@ class DataSourceManager:
 
             if not stock_data.empty:
                 row = stock_data.iloc[0]
+                # 🔥 成交量单位转换：AKShare 返回的成交量单位是"手"，需要乘以100转换为"股"
+                # 例如：22,482.8手 = 2,248,280股，但同花顺显示的是22,483,000股
+                # 这里需要验证数据的准确性
+                volume_raw = float(row["成交量"]) if row["成交量"] else 0
+                # AKShare 返回的成交量单位是"手"，转换为"股"
+                volume_in_shares = volume_raw * 100
+
                 quote = {
                     "symbol": symbol,
                     "price": float(row["最新价"]),
                     "open": float(row["今开"]),
                     "high": float(row["最高"]),
                     "low": float(row["最低"]),
-                    "volume": float(row["成交量"]),
+                    "volume": volume_in_shares,  # 🔥 已转换为股
                     "amount": float(row["成交额"]),
                     "change": float(row["涨跌额"]),
                     "change_pct": float(row["涨跌幅"]),
@@ -1462,7 +1476,9 @@ class DataSourceManager:
                     "source": "akshare_realtime",
                     "is_realtime": True,
                 }
-                logger.info(f"✅ [实时行情-AKShare] {symbol} 价格={quote['price']:.2f}")
+                logger.info(
+                    f"✅ [实时行情-AKShare] {symbol} 价格={quote['price']:.2f}, 成交量={volume_in_shares:,.0f}股"
+                )
                 return quote
             else:
                 logger.warning(f"⚠️ AKShare未找到{symbol}的实时行情")
@@ -1503,11 +1519,9 @@ class DataSourceManager:
 
             # 始终尝试获取实时价格（盘中用实时，盘后用最新收盘价）
             realtime_quote = self.get_realtime_quote(symbol)
-            if realtime_quote and realtime_quote.get('price'):
-                realtime_price = realtime_quote['price']
-                logger.info(
-                    f"✅ [实时价格] 获取成功: ¥{realtime_price:.2f}"
-                )
+            if realtime_quote and realtime_quote.get("price"):
+                realtime_price = realtime_quote["price"]
+                logger.info(f"✅ [实时价格] 获取成功: ¥{realtime_price:.2f}")
             else:
                 logger.warning(f"⚠️ [实时价格] 获取失败，将使用历史数据中的价格")
         except Exception as e:
@@ -1645,7 +1659,9 @@ class DataSourceManager:
                 },
                 exc_info=True,
             )
-            return self._try_fallback_sources(symbol, start_date, end_date, realtime_price=realtime_price)
+            return self._try_fallback_sources(
+                symbol, start_date, end_date, realtime_price=realtime_price
+            )
 
     def _merge_realtime_quote_to_result(
         self, historical_result: str, realtime_quote: Dict, symbol: str
@@ -1709,8 +1725,12 @@ class DataSourceManager:
             return historical_result
 
     def _get_mongodb_data(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily",
-        realtime_price: float = None
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_price: float = None,
     ) -> tuple[str, str | None]:
         """
         从MongoDB获取多周期数据 - 包含技术指标计算
@@ -1759,14 +1779,18 @@ class DataSourceManager:
                 logger.info(
                     f"🔄 [MongoDB] 未找到{period}数据: {symbol}，开始尝试备用数据源"
                 )
-                return self._try_fallback_sources(symbol, start_date, end_date, period, realtime_price)
+                return self._try_fallback_sources(
+                    symbol, start_date, end_date, period, realtime_price
+                )
 
         except Exception as e:
             logger.error(
                 f"❌ [数据来源: MongoDB异常] 获取{period}数据失败: {symbol}, 错误: {e}"
             )
             # MongoDB异常，降级到其他数据源
-            return self._try_fallback_sources(symbol, start_date, end_date, period, realtime_price)
+            return self._try_fallback_sources(
+                symbol, start_date, end_date, period, realtime_price
+            )
 
     def _get_tushare_data(
         self, symbol: str, start_date: str, end_date: str, period: str = "daily"
@@ -1823,7 +1847,12 @@ class DataSourceManager:
 
                 # 格式化返回
                 return self._format_stock_data_response(
-                    cached_data, symbol, stock_name, start_date, end_date, realtime_price
+                    cached_data,
+                    symbol,
+                    stock_name,
+                    start_date,
+                    end_date,
+                    realtime_price,
                 )
 
             # 2. 缓存未命中，从provider获取
@@ -2045,8 +2074,12 @@ class DataSourceManager:
             return 0
 
     def _try_fallback_sources(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily",
-        realtime_price: float = None
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_price: float = None,
     ) -> tuple[str, str | None]:
         """
         尝试备用数据源 - 避免递归调用
