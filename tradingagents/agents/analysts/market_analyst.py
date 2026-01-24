@@ -336,13 +336,16 @@ def create_market_analyst(llm, toolkit):
 
                         if forced_data_str and len(forced_data_str) > 100:
                             logger.info(
-                                f"📊 [市场分析师] ✅ 强制获取市场数据成功: {len(forced_data_str)} 字符")
+                                f"📊 [市场分析师] ✅ 强制获取市场数据成功: {len(forced_data_str)} 字符"
+                            )
 
                         # ========== 数据验证开始 ==========
                         try:
-                            from tradingagents.utils.validation import validate_market_data
+                            from tradingagents.utils.validation import (
+                                validate_market_data,
+                            )
                             import json
-                            
+
                             market_data = {}
                             if isinstance(forced_data, dict):
                                 market_data = forced_data
@@ -351,25 +354,30 @@ def create_market_analyst(llm, toolkit):
                                     market_data = json.loads(forced_data)
                                 except:
                                     pass
-                            
+
                             if market_data:
                                 validation_report = validate_market_data(market_data)
-                                
-                                if validation_report.get('alerts'):
-                                    logger.warning(f"[数据验证] 发现关键告警: {validation_report['alerts']}")
-                                    
-                                if validation_report.get('issues'):
-                                    logger.error(f"[数据验证] 数据质量问题: {validation_report['issues']}")
-                                    
-                                if validation_report['overall_status'] == 'pass':
+
+                                if validation_report.get("alerts"):
+                                    logger.warning(
+                                        f"[数据验证] 发现关键告警: {validation_report['alerts']}"
+                                    )
+
+                                if validation_report.get("issues"):
+                                    logger.error(
+                                        f"[数据验证] 数据质量问题: {validation_report['issues']}"
+                                    )
+
+                                if validation_report["overall_status"] == "pass":
                                     logger.info(f"[数据验证] 数据验证通过")
                                 else:
-                                    logger.warning(f"[数据验证] 数据状态: {validation_report['overall_status']}")
-                                    
+                                    logger.warning(
+                                        f"[数据验证] 数据状态: {validation_report['overall_status']}"
+                                    )
+
                         except Exception as e:
                             logger.debug(f"[数据验证] 验证过程跳过: {e}")
-                        # ========== 数据验证结束 ==========
-                            )
+                            # ========== 数据验证结束 ==========
 
                             # 基于真实数据重新生成分析
                             forced_prompt = f"""

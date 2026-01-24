@@ -141,7 +141,7 @@ services:
       - "6379:6379"
     environment:
       TZ: "Asia/Shanghai"
-    command: redis-server --appendonly yes --requirepass tradingagents123
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
