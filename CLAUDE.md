@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TradingAgents-CN is a Chinese-enhanced multi-agent LLM financial trading decision framework. It provides complete A股/HK/美股 analysis capabilities with full Chinese localization. The project uses a FastAPI + Vue 3 architecture with MongoDB + Redis dual-database support.
 
+**注意**: 请使用中文回答用户的所有问题和交流。
+
 ### Core Technology Stack
 
 **Backend (FastAPI)**:
@@ -73,6 +75,10 @@ npm run dev
 # Frontend (build for production)
 cd frontend
 npm run build
+
+# Frontend (preview production build)
+cd frontend
+npm run preview
 ```
 
 ### Data Import
@@ -175,6 +181,12 @@ The core analysis logic uses LangGraph to orchestrate multiple specialized agent
    - Research Manager: Coordinates analysis workflow
    - Risk Manager: Manages risk assessment
 
+**Agent Tools** (`tradingagents/agents/utils/agent_utils.py`):
+- LangChain `@tool` decorator for function calling
+- Available tools: `get_reddit_news`, `get_finnhub_news`, `get_economic_calendar`, etc.
+- Tool logging via `log_tool_call` decorator
+- Google tool handler for Gemini function calling
+
 ### Data Flow Architecture
 
 **Data Source Management**:
@@ -190,11 +202,32 @@ Priority 2: Baostock (free, stable)
 Priority 3: AkShare (fallback option)
 ```
 
+**Data Source Adapters** (`app/services/data_sources/`):
+- `manager.py`: `DataSourceManager` - unified data source interface
+- `tushare_adapter.py`: Tushare adapter with permission detection
+- `akshare_adapter.py`: AKShare adapter supporting multiple APIs (eastmoney, sina)
+- Real-time quotes with automatic fallback
+- Historical data with multi-source support
+
 **Caching System**:
 - MongoDB cache for persistent storage
 - Redis cache for high-performance access
 - File-based cache as fallback
 - Adaptive cache selection based on availability
+
+**Real-time Quotes System**:
+- `app/services/quotes_ingestion_service.py`: Real-time quotes ingestion and backfill
+- `app/services/quotes_service.py`: Quotes query and management
+- `market_quotes` collection: MongoDB storage for real-time market data
+- Auto-detects Tushare permission (free vs premium users)
+- Rotation strategy: Tushare → AKShare Eastmoney → AKShare Sina
+- Trading hours: 9:30-15:30 (with 30min post-close buffer)
+- Auto-backfill from historical data on startup
+
+**Price Cache System**:
+- `tradingagents/utils/price_cache.py`: Unified price caching for analysts
+- Ensures price consistency across all analysts in a report
+- 5-minute TTL with automatic expiration
 
 ### LLM Adapter System
 
@@ -228,6 +261,20 @@ Priority 3: AkShare (fallback option)
 - `app/schemas/`: Request/response schemas
 - `app/middleware/`: Custom middleware (auth, logging, rate limiting)
 
+**Key API Routes** (`app/routers/`):
+- `analysis.py`: Stock analysis endpoints
+- `auth_db.py`: Authentication endpoints
+- `stocks.py`: Stock data queries
+- `screening.py`: Stock screening
+- `favorites.py`: User favorites
+- `reports.py`: Analysis reports
+- `queue.py`: Task queue management (legacy, use `/tasks`)
+- `sse.py`: Server-Sent Events for real-time updates
+- `notifications.py`: Notification management
+- `scheduler.py`: Scheduled task management
+- `config.py`: Runtime configuration
+- `health.py`: Health check endpoint
+
 **Key Services**:
 - Analysis Service: Multi-agent analysis orchestration
 - Database Service: MongoDB operations
@@ -249,10 +296,28 @@ Priority 3: AkShare (fallback option)
 **Key Modules**:
 - `api/`: HTTP API clients (auto-generated types)
 - `components/`: Reusable Vue components
-- `stores/`: Pinia state management
+- `stores/`: Pinia state management (`app.ts`, `auth.ts`, `notifications.ts`)
 - `types/`: TypeScript type definitions
 - `utils/`: Utility functions
-- `router/`: Vue Router configuration
+- `router/`: Vue Router configuration with NProgress
+
+**Key Features**:
+- Authentication with JWT tokens
+- Real-time notifications via SSE
+- Analysis progress tracking
+- Multi-language support (Chinese optimized)
+- Responsive design with Element Plus
+
+**Main Routes**:
+- `/dashboard`: Dashboard home
+- `/analysis`: Single/Batch analysis
+- `/screening`: Stock screening
+- `/favorites`: User favorites
+- `/tasks`: Task center (previously `/queue`)
+- `/reports`: Analysis reports
+- `/settings`: System settings
+- `/learning`: Learning center (public)
+- `/about`: About page (public)
 
 ## File Creation Rules
 
@@ -316,10 +381,41 @@ text = response.text
 ## Key Configuration
 
 ### Environment Variables (.env)
-- LLM API keys (DASHSCOPE_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY, etc.)
-- Data source keys (FINNHUB_API_KEY, TUSHARE_TOKEN)
-- Database configuration (MongoDB, Redis)
-- Cache settings
+
+**Database Configuration**:
+- `MONGODB_HOST`, `MONGODB_PORT`, `MONGODB_DATABASE`
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`
+
+**LLM API Keys**:
+- `DASHSCOPE_API_KEY`: Alibaba DashScope (Qwen models)
+- `GOOGLE_API_KEY`: Google AI (Gemini models)
+- `DEEPSEEK_API_KEY`: DeepSeek models
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`: OpenAI/Anthropic models
+
+**Data Source Keys**:
+- `TUSHARE_TOKEN`: Tushare data source (required for A股 data)
+- `FINNHUB_API_KEY`: FinnHub for US stocks
+
+**Server Configuration**:
+- `HOST`, `PORT`, `DEBUG`: Server host, port, debug mode
+- `ALLOWED_ORIGINS`: CORS allowed origins
+
+**Quotes Ingestion**:
+- `QUOTES_INGEST_ENABLED`: Enable real-time quotes ingestion
+- `QUOTES_INGEST_INTERVAL_SECONDS`: Collection interval (default: 360s/6min)
+- `QUOTES_ROTATION_ENABLED`: Enable API rotation (Tushare → AKShare)
+- `QUOTES_TUSHARE_HOURLY_LIMIT`: Tushare hourly call limit (default: 2)
+- `QUOTES_AUTO_DETECT_TUSHARE_PERMISSION`: Auto-detect Tushare permission level
+
+**Tushare Configuration**:
+- `TUSHARE_ENABLED`: Enable Tushare data source
+- `TUSHARE_TIER`: Account tier (free/basic/standard/premium/vip)
+- `TUSHARE_INIT_HISTORICAL_DAYS`: Initial historical data days (default: 365)
+- `TUSHARE_INIT_AUTO_START`: Auto-initialize data on startup
+
+**Proxy Configuration** (for accessing Chinese data sources):
+- `HTTP_PROXY`, `HTTPS_PROXY`: Proxy settings
+- `NO_PROXY`: Domains to bypass proxy (eastmoney.com, sina.com.cn, tushare.pro, etc.)
 
 ### Database Connection
 - **MongoDB**: Used for persistent storage (stock data, analysis reports, user data)
@@ -371,10 +467,17 @@ git commit -m "refactor: restructure data flow architecture"
 4. **Documentation**: Update relevant docs when changing code
 
 ### Testing Standards
+
+**pytest 配置** (`pytest.ini`):
+- 自动忽略 `tests/legacy/`, `tests/0.1.14/`, `scripts/test/` 目录
+- 支持 asyncio 自动模式 (`asyncio_mode = auto`)
+- 定义的测试标记: `unit`, `integration`, `slow`, `requires_auth`, `requires_db`
+
 1. **Test Directory Structure**:
    - `tests/unit/` - Unit tests (fast, no external dependencies)
    - `tests/integration/` - Integration tests (requires database/API)
    - `tests/legacy/` - Legacy test scripts (ignored by pytest, for reference only)
+   - `tests/debug/` - 临时调试脚本（调试完成后删除）
 
 2. **Test File Naming**:
    - Unit tests: `test_<feature>.py`
@@ -399,7 +502,7 @@ git commit -m "refactor: restructure data flow architecture"
    - Delete immediately after debugging is complete
    - Never commit temporary debug files to repository
 
-5. **Running Tests**:
+6. **Running Tests**:
    ```bash
    # Run all unit tests
    python -m pytest tests/unit/ -v
@@ -409,6 +512,12 @@ git commit -m "refactor: restructure data flow architecture"
 
    # Skip slow tests
    python -m pytest -m "not slow"
+
+   # Run only integration tests
+   python -m pytest -m integration
+
+   # Run with verbose output
+   python -m pytest -v --tb=short
    ```
 
 ### Data Source Development
