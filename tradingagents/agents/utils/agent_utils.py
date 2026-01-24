@@ -857,13 +857,26 @@ class Toolkit:
                 logger.info(f"🔍 [股票代码追踪] 进入A股处理分支，ticker: '{ticker}'")
                 logger.info(f"💡 [优化策略] 基本面分析只获取当前价格和财务数据，不获取历史日线数据")
 
+                # 🔧 FIX: 使用统一交易日管理器，确保与技术分析使用相同的数据日期
+                from tradingagents.utils.trading_date_manager import get_trading_date_manager
+                from tradingagents.utils.price_cache import get_price_cache
+
+                date_mgr = get_trading_date_manager()
+                trading_date = date_mgr.get_latest_trading_date(curr_date)
+
+                # 如果对齐后的日期不同，记录日志
+                if trading_date != curr_date:
+                    logger.info(f"📅 [基本面分析] 日期对齐: {curr_date} → {trading_date} (最新交易日)")
+
                 # 优化策略：基本面分析不需要大量历史日线数据
-                # 只获取当前股价信息（最近1-2天即可）和基本面财务数据
+                # 只获取当前股价信息（最近5天数据以确保包含交易日）和基本面财务数据
                 try:
-                    # 获取最新股价信息（只需要最近1-2天的数据）
+                    # 获取最新股价信息
                     from datetime import datetime, timedelta
-                    recent_end_date = curr_date
-                    recent_start_date = (datetime.strptime(curr_date, '%Y-%m-%d') - timedelta(days=2)).strftime('%Y-%m-%d')
+                    recent_end_date = trading_date
+                    recent_start_date = (datetime.strptime(trading_date, '%Y-%m-%d') - timedelta(days=5)).strftime('%Y-%m-%d')
+
+                    logger.info(f"📅 [基本面分析] 使用统一交易日: {trading_date}, 查询范围: {recent_start_date} 至 {recent_end_date}")
 
                     from tradingagents.dataflows.interface import get_china_stock_data_unified
                     logger.info(f"🔍 [股票代码追踪] 调用 get_china_stock_data_unified（仅获取最新价格），传入参数: ticker='{ticker}', start_date='{recent_start_date}', end_date='{recent_end_date}'")
@@ -1089,9 +1102,18 @@ class Toolkit:
                 # 中国A股：使用中国股票数据源
                 logger.info(f"🇨🇳 [统一市场工具] 处理A股市场数据...")
 
+                # 🔧 FIX: 使用统一交易日管理器，确保与基本面分析使用相同的数据日期
+                from tradingagents.utils.trading_date_manager import get_trading_date_manager
+                date_mgr = get_trading_date_manager()
+                aligned_end_date = date_mgr.get_latest_trading_date(end_date)
+
+                # 如果对齐后的日期不同，记录日志
+                if aligned_end_date != end_date:
+                    logger.info(f"📅 [技术分析] 日期对齐: {end_date} → {aligned_end_date} (最新交易日)")
+
                 try:
                     from tradingagents.dataflows.interface import get_china_stock_data_unified
-                    stock_data = get_china_stock_data_unified(ticker, start_date, end_date)
+                    stock_data = get_china_stock_data_unified(ticker, start_date, aligned_end_date)
 
                     # 🔍 调试：打印返回数据的前500字符
                     logger.info(f"🔍 [市场工具调试] A股数据返回长度: {len(stock_data)}")

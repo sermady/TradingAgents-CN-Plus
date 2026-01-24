@@ -186,6 +186,9 @@ class TechnicalIndicators:
 
         # 确保数据按日期排序
         if "date" in df.columns:
+            # 确保日期是datetime类型，以便正确排序
+            if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+                df["date"] = pd.to_datetime(df["date"])
             df = df.sort_values("date")
 
         # 计算所有指标

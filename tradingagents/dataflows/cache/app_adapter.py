@@ -97,9 +97,29 @@ def get_market_quote_dataframe(symbol: str) -> Optional[pd.DataFrame]:
                 pass
             return None
         # 构造 DataFrame，字段对齐 tushare 标准化映射
+        # 🔧 FIX: Convert trade_date to datetime
+        # MongoDB stores trade_date as YYYY-MM-DD string format
+        trade_date = doc.get("trade_date")
+        if trade_date:
+            # Try YYYY-MM-DD format first (MongoDB format)
+            if isinstance(trade_date, str) and len(trade_date) == 10 and trade_date[4] == '-':
+                date_obj = pd.to_datetime(trade_date, format="%Y-%m-%d", errors="coerce")
+                date_display = trade_date
+            # Try YYYYMMDD format (alternative format)
+            elif isinstance(trade_date, str) and len(str(trade_date)) == 8:
+                date_obj = pd.to_datetime(str(trade_date), format="%Y%m%d", errors="coerce")
+                date_display = date_obj.strftime("%Y-%m-%d") if pd.notna(date_obj) else trade_date
+            else:
+                date_obj = pd.to_datetime(trade_date, errors="coerce")
+                date_display = trade_date
+        else:
+            date_display = trade_date
+            date_obj = None
+
         row = {
             "code": code,
-            "date": doc.get("trade_date"),  # YYYYMMDD
+            "date": date_display,
+            "date_dt": date_obj,  # Add datetime column for proper sorting
             "open": doc.get("open"),
             "high": doc.get("high"),
             "low": doc.get("low"),

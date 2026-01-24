@@ -377,8 +377,28 @@ class OptimizedChinaDataProvider:
         except Exception as _qe:
             logger.debug(f"🔍 [股票代码追踪] 读取market_quotes失败（忽略）: {_qe}")
 
-        # 然后从股票数据中提取价格信息
-        if "股票名称:" in stock_data:
+        # 🔧 FIX: 优先使用统一价格缓存（确保与技术分析一致）
+        # 如果缓存中有价格数据，优先使用缓存价格
+        price_from_cache = False
+        try:
+            from tradingagents.utils.price_cache import get_price_cache
+            cache = get_price_cache()
+            cached_price_info = cache.get_price_info(symbol)
+
+            if cached_price_info is not None:
+                # 使用缓存价格
+                cached_price = cached_price_info['price']
+                current_price = f"¥{cached_price:.2f}"
+                currency = cached_price_info.get('currency', '¥')
+                timestamp = cached_price_info['timestamp']
+
+                logger.info(f"✅ [基本面报告] 使用统一价格缓存: {symbol} = {current_price} (时间戳: {timestamp})")
+                price_from_cache = True
+        except Exception as e:
+            logger.debug(f"🔍 [股票代码追踪] 读取统一价格缓存失败（将使用解析方式）: {e}")
+
+        # 然后从股票数据中提取价格信息（仅当缓存未命中时）
+        if not price_from_cache and "股票名称:" in stock_data:
             lines = stock_data.split('\n')
             for line in lines:
                 if "股票名称:" in line and company_name == "未知公司":
@@ -395,6 +415,17 @@ class OptimizedChinaDataProvider:
                     change_pct = line.split(':')[1].strip()
                 elif "成交量:" in line:
                     volume = line.split(':')[1].strip()
+
+            # 🔧 FIX: 如果从字符串解析成功，更新缓存以供后续使用
+            if current_price != "N/A":
+                try:
+                    from tradingagents.utils.price_cache import get_price_cache
+                    cache = get_price_cache()
+                    price_value = float(current_price.replace('¥', '').replace(',', '').strip())
+                    cache.update(symbol, price_value)
+                    logger.info(f"📝 [基本面报告] 从数据解析价格并更新缓存: {symbol} = ¥{price_value:.2f}")
+                except (ValueError, AttributeError) as e:
+                    logger.debug(f"🔍 [股票代码追踪] 价格解析失败（忽略）: {e}")
 
         # 尝试从股票数据表格中提取最新价格信息
         if current_price == "N/A" and stock_data:
@@ -413,8 +444,17 @@ class OptimizedChinaDataProvider:
                                         # 假设格式: 日期 股票代码 开盘 收盘 最高 最低 成交量 成交额...
                                         current_price = parts[3]  # 收盘价
                                         logger.debug(f"🔍 [股票代码追踪] 从数据表格提取到收盘价: {current_price}")
+
+                                        # 🔧 FIX: 从表格提取价格后更新缓存
+                                        from tradingagents.utils.price_cache import get_price_cache
+                                        cache = get_price_cache()
+                                        price_value = float(str(current_price).replace('¥', '').replace(',', '').strip())
+                                        cache.update(symbol, price_value)
+                                        logger.info(f"📝 [基本面报告] 从表格解析价格并更新缓存: {symbol} = ¥{price_value:.2f}")
+
                                         break
-                                    except (IndexError, ValueError):
+                                    except (IndexError, ValueError) as e:
+                                        logger.debug(f"🔍 [股票代码追踪] 解析表格数据行失败: {e}")
                                         continue
                         break
             except Exception as e:

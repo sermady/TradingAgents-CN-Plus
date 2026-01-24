@@ -5,61 +5,102 @@
 """
 
 import logging
-from datetime import datetime
-from typing import Optional
+import threading
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 
 class UnifiedPriceCache:
-    """统一价格缓存类"""
+    """统一价格缓存类 (单例模式)"""
+    
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(UnifiedPriceCache, cls).__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self):
-        """初始化缓存"""
-        self.price = None
-        self.currency = None  # 货币符号，如 ¥, $, HK$
-        self.timestamp = None
-        self.ttl_seconds = 300  # 缓存有效期：5分钟（300秒）
+        if self._initialized:
+            return
+        self._initialized = True
+        
+        # 缓存结构: {ticker: {'price': float, 'currency': str, 'timestamp': datetime}}
+        self.cache: Dict[str, Dict[str, Any]] = {}
+        self.ttl_seconds = 600  # 缓存有效期：10分钟 (延长以覆盖整个分析过程)
+        self.cache_lock = threading.Lock()
+        
+        logger.info("✅ [UnifiedPriceCache] 统一价格缓存已初始化")
 
-    def is_valid(self) -> bool:
-        """检查缓存是否有效"""
-        if not self.price or not self.timestamp:
-            return False
+    def get_price(self, ticker: str) -> Optional[float]:
+        """获取缓存的价格"""
+        with self.cache_lock:
+            if ticker in self.cache:
+                entry = self.cache[ticker]
+                if self._is_valid(entry):
+                    return entry['price']
+        return None
 
-        from datetime import datetime, timedelta
+    def get_price_info(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """获取完整的价格信息"""
+        with self.cache_lock:
+            if ticker in self.cache:
+                entry = self.cache[ticker]
+                if self._is_valid(entry):
+                    return entry.copy()
+        return None
 
-        cache_age = (datetime.now() - self.timestamp).total_seconds()
-        return cache_age < self.ttl_seconds
-
-    def is_expired(self) -> bool:
-        """检查缓存是否过期"""
-        return not self.is_valid()
-
-    def update(self, price: float, currency: str = "¥"):
+    def update(self, ticker: str, price: float, currency: str = "¥"):
         """
         更新缓存
-
+        
         Args:
+            ticker: 股票代码
             price: 价格数值
-            currency: 货币符号（默认为人民币）
+            currency: 货币符号
         """
-        self.price = price
-        self.currency = currency
-        self.timestamp = datetime.now()
-        logger.info(
-            f"✅ [价格缓存] 已更新: {currency}{price:.2f}, "
-            f"过期时间: {(self.timestamp + timedelta(seconds=self.ttl_seconds)).strftime('%H:%M:%S')}"
-        )
+        with self.cache_lock:
+            # 如果缓存已存在且非常新（例如10秒内），则不更新，避免微小波动
+            # 除非是强制更新（此处未实现强制参数）
+            if ticker in self.cache:
+                entry = self.cache[ticker]
+                age = (datetime.now() - entry['timestamp']).total_seconds()
+                if age < 10:  # 10秒内不重复更新
+                    return
 
-    def get_price_str(self) -> Optional[str]:
-        """获取格式化的价格字符串"""
-        if not self.price or not self.currency:
-            return None
-        return f"{self.currency}{self.price:.2f}"
+            self.cache[ticker] = {
+                'price': price,
+                'currency': currency,
+                'timestamp': datetime.now()
+            }
+            expire_time = (datetime.now() + timedelta(seconds=self.ttl_seconds)).strftime('%H:%M:%S')
+            logger.info(f"✅ [价格缓存] {ticker} 已更新: {currency}{price:.2f}, 过期: {expire_time}")
 
-    def clear(self):
+    def _is_valid(self, entry: Dict[str, Any]) -> bool:
+        """检查条目是否有效"""
+        if not entry or 'timestamp' not in entry:
+            return False
+        
+        age = (datetime.now() - entry['timestamp']).total_seconds()
+        return age < self.ttl_seconds
+
+    def clear(self, ticker: str = None):
         """清除缓存"""
-        self.price = None
-        self.currency = None
-        self.timestamp = None
-        logger.debug("🗑️ [价格缓存] 缓存已清除")
+        with self.cache_lock:
+            if ticker:
+                if ticker in self.cache:
+                    del self.cache[ticker]
+                    logger.debug(f"🗑️ [价格缓存] {ticker} 已清除")
+            else:
+                self.cache.clear()
+                logger.debug("🗑️ [价格缓存] 全部已清除")
+
+# 全局单例获取函数
+def get_price_cache() -> UnifiedPriceCache:
+    return UnifiedPriceCache()

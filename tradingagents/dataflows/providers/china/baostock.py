@@ -640,6 +640,10 @@ class BaoStockProvider(BaseStockDataProvider):
             df = pd.DataFrame(data_list, columns=fields)
 
             # 数据类型转换
+            # 首先转换日期列为datetime类型（必须在排序前）
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"])
+
             numeric_cols = [
                 "open",
                 "high",
