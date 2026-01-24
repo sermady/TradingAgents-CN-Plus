@@ -771,6 +771,7 @@ class DataSourceManager:
         stock_name: str,
         start_date: str,
         end_date: str,
+        realtime_price: float = None,  # 🆕 新增：实时价格
     ) -> str:
         """
         格式化股票数据响应（包含技术指标）
@@ -793,8 +794,50 @@ class DataSourceManager:
 
             # 🔧 计算技术指标（使用完整数据）
             # 确保数据按日期排序
+            # 🔧 FIX: Handle both 'date' and 'trade_date' columns
+            date_col = None
             if "date" in data.columns:
-                data = data.sort_values("date")
+                date_col = "date"
+            elif "trade_date" in data.columns:
+                date_col = "trade_date"
+                # Create 'date' column from 'trade_date' for consistency
+                # MongoDB stores trade_date as YYYY-MM-DD string format
+                if not pd.api.types.is_datetime64_any_dtype(data["trade_date"]):
+                    data["date"] = pd.to_datetime(
+                        data["trade_date"], format="%Y-%m-%d", errors="coerce"
+                    )
+                    date_col = "date"
+
+            if date_col:
+                if not pd.api.types.is_datetime64_any_dtype(data[date_col]):
+                    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+                data = data.sort_values(date_col)
+
+            # 🔥 统一价格缓存处理：在计算指标前修正数据
+            try:
+                from tradingagents.utils.price_cache import get_price_cache
+
+                cache = get_price_cache()
+                cached_price = cache.get_price(symbol)
+
+                if cached_price is not None and not data.empty:
+                    # 获取最后一行数据的原始价格
+                    last_idx = data.index[-1]
+                    original_price = data.at[last_idx, "close"]
+
+                    # 只有当差异存在时才修正
+                    if abs(original_price - cached_price) > 0.0001:
+                        logger.info(
+                            f"🔄 [价格统一] 修正DataFrame数据: {symbol} ¥{original_price:.2f} -> ¥{cached_price:.2f}"
+                        )
+                        data.at[last_idx, "close"] = cached_price
+                        # 同时修正 high/low 如果它们与 new close 冲突
+                        if cached_price > data.at[last_idx, "high"]:
+                            data.at[last_idx, "high"] = cached_price
+                        if cached_price < data.at[last_idx, "low"]:
+                            data.at[last_idx, "low"] = cached_price
+            except Exception as e:
+                logger.warning(f"⚠️ [价格统一] DataFrame修正失败: {e}")
 
             # 计算移动平均线
             data["ma5"] = data["close"].rolling(window=5, min_periods=1).mean()
@@ -877,12 +920,33 @@ class DataSourceManager:
             logger.info(f"🔍 [技术指标详情] ===== 数据详情结束 =====")
 
             # 计算最新价格和涨跌幅
-            latest_price = latest_data.get("close", 0)
+            # 🆕 优先使用实时价格
+            if realtime_price is not None and realtime_price > 0:
+                latest_price = realtime_price
+                price_source = "实时"
+                logger.info(f"✅ [价格策略] 使用实时价格: ¥{latest_price:.2f}")
+            else:
+                latest_price = latest_data.get("close", 0)
+                price_source = "历史"
+                logger.info(f"ℹ️ [价格策略] 使用历史价格: ¥{latest_price:.2f}")
+
+            # 🔥 缓存更新：确保当前价格被缓存（作为真理来源）
+            try:
+                from tradingagents.utils.price_cache import get_price_cache
+
+                # 如果缓存中没有（或者我们是第一个获取数据的），更新缓存
+                cache = get_price_cache()
+                if cache.get_price(symbol) is None:
+                    cache.update(symbol, latest_price)
+            except Exception as e:
+                logger.warning(f"⚠️ [价格统一] 缓存更新失败: {e}")
+
             prev_close = (
                 data.iloc[-2].get("close", latest_price)
                 if len(data) > 1
                 else latest_price
             )
+
             change = latest_price - prev_close
             change_pct = (change / prev_close * 100) if prev_close != 0 else 0
 
@@ -894,23 +958,57 @@ class DataSourceManager:
                 # 如果是YYYYMMDD格式，转换为YYYY-MM-DD
                 if len(latest_data_date) == 8 and latest_data_date.isdigit():
                     latest_data_date = f"{latest_data_date[:4]}-{latest_data_date[4:6]}-{latest_data_date[6:8]}"
+                # 如果已经是YYYY-MM-DD格式，直接使用
+                elif "-" in latest_data_date:
+                    pass  # Already in correct format
 
             logger.info(
                 f"📅 [最新数据日期] 实际数据日期: {latest_data_date}, 请求结束日期: {end_date}"
             )
 
-            # ⚠️ 检查数据日期是否为最新
-            date_warning = ""
-            if latest_data_date != "N/A" and latest_data_date != end_date:
-                logger.warning(
-                    f"⚠️ [数据延迟警告] 最新数据日期({latest_data_date})与请求日期({end_date})不一致，可能是非交易日或数据未更新"
-                )
-                date_warning = f"⚠️ 注意：最新数据日期为 {latest_data_date}，非当前分析日期 {end_date}\n"
+            # ⚠️ 智能检查数据日期是否为最新
+            from datetime import datetime
 
-            # 格式化数据报告
-            result = f"📊 {stock_name}({symbol}) - 技术分析数据\n"
-            result += f"数据期间: {start_date} 至 {end_date}\n"
-            result += f"最新数据日期: {latest_data_date}\n"
+            # 判断 end_date 是否是非交易日（周末）
+            def _is_weekend(date_str: str) -> bool:
+                """检查日期是否是周末"""
+                try:
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    return date_obj.weekday() >= 5  # 5=周六, 6=周日
+                except:
+                    return False
+
+            is_end_date_weekend = _is_weekend(end_date)
+
+            # 初始化变量
+            result = ""
+            date_warning = ""
+
+            if latest_data_date != "N/A" and latest_data_date != end_date:
+                if is_end_date_weekend:
+                    # end_date 是周末（周六/周日），这是正常情况，不应该警告
+                    logger.info(
+                        f"📅 [数据日期检查] end_date={end_date} 是非交易日（周末），"
+                        f"使用最新数据日期 {latest_data_date}，这是正常行为"
+                    )
+                    # 更新 end_date 显示为实际使用的交易日
+                    result = f"📊 {stock_name}({symbol}) - 技术分析数据\n"
+                    result += f"数据期间: {start_date} 至 {latest_data_date} (实际使用交易日)\n"
+                    result += f"最新数据日期: {latest_data_date}\n"
+                else:
+                    # end_date 是工作日但数据不新鲜，可能是延迟
+                    logger.warning(
+                        f"⚠️ [数据延迟警告] 最新数据日期({latest_data_date})与请求日期({end_date})不一致，可能是数据未更新"
+                    )
+                    date_warning = f"⚠️ 注意：最新数据日期为 {latest_data_date}，非当前分析日期 {end_date}\n"
+                    result = f"📊 {stock_name}({symbol}) - 技术分析数据\n"
+                    result += f"数据期间: {start_date} 至 {end_date}\n"
+                    result += f"最新数据日期: {latest_data_date}\n"
+            else:
+                result = f"📊 {stock_name}({symbol}) - 技术分析数据\n"
+                result += f"数据期间: {start_date} 至 {end_date}\n"
+                result += f"最新数据日期: {latest_data_date}\n"
+
             result += (
                 f"数据条数: {original_data_count}条 (展示最近{display_rows}个交易日)\n"
             )
@@ -1207,7 +1305,9 @@ class DataSourceManager:
         # 确保日期排序
         if "date" in out.columns:
             try:
-                out["date"] = pd.to_datetime(out["date"])
+                # 确保日期是datetime类型，以便正确排序
+                if not pd.api.types.is_datetime64_any_dtype(out["date"]):
+                    out["date"] = pd.to_datetime(out["date"])
                 out = out.sort_values("date")
             except Exception:
                 pass
@@ -1256,6 +1356,15 @@ class DataSourceManager:
                             "source": "mongodb_realtime",
                             "is_realtime": True,
                         }
+
+                        # 🔥 统一价格缓存更新
+                        try:
+                            from tradingagents.utils.price_cache import get_price_cache
+
+                            get_price_cache().update(symbol, quote["price"])
+                        except Exception as e:
+                            logger.warning(f"⚠️ [实时行情] 缓存更新失败: {e}")
+
                         logger.info(
                             f"✅ [实时行情-MongoDB] {symbol} 价格={quote['price']:.2f}"
                         )
@@ -1264,13 +1373,25 @@ class DataSourceManager:
                     logger.debug(f"MongoDB实时行情获取失败: {e}")
 
             # 使用当前数据源的实时行情接口
+            quote = None
             if self.current_source == ChinaDataSource.TUSHARE:
-                return self._get_tushare_realtime_quote(symbol)
+                quote = self._get_tushare_realtime_quote(symbol)
             elif self.current_source == ChinaDataSource.AKSHARE:
-                return self._get_akshare_realtime_quote(symbol)
+                quote = self._get_akshare_realtime_quote(symbol)
             else:
                 logger.warning(f"⚠️ {self.current_source.value}不支持实时行情")
                 return None
+
+            if quote:
+                # 🔥 统一价格缓存更新
+                try:
+                    from tradingagents.utils.price_cache import get_price_cache
+
+                    get_price_cache().update(symbol, quote["price"])
+                except Exception as e:
+                    logger.warning(f"⚠️ [实时行情] 缓存更新失败: {e}")
+
+            return quote
 
         except Exception as e:
             logger.error(f"❌ 获取实时行情失败: {e}", exc_info=True)
@@ -1372,25 +1493,25 @@ class DataSourceManager:
         Returns:
             str: 格式化的股票数据
         """
-        # 🔥 检查是否需要使用实时行情
+        # 🔥 获取实时价格（始终尝试，不仅仅是盘中）
+        realtime_price = None
         try:
             from tradingagents.utils.market_time import MarketTimeUtils
 
             should_use_rt, reason = MarketTimeUtils.should_use_realtime_quote(symbol)
             logger.info(f"📊 [实时行情检查] {symbol}: {reason}")
 
-            if should_use_rt:
-                # 盘中交易时间，优先使用实时行情
-                realtime_quote = self.get_realtime_quote(symbol)
-                if realtime_quote:
-                    logger.info(
-                        f"✅ [实时行情] 使用实时价格: {realtime_quote['price']:.2f}"
-                    )
-                    # 将实时行情整合到返回结果中
-                    # 仍然获取历史数据用于技术指标计算，但最新价格使用实时数据
+            # 始终尝试获取实时价格（盘中用实时，盘后用最新收盘价）
+            realtime_quote = self.get_realtime_quote(symbol)
+            if realtime_quote and realtime_quote.get('price'):
+                realtime_price = realtime_quote['price']
+                logger.info(
+                    f"✅ [实时价格] 获取成功: ¥{realtime_price:.2f}"
+                )
+            else:
+                logger.warning(f"⚠️ [实时价格] 获取失败，将使用历史数据中的价格")
         except Exception as e:
-            logger.debug(f"实时行情检查失败（继续使用历史数据）: {e}")
-            should_use_rt = False
+            logger.debug(f"实时行情获取失败（使用历史数据）: {e}")
             realtime_quote = None
 
         # 记录详细的输入参数
@@ -1422,7 +1543,7 @@ class DataSourceManager:
 
             if self.current_source == ChinaDataSource.MONGODB:
                 result, actual_source = self._get_mongodb_data(
-                    symbol, start_date, end_date, period
+                    symbol, start_date, end_date, period, realtime_price
                 )
             elif self.current_source == ChinaDataSource.TUSHARE:
                 logger.info(
@@ -1524,7 +1645,7 @@ class DataSourceManager:
                 },
                 exc_info=True,
             )
-            return self._try_fallback_sources(symbol, start_date, end_date)
+            return self._try_fallback_sources(symbol, start_date, end_date, realtime_price=realtime_price)
 
     def _merge_realtime_quote_to_result(
         self, historical_result: str, realtime_quote: Dict, symbol: str
@@ -1588,7 +1709,8 @@ class DataSourceManager:
             return historical_result
 
     def _get_mongodb_data(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily"
+        self, symbol: str, start_date: str, end_date: str, period: str = "daily",
+        realtime_price: float = None
     ) -> tuple[str, str | None]:
         """
         从MongoDB获取多周期数据 - 包含技术指标计算
@@ -1623,9 +1745,9 @@ class DataSourceManager:
                 if "name" in df.columns and not df["name"].empty:
                     stock_name = df["name"].iloc[0]
 
-                # 调用统一的格式化方法（包含技术指标计算）
+                # 调用统一的格式化方法（包含技术指标计算，传入实时价格）
                 result = self._format_stock_data_response(
-                    df, symbol, stock_name, start_date, end_date
+                    df, symbol, stock_name, start_date, end_date, realtime_price
                 )
 
                 logger.info(
@@ -1637,14 +1759,14 @@ class DataSourceManager:
                 logger.info(
                     f"🔄 [MongoDB] 未找到{period}数据: {symbol}，开始尝试备用数据源"
                 )
-                return self._try_fallback_sources(symbol, start_date, end_date, period)
+                return self._try_fallback_sources(symbol, start_date, end_date, period, realtime_price)
 
         except Exception as e:
             logger.error(
                 f"❌ [数据来源: MongoDB异常] 获取{period}数据失败: {symbol}, 错误: {e}"
             )
             # MongoDB异常，降级到其他数据源
-            return self._try_fallback_sources(symbol, start_date, end_date, period)
+            return self._try_fallback_sources(symbol, start_date, end_date, period, realtime_price)
 
     def _get_tushare_data(
         self, symbol: str, start_date: str, end_date: str, period: str = "daily"
@@ -1701,7 +1823,7 @@ class DataSourceManager:
 
                 # 格式化返回
                 return self._format_stock_data_response(
-                    cached_data, symbol, stock_name, start_date, end_date
+                    cached_data, symbol, stock_name, start_date, end_date, realtime_price
                 )
 
             # 2. 缓存未命中，从provider获取
@@ -1747,7 +1869,7 @@ class DataSourceManager:
 
                 # 格式化返回
                 result = self._format_stock_data_response(
-                    data, symbol, stock_name, start_date, end_date
+                    data, symbol, stock_name, start_date, end_date, realtime_price
                 )
 
                 duration = time.time() - start_time
@@ -1829,7 +1951,7 @@ class DataSourceManager:
 
                 # 调用统一的格式化方法（包含技术指标计算）
                 result = self._format_stock_data_response(
-                    data, symbol, stock_name, start_date, end_date
+                    data, symbol, stock_name, start_date, end_date, realtime_price
                 )
 
                 logger.debug(
@@ -1889,7 +2011,7 @@ class DataSourceManager:
 
             # 调用统一的格式化方法（包含技术指标计算）
             result = self._format_stock_data_response(
-                data, symbol, stock_name, start_date, end_date
+                data, symbol, stock_name, start_date, end_date, realtime_price
             )
 
             logger.info(f"✅ [BaoStock] 已计算技术指标: MA5/10/20/60, MACD, RSI, BOLL")
@@ -1923,7 +2045,8 @@ class DataSourceManager:
             return 0
 
     def _try_fallback_sources(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily"
+        self, symbol: str, start_date: str, end_date: str, period: str = "daily",
+        realtime_price: float = None
     ) -> tuple[str, str | None]:
         """
         尝试备用数据源 - 避免递归调用
