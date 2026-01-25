@@ -92,9 +92,11 @@ class UnifiedPriceCache:
 
     def _ensure_redis_connected(self):
         """Ensure Redis is connected, attempt reconnection if needed"""
-        if not self._redis_available and self._check_redis_connection():
-            logger.info("[UnifiedPriceCache] Redis reconnected successfully")
-            self._redis_available = True
+        # Check if client exists and is actually connected
+        if self._redis_client and self._check_redis_connection():
+            if not self._redis_available:
+                logger.info("[UnifiedPriceCache] Redis connection restored")
+                self._redis_available = True
         elif not self._redis_available:
             # Attempt reconnection once
             try:
