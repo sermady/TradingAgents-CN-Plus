@@ -294,14 +294,27 @@ class OptimizedChinaDataProvider:
                     if df_q is not None and not df_q.empty:
                         row_q = df_q.iloc[-1]
                         current_price = str(row_q.get('close', 'N/A'))
-                        change_pct = f"{float(row_q.get('pct_chg', 0)):+.2f}%" if row_q.get('pct_chg') is not None else 'N/A'
+                        # 🔧 FIX: 同时获取涨跌额和涨跌幅，明确标注单位
+                        change = row_q.get('change')
+                        pct_chg = row_q.get('pct_chg')
+                        if change is not None and pct_chg is not None:
+                            # 同时显示涨跌额和涨跌幅，避免混淆
+                            change_str = f"{float(change):+.2f}元"
+                            change_pct_str = f"{float(pct_chg):+.2f}%"
+                            change_display = f"涨跌额: {change_str} (涨跌幅: {change_pct_str})"
+                        elif pct_chg is not None:
+                            # 只有涨跌幅
+                            change_pct_str = f"{float(pct_chg):+.2f}%"
+                            change_display = f"涨跌幅: {change_pct_str}"
+                        else:
+                            change_display = "涨跌幅: N/A"
                         volume = str(row_q.get('volume', 'N/A'))
 
                         # 构造基础信息格式
                         basic_info = f"""股票代码: {symbol}
 股票名称: 未知公司
 当前价格: {current_price}
-涨跌幅: {change_pct}
+{change_display}
 成交量: {volume}"""
                         logger.debug(f"📊 [基本面优化] 从缓存构造{symbol}基础信息")
                         return basic_info

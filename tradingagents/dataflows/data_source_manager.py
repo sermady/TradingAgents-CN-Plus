@@ -770,19 +770,28 @@ class DataSourceManager:
 
         Returns:
             float: 成交量（股），如果获取失败返回0
-            注意：MongoDB stock_daily_quotes 中的 volume 单位是"万"，需要乘以100转换为"股"
+
+        数据流程说明：
+        1. Tushare daily 接口返回 vol 字段，单位是"手"（1手=100股）
+        2. TushareAdapter.standardize_quotes 将 vol * 100 转换为"股"
+        3. MongoDB stock_daily_quotes 中存储的 volume 已经是"股"
+        4. 因此这里不需要再进行单位转换，直接返回即可
+
+        修复历史问题：
+        之前的代码错误地假设MongoDB中的volume单位是"万"，导致成交量被放大100倍
+        实际上TushareAdapter已经在获取数据时完成了"手→股"的转换
         """
         try:
             if "volume" in data.columns:
                 volume_raw = data["volume"].iloc[-1]
-                # 🔥 成交量单位转换：MongoDB stock_daily_quotes 中的 volume 单位是"万"，需要乘以100转换为"股"
-                # 例如：224,828万 = 22,482,800股
-                volume_converted = volume_raw * 100 if volume_raw else 0
-                return volume_converted
+                # 🔧 FIX: MongoDB中的volume已经是"股"，不需要再乘以100
+                # TushareAdapter已经在standardize_quotes中完成了"手→股"的转换
+                return float(volume_raw) if volume_raw else 0
             elif "vol" in data.columns:
                 volume_raw = data["vol"].iloc[-1]
-                volume_converted = volume_raw * 100 if volume_raw else 0
-                return volume_converted
+                # 如果数据列名是vol而不是volume，可能是原始数据，需要转换
+                # 假设vol单位是"手"，转换为"股"
+                return float(volume_raw) * 100 if volume_raw else 0
             else:
                 return 0
         except Exception:
@@ -1043,7 +1052,8 @@ class DataSourceManager:
             result += (
                 f"💰 最新价格: ¥{latest_price:.2f} (数据日期: {latest_data_date})\n"
             )
-            result += f"📈 涨跌额: {change:+.2f} ({change_pct:+.2f}%)\n\n"
+            # 🔧 FIX: 明确标注单位，避免涨跌额（元）和涨跌幅（%）混淆
+            result += f"📈 涨跌额: {change:+.2f}元 (涨跌幅: {change_pct:+.2f}%)\n\n"
 
             # 添加技术指标
             result += f"📊 移动平均线 (MA):\n"
