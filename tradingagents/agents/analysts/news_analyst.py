@@ -33,6 +33,7 @@ def create_news_analyst(llm, toolkit):
         ticker = state["company_of_interest"]
 
         logger.info(f"[新闻分析师] 开始分析 {ticker} 的新闻，交易日期: {current_date}")
+        logger.info(f"[新闻分析师] 📅 将使用前端指定的分析日期: {current_date}")
         session_id = state.get("session_id", "未知会话")
         logger.info(f"[新闻分析师] 会话ID: {session_id}，开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -44,10 +45,10 @@ def create_news_analyst(llm, toolkit):
         company_name = get_company_name(ticker, market_info)
         logger.info(f"[新闻分析师] 公司名称: {company_name}")
 
-        # 使用统一新闻工具，简化工具调用
+        # 使用统一新闻工具，简化工具调用，传递分析日期
         logger.info(f"[新闻分析师] 使用统一新闻工具，自动识别股票类型并获取相应新闻")
-   # 创建统一新闻工具
-        unified_news_tool = create_unified_news_tool(toolkit)
+        # ✅ 修复：传递前端指定的分析日期，而不是使用系统时间
+        unified_news_tool = create_unified_news_tool(toolkit, analysis_date=current_date)
         unified_news_tool.name = "get_stock_news_unified"
         
         tools = [unified_news_tool]

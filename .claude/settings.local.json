@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: 新增交易日管理器确保价格数据一致性\n\n新增交易日管理器\\(TradingDateManager\\)和配套单元测试，解决多分析师报告价格不一致问题。\n\n核心功能:\n- 单例模式设计，确保全局统一\n- 自动排除周末，回溯到最近交易日\n- 缓存机制\\(1小时TTL\\)提升性能\n- 线程安全设计\n- 与价格缓存系统集成\n\n文件:\n- tradingagents/utils/trading_date_manager.py - 交易日管理器\n- tests/unit/test_trading_date_manager.py - 单元测试\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git config:*)",
+      "Bash(cd:*)",
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
+    ]
+  }
+}
