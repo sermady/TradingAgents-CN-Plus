@@ -16,6 +16,7 @@ from tradingagents.dataflows.schemas.stock_basic_schema import (
     get_market_info,
     normalize_date,
     convert_to_float,
+    validate_stock_basic_data,
 )
 
 logger = logging.getLogger("dataflows.standardizer")
@@ -104,6 +105,16 @@ class StockBasicStandardizer(ABC):
 
         if not result.get("data_version"):
             result["data_version"] = 1
+
+        # Validate the standardized data
+        validation_result = validate_stock_basic_data(result)
+        if not validation_result["valid"]:
+            logger.warning(
+                f"[{self.PROVIDER_NAME}] 数据验证失败: {validation_result['errors']}, code={result.get('code')}"
+            )
+            # Add warnings to the result for debugging
+            result["_validation_warnings"] = validation_result.get("warnings", [])
+            result["_validation_errors"] = validation_result.get("errors", [])
 
         return result
 

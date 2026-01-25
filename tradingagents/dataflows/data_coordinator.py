@@ -198,58 +198,79 @@ class DataCoordinator:
             depth=depth.value
         )
 
-        try:
-            # 1. Load config
-            from tradingagents.utils.stock_utils import StockUtils
-            from tradingagents.utils.trading_date_manager import get_trading_date_manager
+            try:
+                # 1. Load config
+                from tradingagents.utils.stock_utils import StockUtils
+                from tradingagents.utils.trading_date_manager import get_trading_date_manager
 
-            market_info = StockUtils.get_market_info(ticker)
-            is_china = market_info['is_china']
-            is_hk = market_info['is_hk']
-            is_us = market_info['is_us']
+                market_info = StockUtils.get_market_info(ticker)
+                is_china = market_info['is_china']
+                is_hk = market_info['is_hk']
+                is_us = market_info['is_us']
 
-            date_mgr = get_trading_date_manager()
-            aligned_date = date_mgr.get_latest_trading_date(trade_date)
+                date_mgr = get_trading_date_manager()
+                aligned_date = date_mgr.get_latest_trading_date(trade_date)
 
-            # 2. Preload market data (365-day history)
-            logger.info(f"[DataCoordinator] Preload market data: {ticker}")
-            if is_china:
-                from tradingagents.dataflows.interface import get_china_stock_data_unified
-                market_data = get_china_stock_data_unified(ticker, aligned_date, aligned_date)
-                preloaded.market_data = f"## A-Share Market Data\n{market_data}"
-            elif is_hk:
-                from tradingagents.dataflows.interface import get_hk_stock_data_unified
-                market_data = get_hk_stock_data_unified(ticker, aligned_date, aligned_date)
-                preloaded.market_data = f"## HK Stock Market Data\n{market_data}"
-            else:
-                from tradingagents.dataflows.providers.us.optimized import get_us_stock_data_cached
-                market_data = get_us_stock_data_cached(ticker, aligned_date, aligned_date)
-                preloaded.market_data = f"## US Stock Market Data\n{market_data}"
+                # 2. Preload market data (with independent error handling)
+                logger.info(f"[DataCoordinator] Preload market data: {ticker}")
+                try:
+                    if is_china:
+                        from tradingagents.dataflows.interface import get_china_stock_data_unified
+                        market_data = get_china_stock_data_unified(ticker, aligned_date, aligned_date)
+                        preloaded.market_data = f"## A-Share Market Data\n{market_data}"
+                    elif is_hk:
+                        from tradingagents.dataflows.interface import get_hk_stock_data_unified
+                        market_data = get_hk_stock_data_unified(ticker, aligned_date, aligned_date)
+                        preloaded.market_data = f"## HK Stock Market Data\n{market_data}"
+                    else:
+                        from tradingagents.dataflows.providers.us.optimized import get_us_stock_data_cached
+                        market_data = get_us_stock_data_cached(ticker, aligned_date, aligned_date)
+                        preloaded.market_data = f"## US Stock Market Data\n{market_data}"
+                    logger.info(f"[DataCoordinator] Market data loaded successfully")
+                except Exception as e:
+                    logger.error(f"[DataCoordinator] Market data load failed: {e}", exc_info=True)
+                    preloaded.market_data = f"## Market Data: (unavailable - {str(e)[:100]})"
 
-            # 3. Preload price info to cache
-            self._extract_and_cache_price_info(ticker, preloaded.market_data)
+                # 3. Preload price info to cache (independent error handling)
+                try:
+                    self._extract_and_cache_price_info(ticker, preloaded.market_data)
+                except Exception as e:
+                    logger.warning(f"[DataCoordinator] Price cache failed: {e}")
 
-            # 4. Preload fundamentals data
-            logger.info(f"[DataCoordinator] Preload fundamentals data: {ticker}")
-            if is_china:
-                preloaded.fundamentals_data = self._load_china_fundamentals(ticker, aligned_date)
-            elif is_hk:
-                preloaded.fundamentals_data = self._load_hk_fundamentals(ticker)
-            else:
-                preloaded.fundamentals_data = self._load_us_fundamentals(ticker, trade_date)
+                # 4. Preload fundamentals data (independent error handling)
+                logger.info(f"[DataCoordinator] Preload fundamentals data: {ticker}")
+                try:
+                    if is_china:
+                        preloaded.fundamentals_data = self._load_china_fundamentals(ticker, aligned_date)
+                    elif is_hk:
+                        preloaded.fundamentals_data = self._load_hk_fundamentals(ticker)
+                    else:
+                        preloaded.fundamentals_data = self._load_us_fundamentals(ticker, trade_date)
+                    logger.info(f"[DataCoordinator] Fundamentals data loaded successfully")
+                except Exception as e:
+                    logger.error(f"[DataCoordinator] Fundamentals data load failed: {e}", exc_info=True)
+                    preloaded.fundamentals_data = f"## Fundamentals Data: (unavailable - {str(e)[:100]})"
 
-            # 5. Preload news data
-            logger.info(f"[DataCoordinator] Preload news data: {ticker}")
-            preloaded.news_data = self._load_news_data(ticker, trade_date, market_info)
+                # 5. Preload news data (independent error handling)
+                logger.info(f"[DataCoordinator] Preload news data: {ticker}")
+                try:
+                    preloaded.news_data = self._load_news_data(ticker, trade_date, market_info)
+                except Exception as e:
+                    logger.warning(f"[DataCoordinator] News data load failed: {e}")
+                    preloaded.news_data = f"## News Data: (unavailable - {str(e)[:100]})"
 
-            # 6. Preload sentiment data
-            logger.info(f"[DataCoordinator] Preload sentiment data: {ticker}")
-            preloaded.sentiment_data = self._load_sentiment_data(ticker, trade_date, market_info)
+                # 6. Preload sentiment data (independent error handling)
+                logger.info(f"[DataCoordinator] Preload sentiment data: {ticker}")
+                try:
+                    preloaded.sentiment_data = self._load_sentiment_data(ticker, trade_date, market_info)
+                except Exception as e:
+                    logger.warning(f"[DataCoordinator] Sentiment data load failed: {e}")
+                    preloaded.sentiment_data = f"## Sentiment Data: (unavailable - {str(e)[:100]})"
 
-            logger.info(f"[DataCoordinator] Data preload completed: {cache_key}")
+                logger.info(f"[DataCoordinator] Data preload completed: {cache_key}")
 
-        except Exception as e:
-            logger.error(f"[DataCoordinator] Data preload failed: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"[DataCoordinator] Unexpected error during data preload: {e}", exc_info=True)
 
         # Save to cache
         with self._cache_lock:

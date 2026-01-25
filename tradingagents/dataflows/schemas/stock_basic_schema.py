@@ -196,7 +196,7 @@ def get_full_symbol(code: str, exchange: str = None) -> str:
 
     if exchange == "SSE" or code.startswith(("60", "68", "90")):
         return f"{code}.SH"
-    elif exchange == "BSE" or code.startswith(("8", "4")):
+    elif exchange == "BSE" or code.startswith("8"):
         return f"{code}.BJ"
     elif exchange == "SZSE" or code.startswith(("0", "3")):
         return f"{code}.SZ"
