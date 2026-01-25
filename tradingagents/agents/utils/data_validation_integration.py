@@ -5,10 +5,163 @@
 在分析师工作流中集成数据验证功能
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def parse_data_string_to_dict(data_str: str) -> Dict[str, Any]:
+    """
+    将数据字符串解析为字典
+
+    Args:
+        data_str: 数据字符串（包含多行，格式: 指标: 值）
+
+    Returns:
+        Dict: 解析后的数据字典
+    """
+    data_dict = {'source': 'analyst_data'}
+
+    try:
+        lines = data_str.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('*') or line.startswith('—'):
+                continue
+
+            # 解析格式: "**指标**: 值" 或 "指标: 值"
+            if ':' in line or '：' in line:
+                # 使用中文冒号或英文冒号分割
+                if '：' in line:
+                    parts = line.split('：', 1)
+                else:
+                    parts = line.split(':', 1)
+
+                if len(parts) == 2:
+                    key = parts[0].strip('*').strip()
+                    value_str = parts[1].strip()
+
+                    # 移除常见的单位和符号
+                    value_str = value_str.replace('¥', '').replace('$', '').replace('￥', '')
+                    value_str = value_str.replace(',', '').replace(' ', '')
+                    value_str = value_str.replace('亿元', '').replace('亿', '')
+                    value_str = value_str.replace('万元', '').replace('万', '')
+                    value_str = value_str.replace('股', '').replace('%', '')
+                    value_str = value_str.replace('倍', '')
+
+                    try:
+                        # 尝试转换为数值
+                        if '.' in value_str or value_str.isdigit():
+                            value = float(value_str)
+                        else:
+                            value = value_str
+                        data_dict[key] = value
+                    except:
+                        data_dict[key] = value_str
+
+    except Exception as e:
+        logger.debug(f"数据解析失败: {e}")
+
+    return data_dict
+
+
+def format_validation_result_to_report(
+    ticker: str,
+    validation_results: List[Any],
+    validator_name: str
+) -> str:
+    """
+    将验证结果格式化为报告段落
+
+    Args:
+        ticker: 股票代码
+        validation_results: 验证结果列表
+        validator_name: 验证器名称
+
+    Returns:
+        str: 格式化的报告段落
+    """
+    if not validation_results:
+        return ""
+
+    # 统计各级别问题数量
+    total_issues = 0
+    error_count = 0
+    warning_count = 0
+    info_count = 0
+
+    for result in validation_results:
+        if hasattr(result, 'discrepancies'):
+            for issue in result.discrepancies:
+                total_issues += 1
+                if hasattr(issue, 'severity'):
+                    if issue.severity.value == 'error':
+                        error_count += 1
+                    elif issue.severity.value == 'warning':
+                        warning_count += 1
+                    elif issue.severity.value == 'info':
+                        info_count += 1
+
+    if total_issues == 0:
+        return f"""
+
+---
+
+## ✅ 数据验证通过
+
+**验证器**: {validator_name}
+**股票代码**: {ticker}
+**验证时间**: 自动实时验证
+
+**验证结果**: 未发现数据问题
+
+---
+
+"""
+
+    # 构建问题报告
+    report_lines = [
+        "",
+        "---",
+        "",
+        f"## ⚠️ 数据验证发现问题",
+        "",
+        f"**验证器**: {validator_name}",
+        f"**股票代码**: {ticker}",
+        f"**发现问题**: {total_issues} 个 (错误: {error_count}, 警告: {warning_count}, 提示: {info_count})",
+        ""
+    ]
+
+    # 添加详细问题列表
+    for result in validation_results:
+        if hasattr(result, 'discrepancies') and result.discrepancies:
+            for issue in result.discrepancies:
+                severity_icon = {
+                    'critical': '🔴',
+                    'error': '❌',
+                    'warning': '⚠️',
+                    'info': 'ℹ️'
+                }.get(issue.severity.value, '•')
+
+                report_lines.append(f"**{severity_icon} [{issue.severity.value.upper()}] {issue.field}**")
+                report_lines.append(f"- {issue.message}")
+
+                if issue.suggested_value is not None:
+                    report_lines.append(f"- **建议值**: {issue.suggested_value}")
+
+                if issue.expected is not None:
+                    report_lines.append(f"- **期望值**: {issue.expected}")
+
+                report_lines.append("")
+
+    report_lines.extend([
+        "---",
+        ""
+    ])
+
+    return "\n".join(report_lines)
 
 
 def add_data_validation_to_market_report(
@@ -17,7 +170,7 @@ def add_data_validation_to_market_report(
     validation_enabled: bool = True
 ) -> str:
     """
-    为市场分析报告添加数据验证信息
+    为市场分析报告添加数据验证信息（真实执行验证）
 
     Args:
         ticker: 股票代码
@@ -35,40 +188,59 @@ def add_data_validation_to_market_report(
         from tradingagents.dataflows.validators.price_validator import PriceValidator
         from tradingagents.dataflows.validators.volume_validator import VolumeValidator
 
-        # 解析数据（简化处理，实际应该根据数据格式解析）
-        # 这里我们添加一个通用的数据质量提示
+        # 解析数据
+        data_dict = parse_data_string_to_dict(raw_data)
 
-        quality_section = f"""
+        if not data_dict:
+            logger.warning(f"市场数据解析失败，跳过验证")
+            return raw_data
+
+        # 执行验证
+        price_validator = PriceValidator()
+        volume_validator = VolumeValidator()
+
+        price_result = price_validator.validate(ticker, data_dict)
+        volume_result = volume_validator.validate(ticker, data_dict)
+
+        # 收集有问题的验证结果
+        validation_results = []
+        if not price_result.is_valid or price_result.discrepancies:
+            validation_results.append(price_result)
+        if not volume_result.is_valid or volume_result.discrepancies:
+            validation_results.append(volume_result)
+
+        # 生成验证报告
+        if validation_results:
+            validation_report = format_validation_result_to_report(
+                ticker,
+                validation_results,
+                "市场数据验证器 (PriceValidator + VolumeValidator)"
+            )
+            validated_data = raw_data + validation_report
+
+            logger.warning(f"⚠️ [市场分析] {ticker} 发现数据问题: {len(validation_results)} 个验证器报告问题")
+        else:
+            # 无问题，添加简短的通过说明
+            validation_report = f"""
+
 ---
 
-## 📊 数据质量说明
+## ✅ 市场数据验证通过
 
-**验证状态**: ✅ 已启用数据验证
-**验证器**: PriceValidator, VolumeValidator
-**验证范围**:
-- 价格数据合理性检查
-- 技术指标计算验证（MA、RSI、MACD、布林带）
-- 成交量单位标准化
-- 数据源一致性检查
-
-**注意事项**:
-- 所有技术指标均来自数据源，未进行二次计算
-- 如发现数据异常，系统会自动标注
-- 多源数据验证功能已集成，确保数据准确性
+**股票代码**: {ticker}
+**验证范围**: 价格数据、技术指标、成交量
+**验证结果**: 所有指标均在合理范围内
 
 ---
 
 """
-
-        # 将质量信息添加到原始数据
-        validated_data = raw_data + quality_section
-
-        logger.info(f"✅ [市场分析] {ticker} 数据验证信息已添加")
+            validated_data = raw_data + validation_report
+            logger.info(f"✅ [市场分析] {ticker} 市场数据验证通过")
 
         return validated_data
 
     except Exception as e:
-        logger.warning(f"⚠️ [市场分析] 数据验证失败: {e}")
+        logger.warning(f"⚠️ [市场分析] {ticker} 数据验证失败: {e}")
         # 验证失败时，返回原始数据
         return raw_data
 
@@ -79,7 +251,7 @@ def add_data_validation_to_fundamentals_report(
     validation_enabled: bool = True
 ) -> str:
     """
-    为基本面分析报告添加数据验证信息
+    为基本面分析报告添加数据验证信息（真实执行验证）
 
     Args:
         ticker: 股票代码
@@ -93,46 +265,54 @@ def add_data_validation_to_fundamentals_report(
         return raw_data
 
     try:
-        # 导入验证器和标准化器
+        # 导入验证器
         from tradingagents.dataflows.validators.fundamentals_validator import FundamentalsValidator
-        from tradingagents.dataflows.standardizers.data_standardizer import DataStandardizer
 
-        quality_section = f"""
+        # 解析数据
+        data_dict = parse_data_string_to_dict(raw_data)
+
+        if not data_dict:
+            logger.warning(f"基本面数据解析失败，跳过验证")
+            return raw_data
+
+        # 执行验证
+        validator = FundamentalsValidator()
+        result = validator.validate(ticker, data_dict)
+
+        # 生成验证报告
+        if not result.is_valid or result.discrepancies:
+            validation_report = format_validation_result_to_report(
+                ticker,
+                [result],
+                "基本面数据验证器 (FundamentalsValidator)"
+            )
+            validated_data = raw_data + validation_report
+
+            logger.warning(f"⚠️ [基本面分析] {ticker} 发现数据问题: {len(result.discrepancies)} 个")
+        else:
+            # 无问题，添加简短的通过说明
+            validation_report = f"""
 
 ---
 
-## 📊 数据质量说明
+## ✅ 基本面数据验证通过
 
-**验证状态**: ✅ 已启用基本面数据验证
-**验证器**: FundamentalsValidator
-**验证范围**:
-- PE/PB/PS等估值指标合理性检查
-- 市值计算一致性验证
-- ROE/ROA等财务比率验证
-- PS比率自动计算和验证
-
-**特别验证**:
-- ⚠️ PS比率自动检测: 系统会根据市值和营收自动计算PS并验证报告值
-- ⚠️ 布林带价格位置验证: 确保价格位置计算准确
-- ⚠️ 成交量单位标准化: 统一转换为"股"
-
-**数据来源声明**:
-- 所有基本面指标均来自数据源（Tushare/AKShare）
-- 系统进行交叉验证，确保准确性
-- 如发现数据矛盾，会在报告中明确标注
+**股票代码**: {ticker}
+**验证范围**: PE、PB、PS、ROE、市值等基本面指标
+**验证结果**: 所有指标均在合理范围内
+**数据置信度**: {result.confidence:.1%}
 
 ---
 
 """
-
-        validated_data = raw_data + quality_section
-
-        logger.info(f"✅ [基本面分析] {ticker} 数据验证信息已添加")
+            validated_data = raw_data + validation_report
+            logger.info(f"✅ [基本面分析] {ticker} 基本面数据验证通过，置信度: {result.confidence:.1%}")
 
         return validated_data
 
     except Exception as e:
-        logger.warning(f"⚠️ [基本面分析] 数据验证失败: {e}")
+        logger.warning(f"⚠️ [基本面分析] {ticker} 数据验证失败: {e}")
+        # 验证失败时，返回原始数据
         return raw_data
 
 
@@ -161,9 +341,9 @@ def create_data_quality_summary(
     }
 
     try:
-        from tradingagents.dataflows.data_source_manager import DataSourceManager
+        from tradingagents.dataflows.data_source_manager import get_data_source_manager
 
-        manager = DataSourceManager()
+        manager = get_data_source_manager()
 
         # 1. 评估市场数据质量
         if market_data:
@@ -174,6 +354,12 @@ def create_data_quality_summary(
             }
             summary['overall_quality_score'] += market_quality * 0.5  # 权重50%
 
+            # 根据质量评分添加警告
+            if market_quality < 70:
+                summary['warnings'].append(f'市场数据质量评分较低: {market_quality:.1f}/100')
+            if market_quality < 60:
+                summary['errors'].append('市场数据质量不合格，建议谨慎使用')
+
         # 2. 评估基本面数据质量
         if fundamentals_data:
             fundamentals_quality = manager.get_data_quality_score(ticker, fundamentals_data)
@@ -183,11 +369,11 @@ def create_data_quality_summary(
             }
             summary['overall_quality_score'] += fundamentals_quality * 0.5  # 权重50%
 
-        # 3. 生成警告和错误
-        if summary['overall_quality_score'] < 70:
-            summary['warnings'].append(f'数据质量评分较低: {summary["overall_quality_score"]:.1f}/100')
-        if summary['overall_quality_score'] < 60:
-            summary['errors'].append('数据质量不合格，建议谨慎使用')
+            # 根据质量评分添加警告
+            if fundamentals_quality < 70:
+                summary['warnings'].append(f'基本面数据质量评分较低: {fundamentals_quality:.1f}/100')
+            if fundamentals_quality < 60:
+                summary['errors'].append('基本面数据质量不合格，建议谨慎使用')
 
     except Exception as e:
         logger.error(f"创建数据质量摘要失败: {e}")
