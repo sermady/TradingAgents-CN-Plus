@@ -2627,9 +2627,164 @@ class DataSourceManager:
             return self._try_fallback_fundamentals(symbol)
 
     def _get_tushare_fundamentals(self, symbol: str) -> str:
-        """从 Tushare 获取基本面数据 - 暂时不可用，需要实现"""
-        logger.warning(f"⚠️ Tushare基本面数据功能暂时不可用")
-        return f"⚠️ Tushare基本面数据功能暂时不可用，请使用其他数据源"
+        """从 Tushare 获取基本面数据"""
+        try:
+            from .providers.china.tushare import get_tushare_provider
+
+            logger.info(f"📊 [Tushare] 开始获取基本面数据: {symbol}")
+
+            provider = get_tushare_provider()
+
+            # 检查 provider 是否可用
+            if not provider.is_available():
+                logger.warning(f"⚠️ [Tushare] Provider 不可用，未初始化或无 Token")
+                return f"⚠️ Tushare 未初始化或 Token 无效，请检查配置"
+
+            # 获取最新交易日期的每日基础数据
+            # 如果今天没有交易日数据，自动查找最近的交易日
+            from datetime import datetime, timedelta
+
+            trade_date = datetime.now().strftime("%Y-%m-%d")
+            logger.info(f"📊 [Tushare] 初始查询日期: {trade_date}")
+
+            # 调用 get_daily_basic 获取 PE、PB、PS 等指标
+            import asyncio
+
+            try:
+                # 创建或获取事件循环
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                # 首先尝试今天的数据
+                df = loop.run_until_complete(provider.get_daily_basic(trade_date))
+
+                # 如果今天没有数据，尝试查找最近的交易日
+                if df is None or df.empty:
+                    logger.info(f"📊 [Tushare] {trade_date} 无数据，查找最近的交易日...")
+                    for delta in range(1, 10):  # 最多回溯 10 天
+                        check_date = (datetime.now() - timedelta(days=delta)).strftime("%Y-%m-%d")
+                        logger.info(f"📊 [Tushare] 尝试日期: {check_date}")
+                        df = loop.run_until_complete(provider.get_daily_basic(check_date))
+                        if df is not None and not df.empty:
+                            trade_date = check_date
+                            logger.info(f"✅ [Tushare] 找到交易日数据: {trade_date}")
+                            break
+
+                if df is None or df.empty:
+                    logger.warning(f"⚠️ [Tushare] daily_basic 返回空数据（尝试了最近 10 天）")
+                    return f"⚠️ Tushare daily_basic 接口未返回数据，可能需要更高权限的 Token"
+
+                logger.info(f"✅ [Tushare] daily_basic 返回 {len(df)} 条记录")
+
+                # 查找指定股票的数据
+                # 需要将代码转换为 Tushare 格式 (如 605589 -> 605589.SH)
+                ts_code = self._convert_to_tushare_code(symbol)
+                logger.info(f"🔍 [Tushare] 查询代码: {ts_code}")
+
+                stock_data = df[df["ts_code"] == ts_code]
+
+                if stock_data.empty:
+                    logger.warning(f"⚠️ [Tushare] 未找到 {symbol} ({ts_code}) 的数据")
+                    # 尝试用原始代码查询
+                    stock_data = df[df["ts_code"] == symbol]
+                    if stock_data.empty:
+                        return f"⚠️ 未找到 {symbol} 的基本面数据，请检查股票代码或数据源权限"
+
+                # 获取第一行数据
+                row = stock_data.iloc[0]
+
+                # 格式化输出
+                report = f"📊 {symbol} 基本面数据（来自 Tushare）\n\n"
+                report += f"📅 数据日期: {trade_date}\n"
+                report += f"📈 数据来源: Tushare daily_basic 接口\n\n"
+
+                # 估值指标
+                report += "💰 估值指标:\n"
+
+                pe = row.get("pe")
+                if pe is not None and pd.notna(pe) and pe != 0:
+                    report += f"   市盈率(PE): {pe:.2f}\n"
+
+                pb = row.get("pb")
+                if pb is not None and pd.notna(pb) and pb != 0:
+                    report += f"   市净率(PB): {pb:.2f}\n"
+
+                pe_ttm = row.get("pe_ttm")
+                if pe_ttm is not None and pd.notna(pe_ttm) and pe_ttm != 0:
+                    report += f"   市盈率TTM(PE_TTM): {pe_ttm:.2f}\n"
+
+                pb_mrq = row.get("pb_mrq")
+                if pb_mrq is not None and pd.notna(pb_mrq) and pb_mrq != 0:
+                    report += f"   市净率MRQ(PB_MHQ): {pb_mrq:.2f}\n"
+
+                total_mv = row.get("total_mv")
+                if total_mv is not None and pd.notna(total_mv):
+                    report += f"   总市值: {total_mv:.2f}亿元\n"
+
+                circ_mv = row.get("circ_mv")
+                if circ_mv is not None and pd.notna(circ_mv):
+                    report += f"   流通市值: {circ_mv:.2f}亿元\n"
+
+                turnover_rate = row.get("turnover_rate")
+                if turnover_rate is not None and pd.notna(turnover_rate):
+                    report += f"   换手率: {turnover_rate:.2f}%\n"
+
+                volume_ratio = row.get("volume_ratio")
+                if volume_ratio is not None and pd.notna(volume_ratio):
+                    report += f"   量比: {volume_ratio:.2f}\n"
+
+                logger.info(f"✅ [Tushare] 成功获取基本面数据: {symbol}")
+                logger.info(f"   PE={pe}, PB={pb}, PE_TTM={pe_ttm}")
+                return report
+
+            except asyncio.TimeoutError:
+                logger.error(f"❌ [Tushare] async 操作超时")
+                return f"❌ Tushare 数据获取超时，请稍后重试"
+            except Exception as async_err:
+                logger.error(f"❌ [Tushare] async 操作失败: {async_err}")
+                return f"❌ Tushare 数据获取失败: {async_err}"
+
+        except ImportError as e:
+            logger.error(f"❌ [Tushare] 导入失败: {e}")
+            return f"❌ Tushare 模块导入失败，请检查安装: {e}"
+        except Exception as e:
+            logger.error(f"❌ [Tushare] 获取基本面数据失败: {symbol} - {e}")
+            import traceback
+
+            logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
+            return f"❌ 获取 {symbol} 基本面数据失败: {e}"
+
+    def _convert_to_tushare_code(self, symbol: str) -> str:
+        """
+        将股票代码转换为 Tushare 格式
+
+        Args:
+            symbol: 股票代码 (如 605589, 605589.SH, 000001.SZ)
+
+        Returns:
+            str: Tushare 格式代码 (如 605589.SH)
+        """
+        # 移除已有的后缀
+        symbol = str(symbol).strip().upper()
+        symbol = symbol.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+
+        # 根据代码前缀判断交易所
+        if symbol.startswith(("60", "68", "90")):
+            return f"{symbol}.SH"  # 上海证券交易所
+        elif symbol.startswith(("00", "30", "20")):
+            return f"{symbol}.SZ"  # 深圳证券交易所
+        elif symbol.startswith(("8", "4")):
+            return f"{symbol}.BJ"  # 北京证券交易所
+        else:
+            # 无法识别的代码，返回原始代码
+            logger.warning(f"⚠️ [Tushare] 无法识别 {symbol} 的交易所，返回原始代码")
+            return symbol
 
     def _get_akshare_fundamentals(self, symbol: str) -> str:
         """从 AKShare 生成基本面分析"""
