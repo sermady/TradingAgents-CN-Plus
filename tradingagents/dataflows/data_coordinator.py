@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 class AnalysisDepth(Enum):
-    """Analysis depth levels"""
+    """Analysis depth levels (Chinese localization)"""
 
-    QUICK = "Quick"
-    BASIC = "Basic"
-    STANDARD = "Standard"
-    DEEP = "Deep"
-    COMPREHENSIVE = "Comprehensive"
+    QUICK = "快速"
+    BASIC = "基础"
+    STANDARD = "标准"
+    DEEP = "深度"
+    COMPREHENSIVE = "全面"
 
 
 @dataclass
