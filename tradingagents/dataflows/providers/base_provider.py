@@ -202,7 +202,104 @@ class BaseStockDataProvider(ABC):
         }
     
     # ==================== 辅助方法 ====================
-    
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """
+        标准化股票代码格式
+
+        Args:
+            symbol: 股票代码（支持多种格式）
+
+        Returns:
+            6位股票代码
+        """
+        if not symbol:
+            return ""
+
+        # 移除后缀
+        symbol = symbol.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+
+        # 确保是6位数字
+        if symbol.isdigit() and len(symbol) == 6:
+            return symbol
+
+        return symbol
+
+    def _get_full_symbol(self, code: str) -> str:
+        """
+        生成完整股票代码
+
+        Args:
+            code: 6位股票代码
+
+        Returns:
+            完整股票代码（如 000001.SZ）
+        """
+        if not code or len(code) != 6:
+            return code
+
+        if code.startswith(("60", "68", "90")):
+            return f"{code}.SH"  # 上交所
+        elif code.startswith(("8", "4")):
+            return f"{code}.BJ"  # 北交所
+        else:
+            return f"{code}.SZ"  # 深交所
+
+    def _get_market_info(self, code: str) -> Dict[str, Any]:
+        """
+        统一的市场信息判断逻辑
+
+        Args:
+            code: 股票代码（支持6位或完整格式）
+
+        Returns:
+            市场信息字典
+        """
+        if not code:
+            return {
+                "market": "CN",
+                "exchange": "UNKNOWN",
+                "exchange_name": "未知交易所",
+                "currency": "CNY",
+                "timezone": "Asia/Shanghai"
+            }
+
+        # 提取6位代码
+        code6 = self._normalize_symbol(code)
+
+        if code6.startswith("60") or code6.startswith("68") or code6.startswith("90"):
+            return {
+                "market": "CN",
+                "exchange": "SSE",
+                "exchange_name": "上海证券交易所",
+                "currency": "CNY",
+                "timezone": "Asia/Shanghai"
+            }
+        elif code6.startswith(("0", "3")):
+            return {
+                "market": "CN",
+                "exchange": "SZSE",
+                "exchange_name": "深圳证券交易所",
+                "currency": "CNY",
+                "timezone": "Asia/Shanghai"
+            }
+        elif code6.startswith(("8", "4")):
+            return {
+                "market": "CN",
+                "exchange": "BSE",
+                "exchange_name": "北京证券交易所",
+                "currency": "CNY",
+                "timezone": "Asia/Shanghai"
+            }
+        else:
+            return {
+                "market": "CN",
+                "exchange": "UNKNOWN",
+                "exchange_name": "未知交易所",
+                "currency": "CNY",
+                "timezone": "Asia/Shanghai"
+            }
+
     def _determine_market_info(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """确定市场信息"""
         # 默认实现，子类可以重写

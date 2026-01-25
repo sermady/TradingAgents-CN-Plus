@@ -520,15 +520,8 @@ class AKShareProvider(BaseStockDataProvider):
             }
 
     def _determine_market(self, code: str) -> str:
-        """根据股票代码判断市场"""
-        if code.startswith(("60", "68")):
-            return "上海证券交易所"
-        elif code.startswith(("00", "30")):
-            return "深圳证券交易所"
-        elif code.startswith("8"):
-            return "北京证券交易所"
-        else:
-            return "未知市场"
+        """根据股票代码判断市场（调用基类通用方法）"""
+        return self._get_market_info(code).get("exchange_name", "未知市场")
 
     def _get_full_symbol(self, code: str) -> str:
         """

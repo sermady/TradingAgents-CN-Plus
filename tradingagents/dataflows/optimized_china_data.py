@@ -905,7 +905,51 @@ class OptimizedChinaDataProvider:
                         logger.info(f"✅ 从 market_quotes 获取实时股价: {code6} = {realtime_price}元 (原价格: {price_value}元)")
                         price_value = realtime_price
                     else:
-                        logger.info(f"⚠️ market_quotes 中未找到{code6}的实时股价，使用传入价格: {price_value}元")
+                        # 🔥 降级 1: 尝试从 Tushare rt_k 批量接口获取
+                        logger.info(f"⚠️ market_quotes 中未找到{code6}的实时股价，尝试从 Tushare 获取...")
+                        from .providers.china.tushare import get_tushare_provider
+                        tushare_provider = get_tushare_provider()
+                        if tushare_provider.connected:
+                            try:
+                                import asyncio
+                                loop = asyncio.get_event_loop()
+                                tushare_price = loop.run_until_complete(
+                                    tushare_provider.get_realtime_price_from_batch(symbol)
+                                )
+                                if tushare_price:
+                                    logger.info(f"✅ 从 Tushare rt_k 获取实时股价: {code6} = {tushare_price}元")
+                                    price_value = tushare_price
+                                else:
+                                    raise ValueError("Tushare 返回空价格")
+                            except Exception as e:
+                                logger.warning(f"⚠️ 从 Tushare 获取实时股价失败: {e}，尝试从 AKShare 获取...")
+                        else:
+                            logger.warning(f"⚠️ Tushare 未连接，尝试从 AKShare 获取...")
+
+                        # 🔥 降级 2: 从 AKShare 获取
+                        if price_value == 0 or price_value is None:
+                            from .providers.china.akshare import get_akshare_provider
+                            akshare_provider = get_akshare_provider()
+                            if akshare_provider.connected:
+                                try:
+                                    loop = asyncio.get_event_loop()
+                                    akshare_quotes = loop.run_until_complete(
+                                        akshare_provider.get_stock_quotes(code6)
+                                    )
+                                    if akshare_quotes and akshare_quotes.get("price"):
+                                        akshare_price = float(akshare_quotes.get("price"))
+                                        logger.info(f"✅ 从 AKShare 获取实时股价: {code6} = {akshare_price}元")
+                                        price_value = akshare_price
+                                except Exception as e:
+                                    logger.warning(f"⚠️ 从 AKShare 获取实时股价失败: {e}")
+                            else:
+                                logger.warning(f"⚠️ AKShare 未连接")
+
+                        # 最终检查
+                        if price_value is None or price_value == 0:
+                            logger.warning(f"⚠️ 所有数据源均无法获取{code6}的实时股价，使用传入价格: {price_value}元")
+                        else:
+                            logger.info(f"✅ 实时股价获取完成: {code6} = {price_value}元")
                 except Exception as e:
                     logger.warning(f"⚠️ 从 market_quotes 获取实时股价失败: {e}，使用传入价格: {price_value}元")
             else:
@@ -933,11 +977,41 @@ class OptimizedChinaDataProvider:
                 else:
                     logger.info(f"🔄 MongoDB 未找到{symbol}财务数据，尝试从 AKShare API 获取")
             else:
-                logger.info(f"🔄 数据库缓存未启用，直接从AKShare API获取{symbol}财务数据")
+                logger.info(f"🔄 数据库缓存未启用，直接从API获取{symbol}财务数据")
 
-            # 第二优先级：从AKShare API获取
-            from .providers.china.akshare import get_akshare_provider
+            # 🔥 第二优先级：从Tushare API获取（数据质量最高）
+            logger.info(f"🔄 优先使用Tushare数据源获取{symbol}财务数据")
+            from .providers.china.tushare import get_tushare_provider
             import asyncio
+
+            provider = get_tushare_provider()
+            if provider.connected:
+                # 获取财务数据（异步方法）
+                loop = asyncio.get_event_loop()
+                financial_data = loop.run_until_complete(provider.get_financial_data(symbol))
+
+                if financial_data:
+                    logger.info(f"✅ Tushare财务数据获取成功: {symbol}")
+                    # 获取股票基本信息（异步方法）
+                    stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+
+                    # 解析Tushare财务数据
+                    metrics = self._parse_financial_data(financial_data, stock_info, price_value)
+                    if metrics:
+                        logger.info(f"✅ Tushare解析成功，返回指标")
+                        # 缓存原始财务数据到数据库
+                        self._cache_raw_financial_data(symbol, financial_data, stock_info)
+                        return metrics
+                    else:
+                        logger.warning(f"⚠️ Tushare解析失败，降级到AKShare")
+                else:
+                    logger.warning(f"⚠️ Tushare未获取到{symbol}财务数据，降级到AKShare")
+            else:
+                logger.warning(f"⚠️ Tushare未连接，降级到AKShare")
+
+            # 🔥 第三优先级：从AKShare API获取（备用）
+            logger.info(f"🔄 使用AKShare备用数据源获取{symbol}财务数据")
+            from .providers.china.akshare import get_akshare_provider
 
             akshare_provider = get_akshare_provider()
 
@@ -961,38 +1035,11 @@ class OptimizedChinaDataProvider:
                         self._cache_raw_financial_data(symbol, financial_data, stock_info)
                         return metrics
                     else:
-                        logger.warning(f"⚠️ AKShare解析失败，返回None")
+                        logger.warning(f"⚠️ AKShare解析失败")
                 else:
-                    logger.warning(f"⚠️ AKShare未获取到{symbol}财务数据，尝试Tushare")
+                    logger.warning(f"⚠️ AKShare未获取到{symbol}财务数据")
             else:
-                logger.warning(f"⚠️ AKShare未连接，尝试Tushare")
-
-            # 第三优先级：使用Tushare数据源
-            logger.info(f"🔄 使用Tushare备用数据源获取{symbol}财务数据")
-            from .providers.china.tushare import get_tushare_provider
-            import asyncio
-
-            provider = get_tushare_provider()
-            if not provider.connected:
-                logger.debug(f"Tushare未连接，无法获取{symbol}真实财务数据")
-                return None
-
-            # 获取财务数据（异步方法）
-            loop = asyncio.get_event_loop()
-            financial_data = loop.run_until_complete(provider.get_financial_data(symbol))
-            if not financial_data:
-                logger.debug(f"未获取到{symbol}的财务数据")
-                return None
-
-            # 获取股票基本信息（异步方法）
-            stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
-
-            # 解析Tushare财务数据
-            metrics = self._parse_financial_data(financial_data, stock_info, price_value)
-            if metrics:
-                # 缓存原始财务数据到数据库
-                self._cache_raw_financial_data(symbol, financial_data, stock_info)
-                return metrics
+                logger.warning(f"⚠️ AKShare未连接")
 
         except Exception as e:
             logger.debug(f"获取{symbol}真实财务数据失败: {e}")

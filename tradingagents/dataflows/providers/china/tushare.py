@@ -41,6 +41,9 @@ class TushareProvider(BaseStockDataProvider):
         if not TUSHARE_AVAILABLE:
             self.logger.error("❌ Tushare库未安装，请运行: pip install tushare")
 
+        # 🔥 初始化时尝试连接，解决 connected=False 问题
+        self.connect_sync()
+
     def _get_token_from_database(self) -> Optional[str]:
         """
         从数据库读取 Tushare Token
@@ -696,6 +699,45 @@ class TushareProvider(BaseStockDataProvider):
                 raise  # 抛出限流错误，让上层处理
 
             self.logger.error(f"❌ 批量获取实时行情失败: {e}")
+            return None
+
+    async def get_realtime_price_from_batch(
+        self, symbol: str
+    ) -> Optional[float]:
+        """
+        从批量实时行情中获取单只股票价格
+        使用 rt_k 接口的通配符功能一次性获取全市场行情，然后提取目标股票
+
+        Args:
+            symbol: 股票代码（如 '000001.SZ' 或 '000001'）
+
+        Returns:
+            实时价格，失败返回 None
+        """
+        if not self.is_available():
+            return None
+
+        try:
+            # 标准化股票代码
+            ts_code = self._normalize_ts_code(symbol)
+
+            # 获取全市场实时行情
+            batch_quotes = await self.get_realtime_quotes_batch()
+            if not batch_quotes:
+                return None
+
+            # 提取6位代码
+            code6 = ts_code.split(".")[0]
+
+            # 查找目标股票
+            if code6 in batch_quotes:
+                quote = batch_quotes[code6]
+                return float(quote.get("close")) if quote.get("close") else None
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ 从批量行情获取 {symbol} 价格失败: {e}")
             return None
 
     def _is_rate_limit_error(self, error_msg: str) -> bool:
@@ -1547,44 +1589,12 @@ class TushareProvider(BaseStockDataProvider):
         return symbol
 
     def _determine_market_info_from_ts_code(self, ts_code: str) -> Dict[str, Any]:
-        """根据ts_code确定市场信息"""
-        if ".SH" in ts_code:
-            return {
-                "market": "CN",
-                "exchange": "SSE",
-                "exchange_name": "上海证券交易所",
-                "currency": "CNY",
-                "timezone": "Asia/Shanghai",
-            }
-        elif ".SZ" in ts_code:
-            return {
-                "market": "CN",
-                "exchange": "SZSE",
-                "exchange_name": "深圳证券交易所",
-                "currency": "CNY",
-                "timezone": "Asia/Shanghai",
-            }
-        elif ".BJ" in ts_code:
-            return {
-                "market": "CN",
-                "exchange": "BSE",
-                "exchange_name": "北京证券交易所",
-                "currency": "CNY",
-                "timezone": "Asia/Shanghai",
-            }
-        else:
-            return {
-                "market": "CN",
-                "exchange": "UNKNOWN",
-                "exchange_name": "未知交易所",
-                "currency": "CNY",
-                "timezone": "Asia/Shanghai",
-            }
+        """根据ts_code确定市场信息（调用基类通用方法）"""
+        return self._get_market_info(ts_code)
 
     def _determine_market(self, ts_code: str) -> str:
-        """确定市场代码"""
-        market_info = self._determine_market_info_from_ts_code(ts_code)
-        return market_info.get("market", "CN")
+        """确定市场代码（调用基类通用方法）"""
+        return self._get_market_info(ts_code).get("market", "CN")
 
     def _format_date(self, date_value: Union[str, date]) -> str:
         """格式化日期为Tushare格式 (YYYYMMDD)"""
