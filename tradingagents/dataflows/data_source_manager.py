@@ -273,6 +273,11 @@ class DataSourceManager:
         获取基本面数据，支持多数据源和自动降级
         优先级：MongoDB → Tushare → AKShare → 生成分析
 
+        Tushare 数据源会获取完整的财务数据：
+        1. 估值指标 (PE, PB, PS) - daily_basic
+        2. 财务指标 (ROE, ROA 等) - fina_indicator
+        3. 财务报表 (利润表、资产负债表、现金流量表) - income/balancesheet/cashflow
+
         Args:
             symbol: 股票代码
 
@@ -295,7 +300,19 @@ class DataSourceManager:
             if self.current_source == ChinaDataSource.MONGODB:
                 result = self._get_mongodb_fundamentals(symbol)
             elif self.current_source == ChinaDataSource.TUSHARE:
+                # 🔥 使用 Tushare 获取完整的基本面数据
+                # 1. 估值指标 (PE, PB, PS)
                 result = self._get_tushare_fundamentals(symbol)
+
+                # 2. 附加财务指标 (ROE, ROA 等)
+                indicators = self._get_tushare_financial_indicators(symbol)
+                if indicators and "❌" not in indicators:
+                    result += indicators
+
+                # 3. 附加财务报表 (利润表、资产负债表、现金流量表)
+                reports = self._get_tushare_financial_reports(symbol)
+                if reports and "❌" not in reports:
+                    result += reports
             elif self.current_source == ChinaDataSource.AKSHARE:
                 result = self._get_akshare_fundamentals(symbol)
             else:
@@ -2785,6 +2802,190 @@ class DataSourceManager:
             # 无法识别的代码，返回原始代码
             logger.warning(f"⚠️ [Tushare] 无法识别 {symbol} 的交易所，返回原始代码")
             return symbol
+
+    def _get_tushare_financial_indicators(self, symbol: str) -> str:
+        """从 Tushare 获取财务指标数据"""
+        try:
+            from .providers.china.tushare import get_tushare_provider
+            import asyncio
+
+            logger.info(f"📊 [Tushare] 开始获取财务指标: {symbol}")
+
+            provider = get_tushare_provider()
+
+            # 检查 provider 是否可用
+            if not provider.is_available():
+                logger.warning(f"⚠️ [Tushare] Provider 不可用")
+                return f"⚠️ Tushare 未初始化或 Token 无效，请检查配置"
+
+            # 创建事件循环
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # 调用 TushareProvider 的财务指标方法
+            result = loop.run_until_complete(
+                provider.get_financial_indicators_only(symbol, limit=1)
+            )
+
+            if not result or not result.get("financial_indicators"):
+                logger.warning(f"⚠️ [Tushare] 未找到 {symbol} 的财务指标数据")
+                return f"⚠️ 未找到 {symbol} 的财务指标数据"
+
+            indicators = result["financial_indicators"][0]
+
+            # 格式化输出
+            report = f"\n📊 {symbol} 财务指标（来自 Tushare）\n\n"
+
+            # 盈利能力
+            report += "💹 盈利能力:\n"
+            roe = indicators.get("roe")
+            if roe is not None and pd.notna(roe):
+                report += f"   ROE(净资产收益率): {roe:.2f}%\n"
+
+            roa = indicators.get("roa")
+            if roa is not None and pd.notna(roa):
+                report += f"   ROA(总资产收益率): {roa:.2f}%\n"
+
+            gross_profit_margin = indicators.get("grossprofit_margin")
+            if gross_profit_margin is not None and pd.notna(gross_profit_margin):
+                report += f"   毛利率: {gross_profit_margin:.2f}%\n"
+
+            net_profit_margin = indicators.get("netprofit_margin")
+            if net_profit_margin is not None and pd.notna(net_profit_margin):
+                report += f"   净利率: {net_profit_margin:.2f}%\n"
+
+            # 偿债能力
+            report += "\n🏦 偿债能力:\n"
+            debt_to_assets = indicators.get("debt_to_assets")
+            if debt_to_assets is not None and pd.notna(debt_to_assets):
+                report += f"   资产负债率: {debt_to_assets:.2f}%\n"
+
+            current_ratio = indicators.get("current_ratio")
+            if current_ratio is not None and pd.notna(current_ratio):
+                report += f"   流动比率: {current_ratio:.2f}\n"
+
+            quick_ratio = indicators.get("quick_ratio")
+            if quick_ratio is not None and pd.notna(quick_ratio):
+                report += f"   速动比率: {quick_ratio:.2f}\n"
+
+            # 营运能力
+            report += "\n🔄 营运能力:\n"
+            inv_turn = indicators.get("inv_turn")
+            if inv_turn is not None and pd.notna(inv_turn):
+                report += f"   存货周转率: {inv_turn:.2f}次\n"
+
+            ar_turn = indicators.get("ar_turn")
+            if ar_turn is not None and pd.notna(ar_turn):
+                report += f"   应收账款周转率: {ar_turn:.2f}次\n"
+
+            ca_turn = indicators.get("ca_turn")
+            if ca_turn is not None and pd.notna(ca_turn):
+                report += f"   流动资产周转率: {ca_turn:.2f}次\n"
+
+            # 成长能力
+            report += "\n📈 成长能力:\n"
+            or_ratio = indicators.get("or_ratio")
+            if or_ratio is not None and pd.notna(or_ratio):
+                report += f"   营业收入增长率: {or_ratio:.2f}%\n"
+
+            op_profit_growth = indicators.get("op_profit_growth_rate_yoy")
+            if op_profit_growth is not None and pd.notna(op_profit_growth):
+                report += f"   营业利润增长率: {op_profit_growth:.2f}%\n"
+
+            logger.info(f"✅ [Tushare] 成功获取财务指标: {symbol}")
+            return report
+
+        except Exception as e:
+            logger.error(f"❌ [Tushare] 获取财务指标失败: {symbol} - {e}")
+            import traceback
+            logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
+            return f"❌ 获取 {symbol} 财务指标失败: {e}"
+
+    def _get_tushare_financial_reports(self, symbol: str) -> str:
+        """从 Tushare 获取完整财务报表"""
+        try:
+            from .providers.china.tushare import get_tushare_provider
+            import asyncio
+
+            logger.info(f"📊 [Tushare] 开始获取财务报表: {symbol}")
+
+            provider = get_tushare_provider()
+
+            # 检查 provider 是否可用
+            if not provider.is_available():
+                logger.warning(f"⚠️ [Tushare] Provider 不可用")
+                return f"⚠️ Tushare 未初始化或 Token 无效，请检查配置"
+
+            # 创建事件循环
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # 调用 TushareProvider 的财务数据方法
+            result = loop.run_until_complete(
+                provider.get_financial_data(symbol, report_type="quarterly", limit=1)
+            )
+
+            if not result:
+                logger.warning(f"⚠️ [Tushare] 未找到 {symbol} 的财务报表数据")
+                return f"⚠️ 未找到 {symbol} 的财务报表数据"
+
+            # 格式化输出
+            report = f"\n📊 {symbol} 财务报表（来自 Tushare）\n\n"
+
+            # 利润表数据
+            income_data = result.get("income_statement")
+            if income_data and len(income_data) > 0:
+                report += "💰 利润表:\n"
+                latest_income = income_data[0]
+                report += f"   报告期: {latest_income.get('end_date', '未知')}\n"
+                report += f"   营业总收入: {latest_income.get('total_revenue', 0):,.2f}万元\n"
+                report += f"   营业收入: {latest_income.get('revenue', 0):,.2f}万元\n"
+                report += f"   营业成本: {latest_income.get('operating_cost', 0):,.2f}万元\n"
+                report += f"   净利润: {latest_income.get('n_income', 0):,.2f}万元\n"
+                report += f"   扣非净利润: {latest_income.get('n_income_attr_p', 0):,.2f}万元\n"
+
+            # 资产负债表数据
+            balance_data = result.get("balance_sheet")
+            if balance_data and len(balance_data) > 0:
+                report += "\n📦 资产负债表:\n"
+                latest_balance = balance_data[0]
+                report += f"   报告期: {latest_balance.get('end_date', '未知')}\n"
+                report += f"   总资产: {latest_balance.get('total_assets', 0):,.2f}万元\n"
+                report += f"   总负债: {latest_balance.get('total_liab', 0):,.2f}万元\n"
+                report += f"   股东权益: {latest_balance.get('total_hldr_eqy_exc_min_int', 0):,.2f}万元\n"
+                report += f"   流动资产: {latest_balance.get('total_cur_assets', 0):,.2f}万元\n"
+                report += f"   流动负债: {latest_balance.get('total_cur_liab', 0):,.2f}万元\n"
+
+            # 现金流量表数据
+            cashflow_data = result.get("cashflow_statement")
+            if cashflow_data and len(cashflow_data) > 0:
+                report += "\n💵 现金流量表:\n"
+                latest_cashflow = cashflow_data[0]
+                report += f"   报告期: {latest_cashflow.get('end_date', '未知')}\n"
+                report += f"   经营活动现金流: {latest_cashflow.get('n_cashflow_act', 0):,.2f}万元\n"
+                report += f"   投资活动现金流: {latest_cashflow.get('n_cashflow_inv_act', 0):,.2f}万元\n"
+                report += f"   筹资活动现金流: {latest_cashflow.get('n_cash_flows_fnc_act', 0):,.2f}万元\n"
+
+            logger.info(f"✅ [Tushare] 成功获取财务报表: {symbol}")
+            return report
+
+        except Exception as e:
+            logger.error(f"❌ [Tushare] 获取财务报表失败: {symbol} - {e}")
+            import traceback
+            logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
+            return f"❌ 获取 {symbol} 财务报表失败: {e}"
 
     def _get_akshare_fundamentals(self, symbol: str) -> str:
         """从 AKShare 生成基本面分析"""
