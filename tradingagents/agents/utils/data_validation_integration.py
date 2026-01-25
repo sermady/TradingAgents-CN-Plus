@@ -265,8 +265,9 @@ def add_data_validation_to_fundamentals_report(
         return raw_data
 
     try:
-        # 导入验证器
+        # 导入验证器和标准化器
         from tradingagents.dataflows.validators.fundamentals_validator import FundamentalsValidator
+        from tradingagents.dataflows.standardizers.data_standardizer import DataStandardizer
 
         # 解析数据
         data_dict = parse_data_string_to_dict(raw_data)
@@ -274,6 +275,67 @@ def add_data_validation_to_fundamentals_report(
         if not data_dict:
             logger.warning(f"基本面数据解析失败，跳过验证")
             return raw_data
+
+        # ========== 关键修复: 自动计算并修正PS比率 ==========
+        # 检查是否有市值和营收数据
+        market_cap = None
+        revenue = None
+
+        # 尝试多种可能的字段名
+        for key in ['总市值', 'market_cap', '市值']:
+            if key in data_dict:
+                market_cap = data_dict[key]
+                break
+
+        for key in ['营业总收入', '总营收', 'revenue', '营收']:
+            if key in data_dict:
+                revenue = data_dict[key]
+                break
+
+        # 如果有市值和营收，计算正确的PS
+        calculated_ps = None
+        if market_cap and revenue and revenue > 0:
+            try:
+                calculated_ps = market_cap / revenue
+                logger.info(f"[PS修正] {ticker} 自动计算PS: {market_cap} / {revenue} = {calculated_ps:.2f}")
+            except:
+                pass
+
+        # 检查数据中的PS值
+        existing_ps = data_dict.get('PS') or data_dict.get('市销率') or data_dict.get('ps_ratio')
+
+        # 如果有计算的PS，与数据中的PS比较
+        ps_correction_needed = False
+        corrected_ps = None
+
+        if calculated_ps is not None:
+            if existing_ps is None:
+                # 数据中没有PS，使用计算的值
+                corrected_ps = calculated_ps
+                ps_correction_needed = True
+                logger.warning(f"[PS修正] {ticker} 数据中缺少PS，使用计算值: {calculated_ps:.2f}")
+            else:
+                # 数据中有PS，比较是否一致
+                try:
+                    existing_ps_float = float(existing_ps)
+                    diff_pct = abs((calculated_ps - existing_ps_float) / existing_ps_float) * 100
+
+                    # 如果差异超过10%，认为是错误
+                    if diff_pct > 10:
+                        corrected_ps = calculated_ps
+                        ps_correction_needed = True
+                        logger.warning(f"[PS修正] {ticker} 检测到PS错误! "
+                                     f"报告值={existing_ps_float:.2f}, 计算值={calculated_ps:.2f}, "
+                                     f"差异={diff_pct:.1f}%")
+
+                except:
+                    pass
+
+        # 如果需要修正PS，更新数据字典
+        if ps_correction_needed and corrected_ps is not None:
+            data_dict['PS'] = corrected_ps
+            data_dict['市销率'] = corrected_ps
+            logger.info(f"[PS修正] {ticker} PS已修正为: {corrected_ps:.2f}")
 
         # 执行验证
         validator = FundamentalsValidator()
@@ -302,9 +364,20 @@ def add_data_validation_to_fundamentals_report(
 **验证结果**: 所有指标均在合理范围内
 **数据置信度**: {result.confidence:.1%}
 
----
+"""
+
+            # 如果进行了PS修正，在报告中说明
+            if ps_correction_needed:
+                ps_note = f"""
+
+**⚠️ 数据修正**: 报告中的PS（市销率）已根据市值和营收自动计算并修正。
+- 计算公式: PS = 市值 / 营收
+- 修正后PS值: {corrected_ps:.2f}
+- 修正原因: 原始数据中的PS值不准确或缺失
 
 """
+                validation_report += ps_note
+
             validated_data = raw_data + validation_report
             logger.info(f"✅ [基本面分析] {ticker} 基本面数据验证通过，置信度: {result.confidence:.1%}")
 
