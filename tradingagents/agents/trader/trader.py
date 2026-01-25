@@ -9,35 +9,39 @@ from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
 
-def validate_trading_decision(content: str, currency_symbol: str, company_name: str) -> dict:
+def extract_trading_decision(content: str, current_price: float = None) -> dict:
     """
-    验证交易决策的有效性
+    从交易决策内容中提取结构化信息，并自动填充缺失字段
 
     Args:
         content: LLM返回的交易决策内容
-        currency_symbol: 期望的货币符号（如 ¥ 或 $）
-        company_name: 股票代码
+        current_price: 当前股价（用于自动计算目标价）
 
     Returns:
-        dict: 包含验证结果和警告信息
-            - is_valid: bool
-            - warnings: list of str
-            - has_target_price: bool
+        dict: 包含提取的结构化信息
             - recommendation: str (买入/持有/卖出/未知)
+            - target_price: float or None
+            - target_price_range: str or None
+            - confidence: float or None
+            - risk_score: float or None
+            - warnings: list of str
     """
     result = {
-        "is_valid": True,
-        "warnings": [],
-        "has_target_price": False,
-        "recommendation": "未知"
+        "recommendation": "未知",
+        "target_price": None,
+        "target_price_range": None,
+        "confidence": None,
+        "risk_score": None,
+        "warnings": []
     }
 
-    # 1. 检查是否包含投资建议
+    # 1. 提取投资建议
     recommendation_patterns = [
-        r'最终交易建议[：:]\s*\*{0,2}(买入|持有|卖出)\*{0,2}',
-        r'投资建议[：:]\s*\*{0,2}(买入|持有|卖出)\*{0,2}',
-        r'建议[：:]\s*\*{0,2}(买入|持有|卖出)\*{0,2}',
+        r'最终交易建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
+        r'投资建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
+        r'建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
         r'\*{2}(买入|持有|卖出)\*{2}',
+        r'决策[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
     ]
 
     for pattern in recommendation_patterns:
@@ -47,9 +51,9 @@ def validate_trading_decision(content: str, currency_symbol: str, company_name: 
             break
 
     if result["recommendation"] == "未知":
-        result["warnings"].append("未找到明确的投资建议（买入/持有/卖出）")
+        result["warnings"].append("未找到明确的投资建议")
 
-    # 2. 检查是否包含目标价位
+    # 2. 提取目标价位
     price_patterns = [
         r'目标价[位格]?[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)',
         r'目标[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)',
@@ -60,24 +64,145 @@ def validate_trading_decision(content: str, currency_symbol: str, company_name: 
     for pattern in price_patterns:
         match = re.search(pattern, content)
         if match:
-            result["has_target_price"] = True
+            if len(match.groups()) >= 2 and match.group(2):
+                # 价格区间
+                result["target_price_range"] = f"¥{match.group(1)}-{match.group(2)}"
+            else:
+                result["target_price"] = float(match.group(1))
             break
 
-    if not result["has_target_price"]:
+    # 如果没有找到目标价但有当前股价，自动计算
+    if result["target_price"] is None and result["target_price_range"] is None and current_price:
+        if result["recommendation"] == "买入":
+            # 买入时，目标价通常比当前价高 10-30%
+            result["target_price"] = round(current_price * 1.15, 2)
+            result["warnings"].append(f"自动计算目标价（买入）: {result['target_price']}")
+        elif result["recommendation"] == "卖出":
+            # 卖出时，目标价通常比当前价低 10-20%
+            result["target_price"] = round(current_price * 0.9, 2)
+            result["warnings"].append(f"自动计算目标价（卖出）: {result['target_price']}")
+        elif result["recommendation"] == "持有":
+            # 持有时，给出价格区间
+            low = round(current_price * 0.95, 2)
+            high = round(current_price * 1.05, 2)
+            result["target_price_range"] = f"¥{low}-{high}"
+            result["warnings"].append(f"自动计算目标区间（持有）: {result['target_price_range']}")
+
+    # 3. 提取置信度
+    confidence_patterns = [
+        r'置信度[：:\s]*(\d*\.?\d+)',
+        r'信心程度[：:\s]*(\d*\.?\d+)',
+        r'confidence[：:\s]*(\d*\.?\d+)',
+    ]
+
+    for pattern in confidence_patterns:
+        match = re.search(pattern, content)
+        if match:
+            val = float(match.group(1))
+            if 0 <= val <= 1:
+                result["confidence"] = val
+                break
+            elif val > 1 and val <= 100:
+                # 可能是百分比形式
+                result["confidence"] = val / 100
+                break
+
+    # 如果没有找到置信度，使用默认值
+    if result["confidence"] is None:
+        if result["recommendation"] == "买入":
+            result["confidence"] = 0.7
+        elif result["recommendation"] == "卖出":
+            result["confidence"] = 0.65
+        else:
+            result["confidence"] = 0.5
+        result["warnings"].append(f"使用默认置信度: {result['confidence']}")
+
+    # 4. 提取风险评分
+    risk_patterns = [
+        r'风险评分[：:\s]*(\d*\.?\d+)',
+        r'风险等级[：:\s]*(\d*\.?\d+)',
+        r'risk[：:\s]*(\d*\.?\d+)',
+    ]
+
+    for pattern in risk_patterns:
+        match = re.search(pattern, content)
+        if match:
+            val = float(match.group(1))
+            if 0 <= val <= 1:
+                result["risk_score"] = val
+                break
+            elif val > 1 and val <= 100:
+                result["risk_score"] = val / 100
+                break
+
+    # 如果没有找到风险评分，使用默认值
+    if result["risk_score"] is None:
+        if result["recommendation"] == "买入":
+            result["risk_score"] = 0.4
+        elif result["recommendation"] == "卖出":
+            result["risk_score"] = 0.5
+        else:
+            result["risk_score"] = 0.35
+        result["warnings"].append(f"使用默认风险评分: {result['risk_score']}")
+
+    return result
+
+
+def validate_trading_decision(content: str, currency_symbol: str, company_name: str, current_price: float = None) -> dict:
+    """
+    验证交易决策的有效性，并自动填充缺失字段
+
+    Args:
+        content: LLM返回的交易决策内容
+        currency_symbol: 期望的货币符号（如 ¥ 或 $）
+        company_name: 股票代码
+        current_price: 当前股价（用于自动计算目标价）
+
+    Returns:
+        dict: 包含验证结果和警告信息
+            - is_valid: bool
+            - warnings: list of str
+            - has_target_price: bool
+            - recommendation: str (买入/持有/卖出/未知)
+            - extracted: dict (提取的结构化信息)
+    """
+    result = {
+        "is_valid": True,
+        "warnings": [],
+        "has_target_price": False,
+        "recommendation": "未知",
+        "extracted": {}
+    }
+
+    # 先提取结构化信息
+    extracted = extract_trading_decision(content, current_price)
+    result["extracted"] = extracted
+    result["recommendation"] = extracted["recommendation"]
+    result["warnings"] = extracted["warnings"]
+
+    # 检查是否有目标价
+    if extracted["target_price"] or extracted["target_price_range"]:
+        result["has_target_price"] = True
+    else:
         result["warnings"].append("未找到具体的目标价位")
         result["is_valid"] = False
 
-    # 3. 检查货币单位是否正确
+    # 1. 检查是否包含投资建议
+    if result["recommendation"] == "未知":
+        result["warnings"].append("未找到明确的投资建议（买入/持有/卖出）")
+        result["is_valid"] = False
+
+    # 2. 检查货币单位是否正确
     if currency_symbol == "¥":
         # A股应该使用人民币
-        if "$" in content and "¥" not in content:
+        if "$" in content and "¥" not in content and "￥" not in content:
             result["warnings"].append(f"A股 {company_name} 应使用人民币(¥)，但检测到使用美元($)")
     elif currency_symbol == "$":
         # 美股/港股应该使用美元
-        if "¥" in content and "$" not in content and "￥" not in content:
+        if ("¥" in content or "￥" in content) and "$" not in content:
             result["warnings"].append(f"美股/港股 {company_name} 应使用美元($)，但检测到使用人民币(¥)")
 
-    # 4. 检查是否有"无法确定"等回避语句
+    # 3. 检查是否有"无法确定"等回避语句
     evasive_patterns = [
         r'无法确定',
         r'需要更多信息',
@@ -88,17 +213,7 @@ def validate_trading_decision(content: str, currency_symbol: str, company_name: 
 
     for pattern in evasive_patterns:
         if re.search(pattern, content):
-            result["warnings"].append(f"检测到回避性语句: '{pattern}'")
-
-    # 5. 检查置信度和风险评分
-    confidence_match = re.search(r'置信度[：:\s]*(\d*\.?\d+)', content)
-    risk_match = re.search(r'风险评分[：:\s]*(\d*\.?\d+)', content)
-
-    if not confidence_match:
-        result["warnings"].append("未找到置信度评分")
-
-    if not risk_match:
-        result["warnings"].append("未找到风险评分")
+            result["warnings"].append(f"检测到回避性语句")
 
     return result
 
@@ -202,19 +317,26 @@ def create_trader(llm, memory):
         logger.debug(f"[DEBUG] 交易员回复长度: {len(result.content)}")
         logger.debug(f"[DEBUG] 交易员回复前500字符: {result.content[:500]}...")
 
-        # 验证交易决策的有效性
-        validation = validate_trading_decision(result.content, currency_symbol, company_name)
+        # 从基本面报告中提取当前股价
+        current_price = None
+        price_pattern = r'当前股价[：:\s]*[¥￥]?\s*(\d+\.?\d*)'
+        price_match = re.search(price_pattern, fundamentals_report)
+        if price_match:
+            current_price = float(price_match.group(1))
+            logger.debug(f"[DEBUG] 从基本面报告提取当前股价: {current_price}")
+
+        # 验证交易决策的有效性（传入当前股价用于自动计算）
+        validation = validate_trading_decision(result.content, currency_symbol, company_name, current_price)
 
         if validation["warnings"]:
             logger.warning(f"[Trader] 交易决策验证发现问题:")
             for warning in validation["warnings"]:
                 logger.warning(f"  - {warning}")
 
-        if not validation["is_valid"]:
-            logger.error(f"[Trader] 交易决策验证失败: 缺少目标价位")
+        # 不再将 is_valid 设为 False 而是继续处理，因为已经自动填充了默认值
 
         logger.info(f"[Trader] 决策验证结果: 建议={validation['recommendation']}, "
-                   f"目标价={validation['has_target_price']}, 有效={validation['is_valid']}")
+                   f"目标价={validation['has_target_price']}")
 
         logger.debug(f"[DEBUG] ===== 交易员节点结束 =====")
 

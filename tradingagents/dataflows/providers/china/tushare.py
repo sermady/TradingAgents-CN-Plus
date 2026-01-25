@@ -466,7 +466,7 @@ class TushareProvider(BaseStockDataProvider):
     async def get_stock_basic_info(
         self, symbol: str = None
     ) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
-        """获取股票基础信息"""
+        """获取股票基础信息（包含 PE/PB 等财务指标）"""
         if not self.is_available():
             return None
 
@@ -483,7 +483,33 @@ class TushareProvider(BaseStockDataProvider):
                 if df is None or df.empty:
                     return None
 
-                return self.standardize_basic_info(df.iloc[0].to_dict())
+                # 基础信息
+                basic_info = self.standardize_basic_info(df.iloc[0].to_dict())
+
+                # 🔥 从 daily_basic 获取 PE/PB 等财务指标
+                try:
+                    daily_df = await asyncio.to_thread(
+                        self.api.daily_basic,
+                        ts_code=ts_code,
+                        fields="ts_code,total_mv,circ_mv,pe,pb,turnover_rate,volume_ratio,pe_ttm,pb_mrq",
+                        limit=1,
+                    )
+
+                    if daily_df is not None and not daily_df.empty:
+                        row = daily_df.iloc[0]
+                        # 合并财务指标到基础信息
+                        basic_info["pe"] = float(row["pe"]) if row["pe"] else None
+                        basic_info["pb"] = float(row["pb"]) if row["pb"] else None
+                        basic_info["pe_ttm"] = float(row["pe_ttm"]) if row["pe_ttm"] else None
+                        basic_info["total_mv"] = float(row["total_mv"]) if row["total_mv"] else None
+                        basic_info["circ_mv"] = float(row["circ_mv"]) if row["circ_mv"] else None
+                        basic_info["turnover_rate"] = float(row["turnover_rate"]) if row["turnover_rate"] else None
+                        basic_info["volume_ratio"] = float(row["volume_ratio"]) if row["volume_ratio"] else None
+                        self.logger.debug(f"✅ 合并 daily_basic 财务指标: PE={basic_info.get('pe')}, PB={basic_info.get('pb')}")
+                except Exception as daily_e:
+                    self.logger.warning(f"⚠️ 获取 daily_basic 财务指标失败: {daily_e}")
+
+                return basic_info
             else:
                 # 获取所有股票信息
                 return await self.get_stock_list()
@@ -904,7 +930,7 @@ class TushareProvider(BaseStockDataProvider):
         symbol: str,
         report_type: str = "quarterly",
         period: str = None,
-        limit: int = 4,
+        limit: int = 8,
     ) -> Optional[Dict[str, Any]]:
         """
         获取财务数据
@@ -913,7 +939,7 @@ class TushareProvider(BaseStockDataProvider):
             symbol: 股票代码
             report_type: 报告类型 (quarterly/annual)
             period: 指定报告期 (YYYYMMDD格式)，为空则获取最新数据
-            limit: 获取记录数量，默认4条（最近4个季度）
+            limit: 获取记录数量，默认8条（最近8个季度，2年数据，用于TTM计算）
 
         Returns:
             财务数据字典，包含利润表、资产负债表、现金流量表和财务指标

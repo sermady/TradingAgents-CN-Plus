@@ -3003,6 +3003,7 @@ class DataSourceManager:
     def _get_valuation_indicators(self, symbol: str) -> Dict:
         """从stock_basic_info集合获取估值指标"""
         try:
+            from tradingagents.config.database_manager import get_database_manager
             db_manager = get_database_manager()
             if not db_manager.is_mongodb_available():
                 return {}

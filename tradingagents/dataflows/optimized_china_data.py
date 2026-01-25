@@ -955,31 +955,8 @@ class OptimizedChinaDataProvider:
             else:
                 logger.info(f"⚠️ MongoDB 不可用，使用传入价格: {price_value}元")
 
-            # 第一优先级：从 MongoDB stock_financial_data 集合获取标准化财务数据
-            from tradingagents.config.runtime_settings import use_app_cache_enabled
-            if use_app_cache_enabled(False):
-                logger.info(f"🔍 优先从 MongoDB stock_financial_data 集合获取{symbol}财务数据")
-
-                # 直接从 MongoDB 获取标准化的财务数据
-                from tradingagents.dataflows.cache.mongodb_cache_adapter import get_mongodb_cache_adapter
-                adapter = get_mongodb_cache_adapter()
-                financial_data = adapter.get_financial_data(symbol)
-
-                if financial_data:
-                    logger.info(f"✅ [财务数据] 从 stock_financial_data 集合获取{symbol}财务数据")
-                    # 解析 MongoDB 标准化的财务数据
-                    metrics = self._parse_mongodb_financial_data(financial_data, price_value)
-                    if metrics:
-                        logger.info(f"✅ MongoDB 财务数据解析成功，返回指标")
-                        return metrics
-                    else:
-                        logger.warning(f"⚠️ MongoDB 财务数据解析失败")
-                else:
-                    logger.info(f"🔄 MongoDB 未找到{symbol}财务数据，尝试从 AKShare API 获取")
-            else:
-                logger.info(f"🔄 数据库缓存未启用，直接从API获取{symbol}财务数据")
-
-            # 🔥 第二优先级：从Tushare API获取（数据质量最高）
+            # 🔥 财务数据获取优先级：Tushare > AKShare（不再使用 MongoDB 缓存）
+            # 第一优先级：从 Tushare API 获取（数据质量最高）
             logger.info(f"🔄 优先使用Tushare数据源获取{symbol}财务数据")
             from .providers.china.tushare import get_tushare_provider
             import asyncio
@@ -987,23 +964,46 @@ class OptimizedChinaDataProvider:
             provider = get_tushare_provider()
             if provider.connected:
                 # 获取财务数据（异步方法）
-                loop = asyncio.get_event_loop()
-                financial_data = loop.run_until_complete(provider.get_financial_data(symbol))
+                # 使用 new_event_loop() 避免在已有循环时出现问题
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    financial_data = loop.run_until_complete(provider.get_financial_data(symbol))
+                finally:
+                    loop.close()
 
                 if financial_data:
                     logger.info(f"✅ Tushare财务数据获取成功: {symbol}")
                     # 获取股票基本信息（异步方法）
-                    stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+                    finally:
+                        loop.close()
 
-                    # 解析Tushare财务数据
-                    metrics = self._parse_financial_data(financial_data, stock_info, price_value)
-                    if metrics:
-                        logger.info(f"✅ Tushare解析成功，返回指标")
-                        # 缓存原始财务数据到数据库
-                        self._cache_raw_financial_data(symbol, financial_data, stock_info)
-                        return metrics
+                    if stock_info and (stock_info.get('pe') is not None or stock_info.get('pb') is not None):
+                        # 🔥 优先使用 stock_info 中的 PE/PB（从 daily_basic 获取）
+                        metrics = self._parse_financial_data_with_stock_info(financial_data, stock_info, price_value)
+                        if metrics:
+                            logger.info(f"✅ Tushare解析成功（使用stock_info中的PE/PB），返回指标")
+                            metrics['data_source'] = 'Tushare'
+                            # 缓存原始财务数据到数据库
+                            self._cache_raw_financial_data(symbol, financial_data, stock_info)
+                            return metrics
+                        else:
+                            logger.warning(f"⚠️ Tushare解析失败，降级到AKShare")
                     else:
-                        logger.warning(f"⚠️ Tushare解析失败，降级到AKShare")
+                        # 解析Tushare财务数据
+                        metrics = self._parse_financial_data(financial_data, stock_info, price_value)
+                        if metrics:
+                            logger.info(f"✅ Tushare解析成功，返回指标")
+                            metrics['data_source'] = 'Tushare'
+                            # 缓存原始财务数据到数据库
+                            self._cache_raw_financial_data(symbol, financial_data, stock_info)
+                            return metrics
+                        else:
+                            logger.warning(f"⚠️ Tushare解析失败，降级到AKShare")
                 else:
                     logger.warning(f"⚠️ Tushare未获取到{symbol}财务数据，降级到AKShare")
             else:
@@ -1017,13 +1017,22 @@ class OptimizedChinaDataProvider:
 
             if akshare_provider.connected:
                 # AKShare的get_financial_data是异步方法，需要使用asyncio运行
-                loop = asyncio.get_event_loop()
-                financial_data = loop.run_until_complete(akshare_provider.get_financial_data(symbol))
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    financial_data = loop.run_until_complete(akshare_provider.get_financial_data(symbol))
+                finally:
+                    loop.close()
 
                 if financial_data and any(not v.empty if hasattr(v, 'empty') else bool(v) for v in financial_data.values()):
                     logger.info(f"✅ AKShare财务数据获取成功: {symbol}")
                     # 获取股票基本信息（也是异步方法）
-                    stock_info = loop.run_until_complete(akshare_provider.get_stock_basic_info(symbol))
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        stock_info = loop.run_until_complete(akshare_provider.get_stock_basic_info(symbol))
+                    finally:
+                        loop.close()
 
                     # 解析AKShare财务数据
                     logger.debug(f"🔧 调用AKShare解析函数，股价: {price_value}")
@@ -1791,27 +1800,72 @@ class OptimizedChinaDataProvider:
             return None
 
     def _parse_financial_data(self, financial_data: dict, stock_info: dict, price_value: float) -> dict:
-        """解析财务数据为指标"""
+        """解析财务数据为指标（兼容嵌套和平扁化两种结构）"""
         try:
-            # 获取最新的财务数据
+            # 🔥 检查数据结构类型
             balance_sheet = financial_data.get('balance_sheet', [])
             income_statement = financial_data.get('income_statement', [])
-            cash_flow = financial_data.get('cash_flow', [])
 
-            if not (balance_sheet or income_statement):
+            # 判断是否为扁平化结构（Tushare 返回的）
+            is_flattened = (
+                not isinstance(balance_sheet, list) or
+                not isinstance(income_statement, list) or
+                len(balance_sheet) == 0 or
+                len(income_statement) == 0
+            )
+
+            if is_flattened:
+                # 🔥 扁平化结构：Tushare _standardize_tushare_financial_data 返回的数据
+                # 直接从 financial_data 中提取字段
+                latest_income = financial_data
+                latest_balance = financial_data
+                latest_cash = financial_data
+
+                logger.debug(f"🔧 使用扁平化数据结构解析 Tushare 财务数据")
+            else:
+                # 🔥 嵌套结构：AKShare 返回的数据
+                cash_flow = financial_data.get('cash_flow', [])
+                latest_balance = balance_sheet[0] if balance_sheet else {}
+                latest_income = income_statement[0] if income_statement else {}
+                latest_cash = cash_flow[0] if cash_flow else {}
+
+                logger.debug(f"🔧 使用嵌套数据结构解析财务数据")
+
+            # 检查是否有数据
+            if not latest_income and not latest_balance:
+                logger.warning(f"⚠️ 财务数据为空，无法解析")
                 return None
-
-            latest_balance = balance_sheet[0] if balance_sheet else {}
-            latest_income = income_statement[0] if income_statement else {}
-            latest_cash = cash_flow[0] if cash_flow else {}
 
             # 计算财务指标
             metrics = {}
 
-            # 基础数据
-            total_assets = latest_balance.get('total_assets', 0) or 0
-            total_liab = latest_balance.get('total_liab', 0) or 0
-            total_equity = latest_balance.get('total_hldr_eqy_exc_min_int', 0) or 0
+            # 基础数据（兼容两种结构）
+            if is_flattened:
+                total_assets = financial_data.get('total_assets', 0) or 0
+                total_liab = financial_data.get('total_liab', 0) or 0
+                total_equity = financial_data.get('total_hldr_eqy_exc_min_int', 0) or 0
+                # 扁平化结构中的字段名可能不同
+                if total_equity == 0:
+                    total_equity = financial_data.get('total_hldr_eqy', 0) or 0
+                net_income = financial_data.get('net_income', 0) or 0
+                # 扁平化结构中可能是 net_income 或 n_income
+                if net_income == 0:
+                    net_income = financial_data.get('n_income', 0) or 0
+                total_revenue = financial_data.get('revenue', 0) or 0
+                if total_revenue == 0:
+                    total_revenue = financial_data.get('oper_rev', 0) or 0
+                operate_profit = financial_data.get('oper_profit', 0) or 0
+                if operate_profit == 0:
+                    operate_profit = financial_data.get('total_profit', 0) or 0
+            else:
+                total_assets = latest_balance.get('total_assets', 0) or 0
+                total_liab = latest_balance.get('total_liab', 0) or 0
+                total_equity = latest_balance.get('total_hldr_eqy_exc_min_int', 0) or 0
+                net_income = latest_income.get('n_income', 0) or 0
+                total_revenue = latest_income.get('total_revenue', 0) or 0
+                operate_profit = latest_income.get('oper_profit', 0) or 0
+
+            logger.debug(f"🔧 基础数据: total_assets={total_assets}, total_liab={total_liab}, total_equity={total_equity}")
 
             # 计算 TTM 营业收入和净利润
             # Tushare income_statement 的数据是累计值（从年初到报告期）
@@ -1864,8 +1918,14 @@ class OptimizedChinaDataProvider:
             profit_type = "TTM" if ttm_net_income else "单期"
 
             # 获取实际总股本计算市值
-            # 优先从 stock_info 获取，如果没有则无法计算准确的估值指标
+            # 优先从 stock_info 获取，如果没有则使用 daily_basic 的数据
             total_share = stock_info.get('total_share') if stock_info else None
+
+            # 🔥 优先使用 stock_info 中的市值数据（从 daily_basic 获取）
+            stock_info_pe = stock_info.get('pe') if stock_info else None
+            stock_info_pb = stock_info.get('pb') if stock_info else None
+            stock_info_total_mv = stock_info.get('total_mv') if stock_info else None
+            stock_info_circ_mv = stock_info.get('circ_mv') if stock_info else None
 
             if total_share and total_share > 0:
                 # 市值（元）= 股价（元）× 总股本（万股）× 10000
@@ -1873,40 +1933,51 @@ class OptimizedChinaDataProvider:
                 market_cap_yi = market_cap / 100000000  # 转换为亿元
                 metrics["total_mv"] = f"{market_cap_yi:.2f}亿元"
                 logger.info(f"✅ [Tushare-总市值计算成功] 总市值={market_cap_yi:.2f}亿元 (股价{price_value}元 × 总股本{total_share}万股)")
+            elif stock_info_total_mv:
+                # 使用 daily_basic 的总市值数据
+                market_cap = stock_info_total_mv * 100000000  # 亿元转元
+                metrics["total_mv"] = f"{stock_info_total_mv:.2f}亿元"
+                logger.info(f"✅ [Tushare-使用daily_basic总市值] 总市值={stock_info_total_mv:.2f}亿元")
             else:
-                logger.error(f"❌ {stock_info.get('code', 'Unknown')} 无法获取总股本，无法计算准确的估值指标")
+                logger.warning(f"⚠️ {stock_info.get('code', 'Unknown')} 无法获取总股本，使用 daily_basic 数据")
                 market_cap = None
                 metrics["total_mv"] = "N/A"
 
-            # 计算各项指标（只有在有准确市值时才计算）
-            if market_cap:
-                # PE比率（优先使用 TTM 净利润）
-                if net_income > 0:
-                    pe_ratio = market_cap / (net_income * 10000)  # 转换单位
-                    metrics["pe"] = f"{pe_ratio:.1f}倍"
-                    logger.info(f"✅ Tushare 计算PE({profit_type}): 市值{market_cap/100000000:.2f}亿元 / 净利润{net_income:.2f}万元 = {pe_ratio:.1f}倍")
-                else:
-                    metrics["pe"] = "N/A（亏损）"
+            # 🔥 PE/PB 计算策略：
+            # 1. 如果有 stock_info 中的 PE/PB（从 daily_basic 获取），优先使用
+            # 2. 否则，如果有 total_share，则自己计算
+            # 3. 最后才显示 N/A
 
-                # PB比率（净资产使用最新期数据，相对准确）
-                if total_equity > 0:
-                    pb_ratio = market_cap / (total_equity * 10000)
-                    metrics["pb"] = f"{pb_ratio:.2f}倍"
-                else:
-                    metrics["pb"] = "N/A"
-
-                # PS比率（优先使用 TTM 营业收入）
-                if total_revenue > 0:
-                    ps_ratio = market_cap / (total_revenue * 10000)
-                    metrics["ps"] = f"{ps_ratio:.1f}倍"
-                    logger.info(f"✅ Tushare 计算PS({revenue_type}): 市值{market_cap/100000000:.2f}亿元 / 营业收入{total_revenue:.2f}万元 = {ps_ratio:.1f}倍")
-                else:
-                    metrics["ps"] = "N/A"
+            # PE 比率
+            if stock_info_pe is not None and stock_info_pe > 0:
+                metrics["pe"] = f"{stock_info_pe:.1f}倍"
+                logger.info(f"✅ [Tushare-使用daily_basic PE] PE={stock_info_pe:.1f}倍")
+            elif market_cap and net_income > 0:
+                # 自己计算 PE
+                pe_ratio = market_cap / (net_income * 10000)  # 转换单位
+                metrics["pe"] = f"{pe_ratio:.1f}倍"
+                logger.info(f"✅ Tushare 计算PE({profit_type}): 市值{market_cap/100000000:.2f}亿元 / 净利润{net_income:.2f}万元 = {pe_ratio:.1f}倍")
             else:
-                # 无法获取总股本，无法计算估值指标
-                metrics["pe"] = "N/A（无总股本数据）"
-                metrics["pb"] = "N/A（无总股本数据）"
-                metrics["ps"] = "N/A（无总股本数据）"
+                metrics["pe"] = "N/A"
+
+            # PB 比率
+            if stock_info_pb is not None and stock_info_pb > 0:
+                metrics["pb"] = f"{stock_info_pb:.2f}倍"
+                logger.info(f"✅ [Tushare-使用daily_basic PB] PB={stock_info_pb:.2f}倍")
+            elif market_cap and total_equity > 0:
+                # 自己计算 PB
+                pb_ratio = market_cap / (total_equity * 10000)
+                metrics["pb"] = f"{pb_ratio:.2f}倍"
+            else:
+                metrics["pb"] = "N/A"
+
+            # PS 比率
+            if market_cap and total_revenue > 0:
+                ps_ratio = market_cap / (total_revenue * 10000)
+                metrics["ps"] = f"{ps_ratio:.1f}倍"
+                logger.info(f"✅ Tushare 计算PS({revenue_type}): 市值{market_cap/100000000:.2f}亿元 / 营业收入{total_revenue:.2f}万元 = {ps_ratio:.1f}倍")
+            else:
+                metrics["ps"] = "N/A"
 
             # ROE
             if total_equity > 0 and net_income > 0:
@@ -1962,6 +2033,162 @@ class OptimizedChinaDataProvider:
 
         except Exception as e:
             logger.error(f"解析财务数据失败: {e}")
+            return None
+
+    def _parse_financial_data_with_stock_info(
+        self, financial_data: dict, stock_info: dict, price_value: float
+    ) -> dict:
+        """解析Tushare财务数据（优先使用stock_info中的PE/PB）"""
+        try:
+            # 从 stock_info 获取 PE/PB（从 daily_basic 获取）
+            stock_info_pe = stock_info.get('pe') if stock_info else None
+            stock_info_pb = stock_info.get('pb') if stock_info else None
+            stock_info_total_mv = stock_info.get('total_mv') if stock_info else None
+            stock_info_circ_mv = stock_info.get('circ_mv') if stock_info else None
+
+            # 从 financial_data 获取其他财务指标（扁平化结构）
+            roe = financial_data.get('roe') or financial_data.get('roe_waa')
+            roe = float(roe) if roe and str(roe) != 'nan' and str(roe) != '--' else None
+
+            roa = financial_data.get('roa') or financial_data.get('roa2')
+            roa = float(roa) if roa and str(roa) != 'nan' and str(roa) != '--' else None
+
+            gross_margin = financial_data.get('gross_margin')
+            gross_margin = float(gross_margin) if gross_margin and str(gross_margin) != 'nan' else None
+
+            netprofit_margin = financial_data.get('netprofit_margin')
+            netprofit_margin = float(netprofit_margin) if netprofit_margin and str(netprofit_margin) != 'nan' else None
+
+            debt_to_assets = financial_data.get('debt_to_assets')
+            debt_to_assets = float(debt_to_assets) if debt_to_assets and str(debt_to_assets) != 'nan' else None
+
+            current_ratio = financial_data.get('current_ratio')
+            current_ratio = float(current_ratio) if current_ratio and str(current_ratio) != 'nan' else None
+
+            quick_ratio = financial_data.get('quick_ratio')
+            quick_ratio = float(quick_ratio) if quick_ratio and str(quick_ratio) != 'nan' else None
+
+            cash_ratio = financial_data.get('cash_ratio')
+            cash_ratio = float(cash_ratio) if cash_ratio and str(cash_ratio) != 'nan' else None
+
+            # 构建 metrics
+            metrics = {}
+
+            # 🔥 优先使用 stock_info 中的 PE/PB
+            if stock_info_pe is not None and stock_info_pe > 0:
+                metrics["pe"] = f"{stock_info_pe:.1f}倍"
+            else:
+                metrics["pe"] = "N/A"
+
+            if stock_info_pb is not None and stock_info_pb > 0:
+                metrics["pb"] = f"{stock_info_pb:.2f}倍"
+            else:
+                metrics["pb"] = "N/A"
+
+            # 总市值（从 daily_basic 获取的单位是万元，需要转换为亿元）
+            if stock_info_total_mv is not None and stock_info_total_mv > 0:
+                total_mv_yuan = stock_info_total_mv / 10000  # 万元转亿元
+                metrics["total_mv"] = f"{total_mv_yuan:.2f}亿元"
+
+            # PE_TTM（使用 stock_info 中的 pe_ttm）
+            pe_ttm = stock_info.get('pe_ttm') if stock_info else None
+            if pe_ttm is not None and pe_ttm > 0:
+                metrics["pe_ttm"] = f"{pe_ttm:.1f}倍"
+
+            # ROE
+            if roe is not None:
+                metrics["roe"] = f"{roe:.1f}%"
+            else:
+                metrics["roe"] = "N/A"
+
+            # ROA
+            if roa is not None:
+                metrics["roa"] = f"{roa:.1f}%"
+            else:
+                metrics["roa"] = "N/A"
+
+            # 毛利率
+            if gross_margin is not None:
+                metrics["gross_margin"] = f"{gross_margin:.1f}%"
+            else:
+                metrics["gross_margin"] = "N/A"
+
+            # 净利率
+            if netprofit_margin is not None:
+                metrics["net_margin"] = f"{netprofit_margin:.1f}%"
+            else:
+                metrics["net_margin"] = "N/A"
+
+            # 资产负债率
+            if debt_to_assets is not None:
+                metrics["debt_ratio"] = f"{debt_to_assets:.1f}%"
+            else:
+                metrics["debt_ratio"] = "N/A"
+
+            # 流动比率
+            if current_ratio is not None:
+                metrics["current_ratio"] = f"{current_ratio:.4f}"
+            else:
+                metrics["current_ratio"] = "N/A"
+
+            # 速动比率
+            if quick_ratio is not None:
+                metrics["quick_ratio"] = f"{quick_ratio:.4f}"
+            else:
+                metrics["quick_ratio"] = "N/A"
+
+            # 现金比率
+            if cash_ratio is not None:
+                metrics["cash_ratio"] = f"{cash_ratio:.4f}"
+            else:
+                metrics["cash_ratio"] = "N/A"
+
+            # 计算 PS（市销率）= 总市值 / 营业收入
+            # 从 financial_data 获取营业收入数据
+            # 注意：Tushare income API 返回的 revenue 单位是元，需要转换为亿元
+            try:
+                revenue = financial_data.get('revenue') or financial_data.get('oper_rev')
+                if revenue and str(revenue) != 'nan' and revenue != '--':
+                    revenue_val = float(revenue)
+                    # Tushare revenue 单位是元，转换为亿元
+                    revenue_yuan = revenue_val / 100000000  # 元转亿元
+                    # stock_info_total_mv 单位是万元，转换为亿元
+                    total_mv_yuan = stock_info_total_mv / 10000 if stock_info_total_mv else 0
+
+                    if total_mv_yuan > 0 and revenue_yuan > 0:
+                        # PS = 总市值(亿元) / 营业收入(亿元)
+                        ps_val = total_mv_yuan / revenue_yuan
+                        metrics["ps"] = f"{ps_val:.2f}倍"
+                        logger.debug(f"✅ 计算PS: 总市值{total_mv_yuan:.2f}亿元 / 营业收入{revenue_yuan:.2f}亿元 = {metrics['ps']}")
+                    else:
+                        metrics["ps"] = "N/A"
+                else:
+                    metrics["ps"] = "N/A"
+            except (ValueError, TypeError, ZeroDivisionError) as e:
+                logger.debug(f"计算PS失败: {e}")
+                metrics["ps"] = "N/A"
+
+            # 其他指标
+            metrics["dividend_yield"] = "N/A"
+
+            # 评分
+            fundamental_score = self._calculate_fundamental_score(metrics, stock_info)
+            valuation_score = self._calculate_valuation_score(metrics)
+            growth_score = self._calculate_growth_score(metrics, stock_info)
+            risk_level = self._calculate_risk_level(metrics, stock_info)
+
+            metrics.update({
+                "fundamental_score": fundamental_score,
+                "valuation_score": valuation_score,
+                "growth_score": growth_score,
+                "risk_level": risk_level
+            })
+
+            logger.info(f"✅ [_parse_financial_data_with_stock_info] PE={metrics.get('pe')}, PB={metrics.get('pb')}, ROE={metrics.get('roe')}")
+            return metrics
+
+        except Exception as e:
+            logger.error(f"解析Tushare财务数据失败: {e}")
             return None
 
     def _calculate_fundamental_score(self, metrics: dict, stock_info: dict) -> float:
