@@ -1044,7 +1044,15 @@ class Toolkit:
                 logger.info(f"📊 [统一基本面工具] 默认策略: 获取完整数据")
             
             logger.info(f"📊 [统一基本面工具] ===== 数据获取摘要结束 =====")
-            
+
+            # 🔍 添加数据验证信息
+            try:
+                from tradingagents.agents.utils.data_validation_integration import add_data_validation_to_fundamentals_report
+                combined_result = add_data_validation_to_fundamentals_report(ticker, combined_result)
+                logger.info(f"✅ [统一基本面工具] {ticker} 数据验证已完成")
+            except Exception as e:
+                logger.warning(f"⚠️ [统一基本面工具] 数据验证失败: {e}")
+
             return combined_result
 
         except Exception as e:
@@ -1164,6 +1172,14 @@ class Toolkit:
 ---
 *数据来源: 根据股票类型自动选择最适合的数据源*
 """
+
+            # 🔍 添加数据验证信息
+            try:
+                from tradingagents.agents.utils.data_validation_integration import add_data_validation_to_market_report
+                combined_result = add_data_validation_to_market_report(ticker, combined_result)
+                logger.info(f"✅ [统一市场工具] {ticker} 数据验证已完成")
+            except Exception as e:
+                logger.warning(f"⚠️ [统一市场工具] 数据验证失败: {e}")
 
             logger.info(f"📈 [统一市场工具] 数据获取完成，总长度: {len(combined_result)}")
             return combined_result

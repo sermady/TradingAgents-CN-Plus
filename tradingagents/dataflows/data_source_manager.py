@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 数据源管理器
@@ -1130,14 +1130,14 @@ class DataSourceManager:
                 * 100
             )
             result += f"   价格位置: {boll_position:.1f}%"
-            if boll_position >= 80:
-                result += " (接近上轨，可能超买 ⚠️)\n\n"
-            elif boll_position <= 20:
-                result += " (接近下轨，可能超卖 ⚠️)\n\n"
+            if boll_position >= 100:
+                result += " (已突破上轨，多头确认信号！🔴)"
+            elif boll_position >= 80:
+                result += " (接近上轨，可能超买 ⚠️)"
             else:
-                result += " (中性区域)\n\n"
+                result += " (中性区域)"
 
-            # 价格统计
+# 价格统计
             result += f"📊 价格统计 (最近{display_rows}个交易日):\n"
             result += f"   最高价: ¥{display_data['high'].max():.2f}\n"
             result += f"   最低价: ¥{display_data['low'].min():.2f}\n"
@@ -2943,6 +2943,569 @@ class DataSourceManager:
             f"⚠️ [数据来源: 所有数据源失败] 无法获取新闻: {symbol or '市场新闻'}"
         )
         return []
+
+    # ========== 数据质量评分和验证功能 ==========
+
+    def get_data_quality_score(self, symbol: str, data: Dict[str, Any]) -> float:
+        """
+        获取数据质量评分 (0-100)
+
+        评分维度:
+        - 数据完整性 (30分): 必需字段是否齐全
+        - 数据一致性 (30分): 指标间逻辑关系是否正确
+        - 数据时效性 (20分): 数据是否是最新的
+        - 数据源可靠性 (20分): 数据源的可信度
+
+        Args:
+            symbol: 股票代码
+            data: 待评分的数据字典
+
+        Returns:
+            float: 质量评分 (0-100)
+        """
+        score = 0.0
+        max_score = 100.0
+
+        # 1. 数据完整性检查 (30分)
+        completeness_score = self._check_data_completeness(data)
+        score += completeness_score * 0.3
+
+        # 2. 数据一致性检查 (30分)
+        consistency_score = self._check_data_consistency(symbol, data)
+        score += consistency_score * 0.3
+
+        # 3. 数据时效性检查 (20分)
+        timeliness_score = self._check_data_timeliness(data)
+        score += timeliness_score * 0.2
+
+        # 4. 数据源可靠性 (20分)
+        reliability_score = self._check_data_source_reliability()
+        score += reliability_score * 0.2
+
+        logger.debug(
+            f"📊 [数据质量评分] {symbol}: {score:.1f}/100 "
+            f"(完整:{completeness_score:.1f} 一致:{consistency_score:.1f} "
+            f"时效:{timeliness_score:.1f} 可靠:{reliability_score:.1f})"
+        )
+
+        return min(score, max_score)
+
+    def _check_data_completeness(self, data: Dict[str, Any]) -> float:
+        """检查数据完整性"""
+        required_fields = {
+            # 基础价格数据
+            'current_price', 'open', 'high', 'low', 'volume',
+            # 基本面数据
+            'market_cap', 'PE', 'PB',
+        }
+
+        optional_fields = {
+            'MA5', 'MA10', 'MA20', 'MA60',
+            'RSI', 'MACD',
+            'turnover_rate',
+            'ROE', 'ROA',
+        }
+
+        score = 0.0
+        total_weight = 1.0
+
+        # 必需字段 (权重0.7)
+        present_required = sum(1 for f in required_fields if f in data and data[f] is not None)
+        if required_fields:
+            required_score = (present_required / len(required_fields)) * 70
+            score += required_score * 0.7
+
+        # 可选字段 (权重0.3)
+        present_optional = sum(1 for f in optional_fields if f in data and data[f] is not None)
+        if optional_fields:
+            optional_score = (present_optional / len(optional_fields)) * 30
+            score += optional_score * 0.3
+
+        return score
+
+    def _check_data_consistency(self, symbol: str, data: Dict[str, Any]) -> float:
+        """检查数据一致性"""
+        score = 100.0
+        issues = []
+
+        # 检查1: high >= low
+        if 'high' in data and 'low' in data:
+            if data['high'] < data['low']:
+                issues.append("最高价 < 最低价")
+                score -= 20
+
+        # 检查2: current_price 在 high 和 low 之间
+        if all(k in data for k in ['current_price', 'high', 'low']):
+            price = data['current_price']
+            if not (data['low'] <= price <= data['high']):
+                issues.append(f"当前价{price}不在最高最低价范围内")
+                score -= 15
+
+        # 检查3: 市值计算一致性
+        if all(k in data for k in ['market_cap', 'share_count', 'current_price']):
+            try:
+                market_cap = data['market_cap']
+                share_count = data['share_count']
+                price = data['current_price']
+
+                calculated_cap = (share_count * price) / 10000  # 转换为亿元
+                if market_cap > 0:
+                    diff_pct = abs((calculated_cap - market_cap) / market_cap) * 100
+                    if diff_pct > 15:  # 超过15%误差
+                        issues.append(f"市值计算不一致 (差异{diff_pct:.1f}%)")
+                        score -= 10
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
+        # 检查4: PS比率一致性
+        if all(k in data for k in ['market_cap', 'revenue', 'PS']):
+            try:
+                calculated_ps = data['market_cap'] / data['revenue']
+                if data['revenue'] > 0:
+                    diff_pct = abs((calculated_ps - data['PS']) / data['PS']) * 100
+                    if diff_pct > 10:  # 超过10%误差
+                        issues.append(f"PS比率计算不一致 (差异{diff_pct:.1f}%)")
+                        score -= 15
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
+        # 检查5: MA序列关系
+        if all(k in data for k in ['MA5', 'MA10', 'MA20']):
+            ma5, ma10, ma20 = data['MA5'], data['MA10'], data['MA20']
+            # 上升趋势: MA5 > MA10 > MA20
+            # 下降趋势: MA5 < MA10 < MA20
+            # 如果MA5在MA10和MA20之间,可能有问题
+            if not (ma10 < ma5 < ma20 or ma20 < ma5 < ma10):
+                issues.append(f"MA序列关系异常: MA5={ma5}, MA10={ma10}, MA20={ma20}")
+                score -= 5
+
+        if issues:
+            logger.debug(f"📊 [数据一致性检查] {symbol}: {', '.join(issues)}")
+
+        return max(score, 0.0)
+
+    def _check_data_timeliness(self, data: Dict[str, Any]) -> float:
+        """检查数据时效性"""
+        score = 100.0
+
+        # 检查数据中的日期
+        data_date = data.get('date') or data.get('trade_date') or data.get('timestamp')
+        if data_date:
+            try:
+                from datetime import datetime
+                # 尝试解析日期
+                if isinstance(data_date, str):
+                    data_date = datetime.strptime(data_date.split()[0], '%Y-%m-%d')
+                elif isinstance(data_date, (int, float)):
+                    # 假设是Unix时间戳
+                    data_date = datetime.fromtimestamp(data_date)
+
+                if data_date:
+                    now = datetime.now()
+                    days_old = (now - data_date).days
+
+                    # 数据越新,分数越高
+                    if days_old <= 1:
+                        score = 100
+                    elif days_old <= 7:
+                        score = 80
+                    elif days_old <= 30:
+                        score = 60
+                    else:
+                        score = 40
+            except Exception as e:
+                logger.debug(f"日期解析失败: {e}")
+                score = 50  # 无法判断,给中等分
+
+        return score
+
+    def _check_data_source_reliability(self) -> float:
+        """检查数据源可靠性"""
+        # 数据源可靠性评分
+        reliability_scores = {
+            ChinaDataSource.MONGODB: 95,   # 缓存数据,最可靠
+            ChinaDataSource.TUSHARE: 90,   # 官方数据,高质量
+            ChinaDataSource.BAOSTOCK: 75,  # 免费但稳定
+            ChinaDataSource.AKSHARE: 70,   # 多源聚合,质量波动
+        }
+
+        score = reliability_scores.get(self.current_source, 60)
+        return float(score)
+
+    def get_best_source_for_metric(self, metric: str) -> str:
+        """
+        获取指定指标的最佳数据源
+
+        重要修正:
+        - 实时行情指标优先使用 AkShare (真正实时)
+        - 基本面指标优先使用 Tushare (最准确)
+        - 技术指标基于历史数据, Tushare 更可靠
+
+        Args:
+            metric: 指标名称,如 'PE', 'PB', 'PS', 'MA5', 'RSI', 'volume'
+
+        Returns:
+            str: 推荐的数据源名称
+        """
+        # 判断是否在交易时间 (需要实时数据)
+        is_trading_hours = self._is_trading_hours()
+
+        # 实时行情指标集合
+        realtime_metrics = {'current_price', 'open', 'high', 'low', 'volume', 'turnover_rate'}
+
+        # 不同数据源的特长
+        source_specialties = {
+            # 基本面指标 - Tushare最准确
+            'PE': ChinaDataSource.TUSHARE,
+            'PB': ChinaDataSource.TUSHARE,
+            'PS': ChinaDataSource.TUSHARE,
+            'ROE': ChinaDataSource.TUSHARE,
+            'ROA': ChinaDataSource.TUSHARE,
+            'market_cap': ChinaDataSource.TUSHARE,
+            'revenue': ChinaDataSource.TUSHARE,
+            'total_assets': ChinaDataSource.TUSHARE,
+            'net_profit': ChinaDataSource.TUSHARE,
+
+            # 技术指标 - 基于历史数据,Tushare更可靠
+            'MA5': ChinaDataSource.TUSHARE,
+            'MA10': ChinaDataSource.TUSHARE,
+            'MA20': ChinaDataSource.TUSHARE,
+            'MA60': ChinaDataSource.TUSHARE,
+            'RSI': ChinaDataSource.TUSHARE,
+            'RSI6': ChinaDataSource.TUSHARE,
+            'RSI12': ChinaDataSource.TUSHARE,
+            'MACD': ChinaDataSource.TUSHARE,
+            'BOLL': ChinaDataSource.TUSHARE,
+            'BOLL_UPPER': ChinaDataSource.TUSHARE,
+            'BOLL_LOWER': ChinaDataSource.TUSHARE,
+            'BOLL_MIDDLE': ChinaDataSource.TUSHARE,
+
+            # 实时行情 - 根据时间选择数据源
+            # 盘中: AkShare (真正实时,秒级更新)
+            # 盘后: Tushare (完整数据,经过清洗)
+            'current_price': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+            'open': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+            'high': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+            'low': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+            'volume': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+            'turnover_rate': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
+
+            # 默认
+            'default': ChinaDataSource.TUSHARE,
+        }
+
+        best_source = source_specialties.get(metric, source_specialties['default'])
+
+        # 如果是实时指标且在盘中,记录日志
+        if metric in realtime_metrics and is_trading_hours:
+            logger.info(
+                f"📊 [盘中实时] {metric} 使用 {best_source.value} "
+                f"(原因: {'盘中需要实时数据' if best_source == ChinaDataSource.AKSHARE else '盘后使用完整数据'})"
+            )
+
+        # 如果最佳数据源不可用,使用当前可用源
+        if best_source not in self.available_sources:
+            logger.warning(
+                f"⚠️ {metric} 的最佳数据源 {best_source.value} 不可用, "
+                f"使用当前数据源 {self.current_source.value}"
+            )
+            return self.current_source.value
+
+        return best_source.value
+
+    def _is_trading_hours(self) -> bool:
+        """
+        判断当前是否是A股交易时间
+
+        A股交易时间:
+        - 上午: 9:30 - 11:30
+        - 下午: 13:00 - 15:00
+        - 延后30分钟: 用于收盘后的分析 (15:00 - 15:30)
+
+        Returns:
+            bool: True表示需要实时数据
+        """
+        try:
+            from datetime import datetime
+            now = datetime.now()
+
+            # 周末不交易
+            if now.weekday() >= 5:  # 5=周六, 6=周日
+                return False
+
+            current_time = now.hour * 100 + now.minute  # 转换为HHMM格式,如930表示9:30
+
+            # 上午时段: 9:30-11:30, 加上30分钟缓冲到12:00
+            morning_start = 930
+            morning_end = 1200
+
+            # 下午时段: 13:00-15:30 (收盘后30分钟)
+            afternoon_start = 1300
+            afternoon_end = 1530
+
+            is_morning = morning_start <= current_time <= morning_end
+            is_afternoon = afternoon_start <= current_time <= afternoon_end
+
+            return is_morning or is_afternoon
+
+        except Exception as e:
+            logger.warning(f"判断交易时间失败: {e}, 默认为非交易时间")
+            return False
+
+    def is_realtime_capable(self, source: ChinaDataSource) -> Dict[str, bool]:
+        """
+        判断数据源是否支持实时行情
+
+        Args:
+            source: 数据源枚举
+
+        Returns:
+            Dict[str, bool]: 各项实时能力的字典
+            {
+                'realtime_quote': 是否支持实时报价,
+                'tick_data': 是否支持逐笔成交,
+                'level2': 是否支持Level-2行情,
+                'delay_seconds': 数据延迟秒数
+            }
+        """
+        capabilities = {
+            ChinaDataSource.MONGODB: {
+                'realtime_quote': False,  # 缓存数据,非实时
+                'tick_data': False,
+                'level2': False,
+                'delay_seconds': 0,
+                'description': '缓存数据,来自其他数据源的历史快照'
+            },
+            ChinaDataSource.TUSHARE: {
+                'realtime_quote': True,   # 支持,但有延迟
+                'tick_data': True,        # 需要高级积分
+                'level2': False,          # 不支持
+                'delay_seconds': 900,     # 约15分钟延迟
+                'description': '官方数据,但实时行情有15分钟延迟'
+            },
+            ChinaDataSource.AKSHARE: {
+                'realtime_quote': True,   # ✅ 真正实时
+                'tick_data': True,        # ✅ 支持
+                'level2': True,           # ✅ 部分支持
+                'delay_seconds': 1,       # 秒级延迟
+                'description': '✅ 最佳实时数据源,来自东方财富/腾讯'
+            },
+            ChinaDataSource.BAOSTOCK: {
+                'realtime_quote': False,  # 不支持实时
+                'tick_data': False,
+                'level2': False,
+                'delay_seconds': 86400,   # T+1,次日更新
+                'description': '仅提供历史数据,不支持实时行情'
+            },
+        }
+
+        return capabilities.get(source, {
+            'realtime_quote': False,
+            'tick_data': False,
+            'level2': False,
+            'delay_seconds': 999999,
+            'description': '未知数据源'
+        })
+
+    async def get_data_with_validation(self, symbol: str, metric: str,
+                                       period: str = 'daily') -> tuple[Any, Dict]:
+        """
+        获取数据并自动验证
+
+        Args:
+            symbol: 股票代码
+            metric: 指标名称 ('current_price', 'PE', 'volume', etc.)
+            period: 数据周期
+
+        Returns:
+            tuple[Any, Dict]: (数据值, 验证结果字典)
+        """
+        # 获取最佳数据源
+        best_source_name = self.get_best_source_for_metric(metric)
+        logger.info(f"📊 [验证] 为 {metric} 选择数据源: {best_source_name}")
+
+        # 获取数据
+        data_str = self.get_stock_data(symbol, '2024-01-01', '2024-12-31', period)
+
+        # 解析数据
+        data = self._parse_data_string(data_str)
+
+        if not data:
+            return None, {'is_valid': False, 'error': '无法获取数据'}
+
+        # 提取请求的指标
+        metric_value = data.get(metric)
+
+        # 质量评分
+        quality_score = self.get_data_quality_score(symbol, data)
+
+        validation_result = {
+            'is_valid': quality_score >= 60,
+            'quality_score': quality_score,
+            'source': best_source_name,
+            'metric': metric,
+            'value': metric_value,
+            'data': data,
+            'warnings': [],
+            'errors': []
+        }
+
+        # 根据质量评分添加警告
+        if quality_score < 70:
+            validation_result['warnings'].append(f'数据质量较低 ({quality_score:.1f}/100)')
+        if quality_score < 60:
+            validation_result['errors'].append(f'数据质量不合格 ({quality_score:.1f}/100)')
+
+        return metric_value, validation_result
+
+    async def cross_validate_metric(self, symbol: str, metric: str,
+                                    sources: List[str] = None) -> Dict:
+        """
+        多源交叉验证指标
+
+        Args:
+            symbol: 股票代码
+            metric: 指标名称
+            sources: 要验证的数据源列表,如果为None则使用所有可用源
+
+        Returns:
+            Dict: 交叉验证结果
+        """
+        if sources is None:
+            sources = [s.value for s in self.available_sources]
+
+        logger.info(f"📊 [交叉验证] 开始多源验证 {symbol} 的 {metric}")
+
+        results = {}
+        values = {}
+
+        # 保存当前数据源
+        original_source = self.current_source
+
+        try:
+            for source in sources:
+                try:
+                    # 切换数据源
+                    source_enum = ChinaDataSource(source)
+                    if source_enum in self.available_sources:
+                        self.current_source = source_enum
+
+                        # 获取数据
+                        value, validation = await self.get_data_with_validation(
+                            symbol, metric
+                        )
+
+                        if value is not None:
+                            results[source] = {
+                                'value': value,
+                                'quality_score': validation.get('quality_score', 0),
+                                'is_valid': validation.get('is_valid', False)
+                            }
+                            values[source] = value
+
+                except Exception as e:
+                    logger.warning(f"从 {source} 获取 {metric} 失败: {e}")
+                    continue
+
+        finally:
+            # 恢复原始数据源
+            self.current_source = original_source
+
+        # 分析一致性
+        cross_validation_result = self._analyze_cross_validation_results(
+            symbol, metric, results, values
+        )
+
+        return cross_validation_result
+
+    def _analyze_cross_validation_results(self, symbol: str, metric: str,
+                                         results: Dict, values: Dict) -> Dict:
+        """分析交叉验证结果"""
+        if not values:
+            return {
+                'symbol': symbol,
+                'metric': metric,
+                'is_valid': False,
+                'error': '无法从任何数据源获取数据',
+                'sources_checked': list(results.keys())
+            }
+
+        # 计算统计信息
+        value_list = list(values.values())
+        num_sources = len(value_list)
+
+        # 基本统计
+        min_val = min(value_list)
+        max_val = max(value_list)
+        avg_val = sum(value_list) / num_sources
+
+        # 计算标准差和变异系数
+        variance = sum((x - avg_val) ** 2 for x in value_list) / num_sources
+        std_dev = variance ** 0.5
+        cv = (std_dev / avg_val * 100) if avg_val != 0 else 0
+
+        # 判断一致性
+        is_consistent = cv < 5  # 变异系数小于5%认为一致
+
+        # 找出最可靠的数据源
+        best_source = max(results.items(),
+                         key=lambda x: x[1]['quality_score'])[0] if results else None
+
+        # 中位数作为推荐值
+        sorted_values = sorted(value_list)
+        if num_sources % 2 == 0:
+            median_value = (sorted_values[num_sources // 2 - 1] +
+                          sorted_values[num_sources // 2]) / 2
+        else:
+            median_value = sorted_values[num_sources // 2]
+
+        return {
+            'symbol': symbol,
+            'metric': metric,
+            'is_valid': is_consistent,
+            'is_consistent': is_consistent,
+            'num_sources': num_sources,
+            'sources_checked': list(results.keys()),
+            'values_by_source': values,
+            'quality_scores': {k: v['quality_score'] for k, v in results.items()},
+            'statistics': {
+                'min': min_val,
+                'max': max_val,
+                'avg': avg_val,
+                'median': median_value,
+                'std_dev': std_dev,
+                'cv_percent': cv
+            },
+            'recommendation': {
+                'best_source': best_source,
+                'suggested_value': median_value,
+                'confidence': max(0, min(1, 1 - cv / 10))  # CV越小,置信度越高
+            },
+            'warnings': [] if is_consistent else [f'数据源间变异系数较高: {cv:.2f}%'],
+            'errors': [] if num_sources > 0 else ['无法获取任何数据']
+        }
+
+    def _parse_data_string(self, data_str: str) -> Dict[str, Any]:
+        """
+        解析数据字符串为字典
+
+        这是一个简化实现,实际应该根据数据格式解析
+        """
+        if not data_str or isinstance(data_str, dict):
+            return data_str or {}
+
+        # 尝试解析JSON
+        if data_str.startswith('{'):
+            import json
+            try:
+                return json.loads(data_str)
+            except json.JSONDecodeError:
+                pass
+
+        # 如果是表格格式,这里需要更复杂的解析
+        # 暂时返回空字典
+        logger.debug("无法解析数据字符串")
+        return {}
 
 
 # 全局数据源管理器实例
