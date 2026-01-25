@@ -6,6 +6,7 @@ AKShare统一数据提供器
 
 import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Union
 import pandas as pd
@@ -13,6 +14,48 @@ import pandas as pd
 from ..base_provider import BaseStockDataProvider
 
 logger = logging.getLogger(__name__)
+
+AKSHARE_QUOTES_CACHE = {}
+AKSHARE_CACHE_TTL = 15
+AKSHARE_CACHE_LOCK = threading.Lock()
+
+
+def _get_akshare_cached_quote(code: str) -> Optional[Dict[str, Any]]:
+    """获取AKShare单个股票行情缓存"""
+    now = datetime.now()
+    if code in AKSHARE_QUOTES_CACHE:
+        cached = AKSHARE_QUOTES_CACHE[code]
+        age = (now - cached["timestamp"]).total_seconds()
+        if age < AKSHARE_CACHE_TTL:
+            return cached["data"]
+    return None
+
+
+def _set_akshare_cached_quote(code: str, data: Dict[str, Any]) -> None:
+    """设置AKShare单个股票行情缓存"""
+    with AKSHARE_CACHE_LOCK:
+        AKSHARE_QUOTES_CACHE[code] = {"data": data, "timestamp": datetime.now()}
+
+
+def _clean_akshare_expired_cache(max_age: int = 60) -> int:
+    """清理过期的AKShare缓存"""
+    now = datetime.now()
+    expired = []
+    for code, cached in AKSHARE_QUOTES_CACHE.items():
+        age = (now - cached["timestamp"]).total_seconds()
+        if age > max_age:
+            expired.append(code)
+    for code in expired:
+        del AKSHARE_QUOTES_CACHE[code]
+    return len(expired)
+
+
+def _clear_all_akshare_cache() -> int:
+    """清空所有AKShare缓存（仅用于测试）"""
+    with AKSHARE_CACHE_LOCK:
+        count = len(AKSHARE_QUOTES_CACHE)
+        AKSHARE_QUOTES_CACHE.clear()
+    return count
 
 
 class AKShareProvider(BaseStockDataProvider):
@@ -378,12 +421,12 @@ class AKShareProvider(BaseStockDataProvider):
             logger.error(f"❌ AKShare获取股票列表失败: {e}")
             return []
 
-    async def get_stock_basic_info(self, code: str) -> Optional[Dict[str, Any]]:
+    async def get_stock_basic_info(self, symbol: str = None) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息
 
         Args:
-            code: 股票代码
+            symbol: 股票代码
 
         Returns:
             标准化的股票基础信息
@@ -391,34 +434,23 @@ class AKShareProvider(BaseStockDataProvider):
         if not self.connected:
             return None
 
-        try:
-            logger.debug(f"📊 获取{code}基础信息...")
+        # 兼容旧代码：symbol 为 None 时返回 None
+        if symbol is None:
+            return None
 
-            # 获取股票基本信息
+        code = symbol  # 内部使用 code 保持兼容性
+
+        try:
             stock_info = await self._get_stock_info_detail(code)
 
             if not stock_info:
                 logger.warning(f"⚠️ 未找到{code}的基础信息")
                 return None
 
-            # 转换为标准化字典
-            basic_info = {
-                "code": code,
-                "name": stock_info.get("name", f"股票{code}"),
-                "area": stock_info.get("area", "未知"),
-                "industry": stock_info.get("industry", "未知"),
-                "market": self._determine_market(code),
-                "list_date": stock_info.get("list_date", ""),
-                # 扩展字段
-                "full_symbol": self._get_full_symbol(code),
-                "market_info": self._get_market_info(code),
-                "data_source": "akshare",
-                "last_sync": datetime.now(timezone.utc),
-                "sync_status": "success",
-            }
-
+            stock_info["code"] = code
+            result = self.standardize_basic_info(stock_info)
             logger.debug(f"✅ {code}基础信息获取成功")
-            return basic_info
+            return result
 
         except Exception as e:
             logger.error(f"❌ 获取{code}基础信息失败: {e}")
@@ -532,6 +564,9 @@ class AKShareProvider(BaseStockDataProvider):
 
         Returns:
             完整标准化代码，如果无法识别则返回原始代码（确保不为空）
+
+        Note:
+            统一使用 .SH/.SZ/.BJ 格式（与 base_provider 保持一致）
         """
         # 确保 code 不为空
         if not code:
@@ -540,9 +575,9 @@ class AKShareProvider(BaseStockDataProvider):
         # 标准化为字符串
         code = str(code).strip()
 
-        # 根据代码前缀判断交易所
+        # 根据代码前缀判断交易所 - 统一使用 .SH/.SZ/.BJ 格式
         if code.startswith(("60", "68", "90")):  # 上海证券交易所（增加90开头的B股）
-            return f"{code}.SS"
+            return f"{code}.SH"
         elif code.startswith(("00", "30", "20")):  # 深圳证券交易所（增加20开头的B股）
             return f"{code}.SZ"
         elif code.startswith(("8", "4")):  # 北京证券交易所（增加4开头的新三板）
@@ -840,6 +875,7 @@ class AKShareProvider(BaseStockDataProvider):
                     data_dict.get("涨幅", 0)
                 ),  # 🔥 pct_chg 字段（兼容旧数据）
                 "volume": volume_in_shares,  # 🔥 单位：股（已转换）
+                "volume_unit": "shares",  # 明确标注: AKShare volume 单位是"股"（已从手转换）
                 "amount": float(data_dict.get("金额", 0)),  # 单位：元
                 "open": float(
                     data_dict.get("今开", 0)
@@ -871,11 +907,56 @@ class AKShareProvider(BaseStockDataProvider):
             logger.info(
                 f"✅ {code} 实时行情获取成功: 最新价={quotes['price']}, 涨跌幅={quotes['change_percent']}%, 成交量={quotes['volume']}, 成交额={quotes['amount']}"
             )
+
+            _set_akshare_cached_quote(code, quotes)
             return quotes
 
         except Exception as e:
             logger.error(f"❌ 获取{code}实时行情失败: {e}", exc_info=True)
             return None
+
+    async def get_stock_quotes_cached(
+        self, code: str, force_refresh: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """
+        获取单个股票实时行情（带缓存）
+
+        Args:
+            code: 股票代码
+            force_refresh: 是否强制刷新缓存
+
+        Returns:
+            标准化的行情数据
+        """
+        if not force_refresh:
+            cached = _get_akshare_cached_quote(code)
+            if cached is not None:
+                logger.debug(f"[Cache] 使用AKShare缓存: {code}")
+                return cached
+
+        result = await self.get_stock_quotes(code)
+        if result is not None:
+            _set_akshare_cached_quote(code, result)
+        return result
+
+    def get_akshare_cache_status(self) -> Dict[str, Any]:
+        """获取AKShare行情缓存状态"""
+        _clean_akshare_expired_cache()
+        return {
+            "cached_count": len(AKSHARE_QUOTES_CACHE),
+            "ttl_seconds": AKSHARE_CACHE_TTL,
+            "codes": list(AKSHARE_QUOTES_CACHE.keys())[:20],
+        }
+
+    def invalidate_akshare_cache(self, code: str = None) -> None:
+        """使AKShare缓存失效"""
+        global AKSHARE_QUOTES_CACHE
+        with AKSHARE_CACHE_LOCK:
+            if code:
+                if code in AKSHARE_QUOTES_CACHE:
+                    del AKSHARE_QUOTES_CACHE[code]
+            else:
+                AKSHARE_QUOTES_CACHE = {}
 
     async def _get_realtime_quotes_data(self, code: str) -> Dict[str, Any]:
         """获取实时行情数据"""

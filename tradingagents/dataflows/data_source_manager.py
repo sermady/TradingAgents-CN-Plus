@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 数据源管理器
@@ -27,6 +27,11 @@ logger = setup_dataflow_logging()
 
 # 导入统一数据源编码
 from tradingagents.constants import DataSourceCode
+
+# 导入数据标准化器
+from tradingagents.dataflows.standardizers.stock_basic_standardizer import (
+    standardize_stock_basic,
+)
 
 
 class ChinaDataSource(Enum):
@@ -1164,7 +1169,7 @@ class DataSourceManager:
             else:
                 result += " (中性区域)"
 
-# 价格统计
+            # 价格统计
             result += f"📊 价格统计 (最近{display_rows}个交易日):\n"
             result += f"   最高价: ¥{display_data['high'].max():.2f}\n"
             result += f"   最低价: ¥{display_data['low'].min():.2f}\n"
@@ -2202,41 +2207,54 @@ class DataSourceManager:
 
                 doc = get_basics_from_cache(symbol)
                 if doc:
-                    name = doc.get("name") or doc.get("stock_name") or ""
-                    # 规范化行业与板块（避免把“中小板/创业板”等板块值误作行业）
+                    # 使用统一标准化器处理数据
+                    data_source = doc.get("data_source", "app_cache")
+                    standardized_data = standardize_stock_basic(doc, data_source)
+
+                    # 从标准化数据中提取字段
+                    name = standardized_data.get("name") or f"股票{symbol}"
+
+                    # 规范化行业与板块（避免把"中小板/创业板"等板块值误作行业）
                     board_labels = {"主板", "中小板", "创业板", "科创板"}
-                    raw_industry = (
-                        doc.get("industry") or doc.get("industry_name") or ""
-                    ).strip()
-                    sec_or_cat = (doc.get("sec") or doc.get("category") or "").strip()
-                    market_val = (doc.get("market") or "").strip()
-                    industry_val = raw_industry or sec_or_cat or "未知"
-                    changed = False
+                    raw_industry = standardized_data.get("industry", "") or ""
+                    market_val = standardized_data.get("market", "") or ""
+
                     if raw_industry in board_labels:
-                        # 若industry是板块名，则将其用于market；industry改用更细分类（sec/category）
                         if not market_val:
                             market_val = raw_industry
-                            changed = True
-                        if sec_or_cat:
-                            industry_val = sec_or_cat
-                            changed = True
-                    if changed:
-                        try:
-                            logger.debug(
-                                f"🔧 [字段归一化] industry原值='{raw_industry}' → 行业='{industry_val}', 市场/板块='{market_val or doc.get('market', '未知')}'"
-                            )
-                        except Exception:
-                            pass
+                        # 使用更细分类（如果有）
+                        if standardized_data.get("industry_gn"):
+                            industry_val = standardized_data.get("industry_gn")
+                        elif standardized_data.get("industry_sw"):
+                            industry_val = standardized_data.get("industry_sw")
+                        else:
+                            industry_val = "未知"
+                    else:
+                        industry_val = raw_industry or "未知"
 
                     result = {
-                        "symbol": symbol,
-                        "name": name or f"股票{symbol}",
-                        "area": doc.get("area", "未知"),
-                        "industry": industry_val or "未知",
-                        "market": market_val or doc.get("market", "未知"),
-                        "list_date": doc.get("list_date", "未知"),
+                        "symbol": standardized_data.get("code", symbol),
+                        "name": name,
+                        "area": standardized_data.get("area", "未知"),
+                        "industry": industry_val,
+                        "market": market_val or standardized_data.get("market", "未知"),
+                        "list_date": standardized_data.get("list_date", "未知"),
+                        # 财务指标
+                        "pe": standardized_data.get("pe"),
+                        "pb": standardized_data.get("pb"),
+                        "ps": standardized_data.get("ps"),
+                        "pe_ttm": standardized_data.get("pe_ttm"),
+                        "total_mv": standardized_data.get("total_mv"),
+                        "circ_mv": standardized_data.get("circ_mv"),
+                        # 行情数据
+                        "current_price": None,
+                        "change_pct": None,
+                        "volume": None,
+                        # 元数据
                         "source": "app_cache",
+                        "data_source": data_source,
                     }
+
                     # 追加快照行情（若存在）
                     try:
                         df = get_market_quote_dataframe(symbol)
@@ -2244,6 +2262,7 @@ class DataSourceManager:
                             row = df.iloc[-1]
                             result["current_price"] = row.get("close")
                             result["change_pct"] = row.get("pct_chg")
+                            # market_quotes 中的 volume 已经是"股"单位，无需再转换
                             result["volume"] = row.get("volume")
                             result["quote_date"] = row.get("date")
                             result["quote_source"] = "market_quotes"
@@ -2253,7 +2272,7 @@ class DataSourceManager:
                     except Exception as _e:
                         logger.debug(f"附加行情失败（忽略）：{_e}")
 
-                    if name:
+                    if name and name != f"股票{symbol}":
                         logger.info(
                             f"✅ [数据来源: MongoDB-stock_basic_info] 成功获取: {symbol}"
                         )
@@ -2273,7 +2292,34 @@ class DataSourceManager:
                 from .interface import get_china_stock_info_tushare
 
                 info_str = get_china_stock_info_tushare(symbol)
-                result = self._parse_stock_info_string(info_str, symbol)
+                raw_result = self._parse_stock_info_string(info_str, symbol)
+
+                # 使用统一标准化器处理数据
+                standardized_data = standardize_stock_basic(raw_result, "tushare")
+
+                # 构建标准化结果
+                result = {
+                    "symbol": standardized_data.get("code", symbol),
+                    "name": standardized_data.get("name", f"股票{symbol}"),
+                    "area": standardized_data.get("area", "未知"),
+                    "industry": standardized_data.get("industry", "未知"),
+                    "market": standardized_data.get("market", "未知"),
+                    "list_date": standardized_data.get("list_date", "未知"),
+                    # 财务指标
+                    "pe": standardized_data.get("pe"),
+                    "pb": standardized_data.get("pb"),
+                    "ps": standardized_data.get("ps"),
+                    "pe_ttm": standardized_data.get("pe_ttm"),
+                    "total_mv": standardized_data.get("total_mv"),
+                    "circ_mv": standardized_data.get("circ_mv"),
+                    # 行情数据（从原始数据获取）
+                    "current_price": raw_result.get("current_price"),
+                    "change_pct": raw_result.get("change_pct"),
+                    "volume": raw_result.get("volume"),
+                    # 元数据
+                    "source": "tushare",
+                    "data_source": "tushare",
+                }
 
                 # 检查是否获取到有效信息
                 if result.get("name") and result["name"] != f"股票{symbol}":
@@ -2287,7 +2333,38 @@ class DataSourceManager:
             else:
                 adapter = self.get_data_adapter()
                 if adapter and hasattr(adapter, "get_stock_info"):
-                    result = adapter.get_stock_info(symbol)
+                    raw_result = adapter.get_stock_info(symbol)
+
+                    # 使用统一标准化器处理数据
+                    data_source_name = self.current_source.value
+                    standardized_data = standardize_stock_basic(
+                        raw_result, data_source_name
+                    )
+
+                    # 构建标准化结果
+                    result = {
+                        "symbol": standardized_data.get("code", symbol),
+                        "name": standardized_data.get("name", f"股票{symbol}"),
+                        "area": standardized_data.get("area", "未知"),
+                        "industry": standardized_data.get("industry", "未知"),
+                        "market": standardized_data.get("market", "未知"),
+                        "list_date": standardized_data.get("list_date", "未知"),
+                        # 财务指标
+                        "pe": standardized_data.get("pe"),
+                        "pb": standardized_data.get("pb"),
+                        "ps": standardized_data.get("ps"),
+                        "pe_ttm": standardized_data.get("pe_ttm"),
+                        "total_mv": standardized_data.get("total_mv"),
+                        "circ_mv": standardized_data.get("circ_mv"),
+                        # 行情数据
+                        "current_price": raw_result.get("current_price"),
+                        "change_pct": raw_result.get("change_pct"),
+                        "volume": raw_result.get("volume"),
+                        # 元数据
+                        "source": data_source_name,
+                        "data_source": data_source_name,
+                    }
+
                     if result.get("name") and result["name"] != f"股票{symbol}":
                         logger.info(
                             f"✅ [数据来源: {self.current_source.value}-股票信息] 成功获取: {symbol}"
@@ -2693,18 +2770,26 @@ class DataSourceManager:
 
                 # 如果今天没有数据，尝试查找最近的交易日
                 if df is None or df.empty:
-                    logger.info(f"📊 [Tushare] {trade_date} 无数据，查找最近的交易日...")
+                    logger.info(
+                        f"📊 [Tushare] {trade_date} 无数据，查找最近的交易日..."
+                    )
                     for delta in range(1, 10):  # 最多回溯 10 天
-                        check_date = (datetime.now() - timedelta(days=delta)).strftime("%Y-%m-%d")
+                        check_date = (datetime.now() - timedelta(days=delta)).strftime(
+                            "%Y-%m-%d"
+                        )
                         logger.info(f"📊 [Tushare] 尝试日期: {check_date}")
-                        df = loop.run_until_complete(provider.get_daily_basic(check_date))
+                        df = loop.run_until_complete(
+                            provider.get_daily_basic(check_date)
+                        )
                         if df is not None and not df.empty:
                             trade_date = check_date
                             logger.info(f"✅ [Tushare] 找到交易日数据: {trade_date}")
                             break
 
                 if df is None or df.empty:
-                    logger.warning(f"⚠️ [Tushare] daily_basic 返回空数据（尝试了最近 10 天）")
+                    logger.warning(
+                        f"⚠️ [Tushare] daily_basic 返回空数据（尝试了最近 10 天）"
+                    )
                     return f"⚠️ Tushare daily_basic 接口未返回数据，可能需要更高权限的 Token"
 
                 logger.info(f"✅ [Tushare] daily_basic 返回 {len(df)} 条记录")
@@ -2914,6 +2999,7 @@ class DataSourceManager:
         except Exception as e:
             logger.error(f"❌ [Tushare] 获取财务指标失败: {symbol} - {e}")
             import traceback
+
             logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
             return f"❌ 获取 {symbol} 财务指标失败: {e}"
 
@@ -2960,9 +3046,13 @@ class DataSourceManager:
                 report += "💰 利润表:\n"
                 latest_income = income_data[0]
                 report += f"   报告期: {latest_income.get('end_date', '未知')}\n"
-                report += f"   营业总收入: {latest_income.get('total_revenue', 0):,.2f}万元\n"
+                report += (
+                    f"   营业总收入: {latest_income.get('total_revenue', 0):,.2f}万元\n"
+                )
                 report += f"   营业收入: {latest_income.get('revenue', 0):,.2f}万元\n"
-                report += f"   营业成本: {latest_income.get('operating_cost', 0):,.2f}万元\n"
+                report += (
+                    f"   营业成本: {latest_income.get('operating_cost', 0):,.2f}万元\n"
+                )
                 report += f"   净利润: {latest_income.get('n_income', 0):,.2f}万元\n"
                 report += f"   扣非净利润: {latest_income.get('n_income_attr_p', 0):,.2f}万元\n"
 
@@ -2972,11 +3062,15 @@ class DataSourceManager:
                 report += "\n📦 资产负债表:\n"
                 latest_balance = balance_data[0]
                 report += f"   报告期: {latest_balance.get('end_date', '未知')}\n"
-                report += f"   总资产: {latest_balance.get('total_assets', 0):,.2f}万元\n"
+                report += (
+                    f"   总资产: {latest_balance.get('total_assets', 0):,.2f}万元\n"
+                )
                 report += f"   总负债: {latest_balance.get('total_liab', 0):,.2f}万元\n"
                 report += f"   股东权益: {latest_balance.get('total_hldr_eqy_exc_min_int', 0):,.2f}万元\n"
                 report += f"   流动资产: {latest_balance.get('total_cur_assets', 0):,.2f}万元\n"
-                report += f"   流动负债: {latest_balance.get('total_cur_liab', 0):,.2f}万元\n"
+                report += (
+                    f"   流动负债: {latest_balance.get('total_cur_liab', 0):,.2f}万元\n"
+                )
 
             # 现金流量表数据
             cashflow_data = result.get("cashflow_statement")
@@ -2994,6 +3088,7 @@ class DataSourceManager:
         except Exception as e:
             logger.error(f"❌ [Tushare] 获取财务报表失败: {symbol} - {e}")
             import traceback
+
             logger.error(f"❌ 堆栈跟踪:\n{traceback.format_exc()}")
             return f"❌ 获取 {symbol} 财务报表失败: {e}"
 
@@ -3014,6 +3109,7 @@ class DataSourceManager:
         """从stock_basic_info集合获取估值指标"""
         try:
             from tradingagents.config.database_manager import get_database_manager
+
             db_manager = get_database_manager()
             if not db_manager.is_mongodb_available():
                 return {}
@@ -3361,29 +3457,44 @@ class DataSourceManager:
         """检查数据完整性"""
         required_fields = {
             # 基础价格数据
-            'current_price', 'open', 'high', 'low', 'volume',
+            "current_price",
+            "open",
+            "high",
+            "low",
+            "volume",
             # 基本面数据
-            'market_cap', 'PE', 'PB',
+            "market_cap",
+            "PE",
+            "PB",
         }
 
         optional_fields = {
-            'MA5', 'MA10', 'MA20', 'MA60',
-            'RSI', 'MACD',
-            'turnover_rate',
-            'ROE', 'ROA',
+            "MA5",
+            "MA10",
+            "MA20",
+            "MA60",
+            "RSI",
+            "MACD",
+            "turnover_rate",
+            "ROE",
+            "ROA",
         }
 
         score = 0.0
         total_weight = 1.0
 
         # 必需字段 (权重0.7)
-        present_required = sum(1 for f in required_fields if f in data and data[f] is not None)
+        present_required = sum(
+            1 for f in required_fields if f in data and data[f] is not None
+        )
         if required_fields:
             required_score = (present_required / len(required_fields)) * 70
             score += required_score * 0.7
 
         # 可选字段 (权重0.3)
-        present_optional = sum(1 for f in optional_fields if f in data and data[f] is not None)
+        present_optional = sum(
+            1 for f in optional_fields if f in data and data[f] is not None
+        )
         if optional_fields:
             optional_score = (present_optional / len(optional_fields)) * 30
             score += optional_score * 0.3
@@ -3396,24 +3507,24 @@ class DataSourceManager:
         issues = []
 
         # 检查1: high >= low
-        if 'high' in data and 'low' in data:
-            if data['high'] < data['low']:
+        if "high" in data and "low" in data:
+            if data["high"] < data["low"]:
                 issues.append("最高价 < 最低价")
                 score -= 20
 
         # 检查2: current_price 在 high 和 low 之间
-        if all(k in data for k in ['current_price', 'high', 'low']):
-            price = data['current_price']
-            if not (data['low'] <= price <= data['high']):
+        if all(k in data for k in ["current_price", "high", "low"]):
+            price = data["current_price"]
+            if not (data["low"] <= price <= data["high"]):
                 issues.append(f"当前价{price}不在最高最低价范围内")
                 score -= 15
 
         # 检查3: 市值计算一致性
-        if all(k in data for k in ['market_cap', 'share_count', 'current_price']):
+        if all(k in data for k in ["market_cap", "share_count", "current_price"]):
             try:
-                market_cap = data['market_cap']
-                share_count = data['share_count']
-                price = data['current_price']
+                market_cap = data["market_cap"]
+                share_count = data["share_count"]
+                price = data["current_price"]
 
                 calculated_cap = (share_count * price) / 10000  # 转换为亿元
                 if market_cap > 0:
@@ -3425,11 +3536,11 @@ class DataSourceManager:
                 pass
 
         # 检查4: PS比率一致性
-        if all(k in data for k in ['market_cap', 'revenue', 'PS']):
+        if all(k in data for k in ["market_cap", "revenue", "PS"]):
             try:
-                calculated_ps = data['market_cap'] / data['revenue']
-                if data['revenue'] > 0:
-                    diff_pct = abs((calculated_ps - data['PS']) / data['PS']) * 100
+                calculated_ps = data["market_cap"] / data["revenue"]
+                if data["revenue"] > 0:
+                    diff_pct = abs((calculated_ps - data["PS"]) / data["PS"]) * 100
                     if diff_pct > 10:  # 超过10%误差
                         issues.append(f"PS比率计算不一致 (差异{diff_pct:.1f}%)")
                         score -= 15
@@ -3437,8 +3548,8 @@ class DataSourceManager:
                 pass
 
         # 检查5: MA序列关系
-        if all(k in data for k in ['MA5', 'MA10', 'MA20']):
-            ma5, ma10, ma20 = data['MA5'], data['MA10'], data['MA20']
+        if all(k in data for k in ["MA5", "MA10", "MA20"]):
+            ma5, ma10, ma20 = data["MA5"], data["MA10"], data["MA20"]
             # 上升趋势: MA5 > MA10 > MA20
             # 下降趋势: MA5 < MA10 < MA20
             # 如果MA5在MA10和MA20之间,可能有问题
@@ -3456,13 +3567,14 @@ class DataSourceManager:
         score = 100.0
 
         # 检查数据中的日期
-        data_date = data.get('date') or data.get('trade_date') or data.get('timestamp')
+        data_date = data.get("date") or data.get("trade_date") or data.get("timestamp")
         if data_date:
             try:
                 from datetime import datetime
+
                 # 尝试解析日期
                 if isinstance(data_date, str):
-                    data_date = datetime.strptime(data_date.split()[0], '%Y-%m-%d')
+                    data_date = datetime.strptime(data_date.split()[0], "%Y-%m-%d")
                 elif isinstance(data_date, (int, float)):
                     # 假设是Unix时间戳
                     data_date = datetime.fromtimestamp(data_date)
@@ -3490,10 +3602,10 @@ class DataSourceManager:
         """检查数据源可靠性"""
         # 数据源可靠性评分
         reliability_scores = {
-            ChinaDataSource.MONGODB: 95,   # 缓存数据,最可靠
-            ChinaDataSource.TUSHARE: 90,   # 官方数据,高质量
+            ChinaDataSource.MONGODB: 95,  # 缓存数据,最可靠
+            ChinaDataSource.TUSHARE: 90,  # 官方数据,高质量
             ChinaDataSource.BAOSTOCK: 75,  # 免费但稳定
-            ChinaDataSource.AKSHARE: 70,   # 多源聚合,质量波动
+            ChinaDataSource.AKSHARE: 70,  # 多源聚合,质量波动
         }
 
         score = reliability_scores.get(self.current_source, 60)
@@ -3518,50 +3630,66 @@ class DataSourceManager:
         is_trading_hours = self._is_trading_hours()
 
         # 实时行情指标集合
-        realtime_metrics = {'current_price', 'open', 'high', 'low', 'volume', 'turnover_rate'}
+        realtime_metrics = {
+            "current_price",
+            "open",
+            "high",
+            "low",
+            "volume",
+            "turnover_rate",
+        }
 
         # 不同数据源的特长
         source_specialties = {
             # 基本面指标 - Tushare最准确
-            'PE': ChinaDataSource.TUSHARE,
-            'PB': ChinaDataSource.TUSHARE,
-            'PS': ChinaDataSource.TUSHARE,
-            'ROE': ChinaDataSource.TUSHARE,
-            'ROA': ChinaDataSource.TUSHARE,
-            'market_cap': ChinaDataSource.TUSHARE,
-            'revenue': ChinaDataSource.TUSHARE,
-            'total_assets': ChinaDataSource.TUSHARE,
-            'net_profit': ChinaDataSource.TUSHARE,
-
+            "PE": ChinaDataSource.TUSHARE,
+            "PB": ChinaDataSource.TUSHARE,
+            "PS": ChinaDataSource.TUSHARE,
+            "ROE": ChinaDataSource.TUSHARE,
+            "ROA": ChinaDataSource.TUSHARE,
+            "market_cap": ChinaDataSource.TUSHARE,
+            "revenue": ChinaDataSource.TUSHARE,
+            "total_assets": ChinaDataSource.TUSHARE,
+            "net_profit": ChinaDataSource.TUSHARE,
             # 技术指标 - 基于历史数据,Tushare更可靠
-            'MA5': ChinaDataSource.TUSHARE,
-            'MA10': ChinaDataSource.TUSHARE,
-            'MA20': ChinaDataSource.TUSHARE,
-            'MA60': ChinaDataSource.TUSHARE,
-            'RSI': ChinaDataSource.TUSHARE,
-            'RSI6': ChinaDataSource.TUSHARE,
-            'RSI12': ChinaDataSource.TUSHARE,
-            'MACD': ChinaDataSource.TUSHARE,
-            'BOLL': ChinaDataSource.TUSHARE,
-            'BOLL_UPPER': ChinaDataSource.TUSHARE,
-            'BOLL_LOWER': ChinaDataSource.TUSHARE,
-            'BOLL_MIDDLE': ChinaDataSource.TUSHARE,
-
+            "MA5": ChinaDataSource.TUSHARE,
+            "MA10": ChinaDataSource.TUSHARE,
+            "MA20": ChinaDataSource.TUSHARE,
+            "MA60": ChinaDataSource.TUSHARE,
+            "RSI": ChinaDataSource.TUSHARE,
+            "RSI6": ChinaDataSource.TUSHARE,
+            "RSI12": ChinaDataSource.TUSHARE,
+            "MACD": ChinaDataSource.TUSHARE,
+            "BOLL": ChinaDataSource.TUSHARE,
+            "BOLL_UPPER": ChinaDataSource.TUSHARE,
+            "BOLL_LOWER": ChinaDataSource.TUSHARE,
+            "BOLL_MIDDLE": ChinaDataSource.TUSHARE,
             # 实时行情 - 根据时间选择数据源
             # 盘中: AkShare (真正实时,秒级更新)
             # 盘后: Tushare (完整数据,经过清洗)
-            'current_price': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-            'open': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-            'high': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-            'low': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-            'volume': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-            'turnover_rate': ChinaDataSource.AKSHARE if is_trading_hours else ChinaDataSource.TUSHARE,
-
+            "current_price": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
+            "open": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
+            "high": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
+            "low": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
+            "volume": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
+            "turnover_rate": ChinaDataSource.AKSHARE
+            if is_trading_hours
+            else ChinaDataSource.TUSHARE,
             # 默认
-            'default': ChinaDataSource.TUSHARE,
+            "default": ChinaDataSource.TUSHARE,
         }
 
-        best_source = source_specialties.get(metric, source_specialties['default'])
+        best_source = source_specialties.get(metric, source_specialties["default"])
 
         # 如果是实时指标且在盘中,记录日志
         if metric in realtime_metrics and is_trading_hours:
@@ -3594,6 +3722,7 @@ class DataSourceManager:
         """
         try:
             from datetime import datetime
+
             now = datetime.now()
 
             # 周末不交易
@@ -3637,45 +3766,49 @@ class DataSourceManager:
         """
         capabilities = {
             ChinaDataSource.MONGODB: {
-                'realtime_quote': False,  # 缓存数据,非实时
-                'tick_data': False,
-                'level2': False,
-                'delay_seconds': 0,
-                'description': '缓存数据,来自其他数据源的历史快照'
+                "realtime_quote": False,  # 缓存数据,非实时
+                "tick_data": False,
+                "level2": False,
+                "delay_seconds": 0,
+                "description": "缓存数据,来自其他数据源的历史快照",
             },
             ChinaDataSource.TUSHARE: {
-                'realtime_quote': True,   # 支持,但有延迟
-                'tick_data': True,        # 需要高级积分
-                'level2': False,          # 不支持
-                'delay_seconds': 900,     # 约15分钟延迟
-                'description': '官方数据,但实时行情有15分钟延迟'
+                "realtime_quote": True,  # 支持,但有延迟
+                "tick_data": True,  # 需要高级积分
+                "level2": False,  # 不支持
+                "delay_seconds": 900,  # 约15分钟延迟
+                "description": "官方数据,但实时行情有15分钟延迟",
             },
             ChinaDataSource.AKSHARE: {
-                'realtime_quote': True,   # ✅ 真正实时
-                'tick_data': True,        # ✅ 支持
-                'level2': True,           # ✅ 部分支持
-                'delay_seconds': 1,       # 秒级延迟
-                'description': '✅ 最佳实时数据源,来自东方财富/腾讯'
+                "realtime_quote": True,  # ✅ 真正实时
+                "tick_data": True,  # ✅ 支持
+                "level2": True,  # ✅ 部分支持
+                "delay_seconds": 1,  # 秒级延迟
+                "description": "✅ 最佳实时数据源,来自东方财富/腾讯",
             },
             ChinaDataSource.BAOSTOCK: {
-                'realtime_quote': False,  # 不支持实时
-                'tick_data': False,
-                'level2': False,
-                'delay_seconds': 86400,   # T+1,次日更新
-                'description': '仅提供历史数据,不支持实时行情'
+                "realtime_quote": False,  # 不支持实时
+                "tick_data": False,
+                "level2": False,
+                "delay_seconds": 86400,  # T+1,次日更新
+                "description": "仅提供历史数据,不支持实时行情",
             },
         }
 
-        return capabilities.get(source, {
-            'realtime_quote': False,
-            'tick_data': False,
-            'level2': False,
-            'delay_seconds': 999999,
-            'description': '未知数据源'
-        })
+        return capabilities.get(
+            source,
+            {
+                "realtime_quote": False,
+                "tick_data": False,
+                "level2": False,
+                "delay_seconds": 999999,
+                "description": "未知数据源",
+            },
+        )
 
-    async def get_data_with_validation(self, symbol: str, metric: str,
-                                       period: str = 'daily') -> tuple[Any, Dict]:
+    async def get_data_with_validation(
+        self, symbol: str, metric: str, period: str = "daily"
+    ) -> tuple[Any, Dict]:
         """
         获取数据并自动验证
 
@@ -3692,13 +3825,13 @@ class DataSourceManager:
         logger.info(f"📊 [验证] 为 {metric} 选择数据源: {best_source_name}")
 
         # 获取数据
-        data_str = self.get_stock_data(symbol, '2024-01-01', '2024-12-31', period)
+        data_str = self.get_stock_data(symbol, "2024-01-01", "2024-12-31", period)
 
         # 解析数据
         data = self._parse_data_string(data_str)
 
         if not data:
-            return None, {'is_valid': False, 'error': '无法获取数据'}
+            return None, {"is_valid": False, "error": "无法获取数据"}
 
         # 提取请求的指标
         metric_value = data.get(metric)
@@ -3707,26 +3840,31 @@ class DataSourceManager:
         quality_score = self.get_data_quality_score(symbol, data)
 
         validation_result = {
-            'is_valid': quality_score >= 60,
-            'quality_score': quality_score,
-            'source': best_source_name,
-            'metric': metric,
-            'value': metric_value,
-            'data': data,
-            'warnings': [],
-            'errors': []
+            "is_valid": quality_score >= 60,
+            "quality_score": quality_score,
+            "source": best_source_name,
+            "metric": metric,
+            "value": metric_value,
+            "data": data,
+            "warnings": [],
+            "errors": [],
         }
 
         # 根据质量评分添加警告
         if quality_score < 70:
-            validation_result['warnings'].append(f'数据质量较低 ({quality_score:.1f}/100)')
+            validation_result["warnings"].append(
+                f"数据质量较低 ({quality_score:.1f}/100)"
+            )
         if quality_score < 60:
-            validation_result['errors'].append(f'数据质量不合格 ({quality_score:.1f}/100)')
+            validation_result["errors"].append(
+                f"数据质量不合格 ({quality_score:.1f}/100)"
+            )
 
         return metric_value, validation_result
 
-    async def cross_validate_metric(self, symbol: str, metric: str,
-                                    sources: List[str] = None) -> Dict:
+    async def cross_validate_metric(
+        self, symbol: str, metric: str, sources: List[str] = None
+    ) -> Dict:
         """
         多源交叉验证指标
 
@@ -3764,9 +3902,9 @@ class DataSourceManager:
 
                         if value is not None:
                             results[source] = {
-                                'value': value,
-                                'quality_score': validation.get('quality_score', 0),
-                                'is_valid': validation.get('is_valid', False)
+                                "value": value,
+                                "quality_score": validation.get("quality_score", 0),
+                                "is_valid": validation.get("is_valid", False),
                             }
                             values[source] = value
 
@@ -3785,16 +3923,17 @@ class DataSourceManager:
 
         return cross_validation_result
 
-    def _analyze_cross_validation_results(self, symbol: str, metric: str,
-                                         results: Dict, values: Dict) -> Dict:
+    def _analyze_cross_validation_results(
+        self, symbol: str, metric: str, results: Dict, values: Dict
+    ) -> Dict:
         """分析交叉验证结果"""
         if not values:
             return {
-                'symbol': symbol,
-                'metric': metric,
-                'is_valid': False,
-                'error': '无法从任何数据源获取数据',
-                'sources_checked': list(results.keys())
+                "symbol": symbol,
+                "metric": metric,
+                "is_valid": False,
+                "error": "无法从任何数据源获取数据",
+                "sources_checked": list(results.keys()),
             }
 
         # 计算统计信息
@@ -3808,48 +3947,52 @@ class DataSourceManager:
 
         # 计算标准差和变异系数
         variance = sum((x - avg_val) ** 2 for x in value_list) / num_sources
-        std_dev = variance ** 0.5
+        std_dev = variance**0.5
         cv = (std_dev / avg_val * 100) if avg_val != 0 else 0
 
         # 判断一致性
         is_consistent = cv < 5  # 变异系数小于5%认为一致
 
         # 找出最可靠的数据源
-        best_source = max(results.items(),
-                         key=lambda x: x[1]['quality_score'])[0] if results else None
+        best_source = (
+            max(results.items(), key=lambda x: x[1]["quality_score"])[0]
+            if results
+            else None
+        )
 
         # 中位数作为推荐值
         sorted_values = sorted(value_list)
         if num_sources % 2 == 0:
-            median_value = (sorted_values[num_sources // 2 - 1] +
-                          sorted_values[num_sources // 2]) / 2
+            median_value = (
+                sorted_values[num_sources // 2 - 1] + sorted_values[num_sources // 2]
+            ) / 2
         else:
             median_value = sorted_values[num_sources // 2]
 
         return {
-            'symbol': symbol,
-            'metric': metric,
-            'is_valid': is_consistent,
-            'is_consistent': is_consistent,
-            'num_sources': num_sources,
-            'sources_checked': list(results.keys()),
-            'values_by_source': values,
-            'quality_scores': {k: v['quality_score'] for k, v in results.items()},
-            'statistics': {
-                'min': min_val,
-                'max': max_val,
-                'avg': avg_val,
-                'median': median_value,
-                'std_dev': std_dev,
-                'cv_percent': cv
+            "symbol": symbol,
+            "metric": metric,
+            "is_valid": is_consistent,
+            "is_consistent": is_consistent,
+            "num_sources": num_sources,
+            "sources_checked": list(results.keys()),
+            "values_by_source": values,
+            "quality_scores": {k: v["quality_score"] for k, v in results.items()},
+            "statistics": {
+                "min": min_val,
+                "max": max_val,
+                "avg": avg_val,
+                "median": median_value,
+                "std_dev": std_dev,
+                "cv_percent": cv,
             },
-            'recommendation': {
-                'best_source': best_source,
-                'suggested_value': median_value,
-                'confidence': max(0, min(1, 1 - cv / 10))  # CV越小,置信度越高
+            "recommendation": {
+                "best_source": best_source,
+                "suggested_value": median_value,
+                "confidence": max(0, min(1, 1 - cv / 10)),  # CV越小,置信度越高
             },
-            'warnings': [] if is_consistent else [f'数据源间变异系数较高: {cv:.2f}%'],
-            'errors': [] if num_sources > 0 else ['无法获取任何数据']
+            "warnings": [] if is_consistent else [f"数据源间变异系数较高: {cv:.2f}%"],
+            "errors": [] if num_sources > 0 else ["无法获取任何数据"],
         }
 
     def _parse_data_string(self, data_str: str) -> Dict[str, Any]:
@@ -3862,8 +4005,9 @@ class DataSourceManager:
             return data_str or {}
 
         # 尝试解析JSON
-        if data_str.startswith('{'):
+        if data_str.startswith("{"):
             import json
+
             try:
                 return json.loads(data_str)
             except json.JSONDecodeError:

@@ -1,0 +1,512 @@
+# -*- coding: utf-8 -*-
+"""
+Data Coordinator
+Preloads all necessary data before analysis starts, coordinates data requests from analysts
+Supports hybrid cache strategy to reduce API calls
+"""
+
+import logging
+import threading
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+class AnalysisDepth(Enum):
+    """Analysis depth levels"""
+    QUICK = "Quick"
+    BASIC = "Basic"
+    STANDARD = "Standard"
+    DEEP = "Deep"
+    COMPREHENSIVE = "Comprehensive"
+
+
+@dataclass
+class PreloadedData:
+    """Preloaded data structure"""
+    market_data: str = ""
+    fundamentals_data: str = ""
+    news_data: str = ""
+    sentiment_data: str = ""
+    price_info: Dict[str, Any] = field(default_factory=dict)
+    ticker: str = ""
+    trade_date: str = ""
+    depth: str = ""
+    loaded_at: datetime = field(default_factory=datetime.now)
+
+
+class DataCoordinator:
+    """Data Coordinator (Singleton)
+
+    Functions:
+    1. Preload all necessary data before analysis starts (all preload strategy)
+    2. Coordinate data requests from Market Analyst and Fundamentals Analyst
+    3. Integrate with PriceCache, support hybrid cache strategy
+    4. Provide unified data access interface
+    """
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(DataCoordinator, cls).__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+
+        # Preloaded data cache {ticker: {trade_date: PreloadedData}}
+        self._preloaded_cache: Dict[str, Dict[str, PreloadedData]] = {}
+        self._cache_lock = threading.Lock()
+
+        # Price cache
+        self._price_cache = None
+
+        # Cache TTL: 10 minutes
+        self._cache_ttl_seconds = 600
+
+        # Lookback days config
+        self._lookback_days = 365
+
+        logger.info("[DataCoordinator] Data Coordinator initialized")
+
+    def _get_price_cache(self):
+        """Lazy load price cache"""
+        if self._price_cache is None:
+            from tradingagents.utils.price_cache import get_price_cache
+            self._price_cache = get_price_cache()
+        return self._price_cache
+
+    def _load_config(self):
+        """Load configuration"""
+        try:
+            from app.core.config import get_settings
+            settings = get_settings()
+            self._lookback_days = settings.MARKET_ANALYST_LOOKBACK_DAYS
+            logger.debug(f"[DataCoordinator] Config loaded: lookback_days={self._lookback_days}")
+        except Exception as e:
+            logger.warning(f"[DataCoordinator] Cannot load config, using defaults: {e}")
+
+    def _get_depth_from_config(self) -> AnalysisDepth:
+        """Get analysis depth from config"""
+        try:
+            from tradingagents.agents.utils.agent_utils import Toolkit
+            depth_str = Toolkit._config.get('research_depth', 'Standard')
+
+            numeric_mapping = {
+                1: AnalysisDepth.QUICK,
+                2: AnalysisDepth.BASIC,
+                3: AnalysisDepth.STANDARD,
+                4: AnalysisDepth.DEEP,
+                5: AnalysisDepth.COMPREHENSIVE
+            }
+
+            if isinstance(depth_str, (int, float)):
+                depth = numeric_mapping.get(int(depth_str), AnalysisDepth.STANDARD)
+                logger.debug(f"[DataCoordinator] Numeric level {depth_str} -> {depth.value}")
+                return depth
+            elif isinstance(depth_str, str):
+                if depth_str.isdigit():
+                    depth = numeric_mapping.get(int(depth_str), AnalysisDepth.STANDARD)
+                    logger.debug(f"[DataCoordinator] String number '{depth_str}' -> {depth.value}")
+                    return depth
+                elif depth_str in ["Quick", "Basic", "Standard", "Deep", "Comprehensive"]:
+                    mapping = {
+                        "Quick": AnalysisDepth.QUICK,
+                        "Basic": AnalysisDepth.BASIC,
+                        "Standard": AnalysisDepth.STANDARD,
+                        "Deep": AnalysisDepth.DEEP,
+                        "Comprehensive": AnalysisDepth.COMPREHENSIVE
+                    }
+                    return mapping.get(depth_str, AnalysisDepth.STANDARD)
+
+            return AnalysisDepth.STANDARD
+        except Exception as e:
+            logger.warning(f"[DataCoordinator] Failed to get analysis depth: {e}")
+            return AnalysisDepth.STANDARD
+
+    def _get_cache_key(self, ticker: str, trade_date: str) -> str:
+        """Generate cache key"""
+        return f"{ticker}_{trade_date}"
+
+    def _is_cache_valid(self, data: PreloadedData) -> bool:
+        """Check if cache is valid"""
+        if not data:
+            return False
+        age = (datetime.now() - data.loaded_at).total_seconds()
+        return age < self._cache_ttl_seconds
+
+    def preload_analysis_data(
+        self,
+        ticker: str,
+        trade_date: str,
+        analysis_depth: str = None
+    ) -> PreloadedData:
+        """
+        Preload all data needed for analysis (all preload strategy)
+
+        Args:
+            ticker: Stock ticker
+            trade_date: Trade date
+            analysis_depth: Analysis depth (optional, read from config)
+
+        Returns:
+            PreloadedData: All preloaded data
+        """
+        cache_key = self._get_cache_key(ticker, trade_date)
+
+        # Try to get from cache
+        with self._cache_lock:
+            if ticker in self._preloaded_cache:
+                if trade_date in self._preloaded_cache[ticker]:
+                    cached_data = self._preloaded_cache[ticker][trade_date]
+                    if self._is_cache_valid(cached_data):
+                        logger.info(f"[DataCoordinator] Cache hit: {cache_key}")
+                        return cached_data
+
+        logger.info(f"[DataCoordinator] Start preloading data: {cache_key}")
+
+        # Load config
+        self._load_config()
+
+        # Determine analysis depth
+        if not analysis_depth:
+            depth = self._get_depth_from_config()
+        else:
+            depth_mapping = {
+                "Quick": AnalysisDepth.QUICK,
+                "Basic": AnalysisDepth.BASIC,
+                "Standard": AnalysisDepth.STANDARD,
+                "Deep": AnalysisDepth.DEEP,
+                "Comprehensive": AnalysisDepth.COMPREHENSIVE
+            }
+            depth = depth_mapping.get(analysis_depth, AnalysisDepth.STANDARD)
+
+        # Create preloaded data object
+        preloaded = PreloadedData(
+            ticker=ticker,
+            trade_date=trade_date,
+            depth=depth.value
+        )
+
+        try:
+            # 1. Load config
+            from tradingagents.utils.stock_utils import StockUtils
+            from tradingagents.utils.trading_date_manager import get_trading_date_manager
+
+            market_info = StockUtils.get_market_info(ticker)
+            is_china = market_info['is_china']
+            is_hk = market_info['is_hk']
+            is_us = market_info['is_us']
+
+            date_mgr = get_trading_date_manager()
+            aligned_date = date_mgr.get_latest_trading_date(trade_date)
+
+            # 2. Preload market data (365-day history)
+            logger.info(f"[DataCoordinator] Preload market data: {ticker}")
+            if is_china:
+                from tradingagents.dataflows.interface import get_china_stock_data_unified
+                market_data = get_china_stock_data_unified(ticker, aligned_date, aligned_date)
+                preloaded.market_data = f"## A-Share Market Data\n{market_data}"
+            elif is_hk:
+                from tradingagents.dataflows.interface import get_hk_stock_data_unified
+                market_data = get_hk_stock_data_unified(ticker, aligned_date, aligned_date)
+                preloaded.market_data = f"## HK Stock Market Data\n{market_data}"
+            else:
+                from tradingagents.dataflows.providers.us.optimized import get_us_stock_data_cached
+                market_data = get_us_stock_data_cached(ticker, aligned_date, aligned_date)
+                preloaded.market_data = f"## US Stock Market Data\n{market_data}"
+
+            # 3. Preload price info to cache
+            self._extract_and_cache_price_info(ticker, preloaded.market_data)
+
+            # 4. Preload fundamentals data
+            logger.info(f"[DataCoordinator] Preload fundamentals data: {ticker}")
+            if is_china:
+                preloaded.fundamentals_data = self._load_china_fundamentals(ticker, aligned_date)
+            elif is_hk:
+                preloaded.fundamentals_data = self._load_hk_fundamentals(ticker)
+            else:
+                preloaded.fundamentals_data = self._load_us_fundamentals(ticker, trade_date)
+
+            # 5. Preload news data
+            logger.info(f"[DataCoordinator] Preload news data: {ticker}")
+            preloaded.news_data = self._load_news_data(ticker, trade_date, market_info)
+
+            # 6. Preload sentiment data
+            logger.info(f"[DataCoordinator] Preload sentiment data: {ticker}")
+            preloaded.sentiment_data = self._load_sentiment_data(ticker, trade_date, market_info)
+
+            logger.info(f"[DataCoordinator] Data preload completed: {cache_key}")
+
+        except Exception as e:
+            logger.error(f"[DataCoordinator] Data preload failed: {e}", exc_info=True)
+
+        # Save to cache
+        with self._cache_lock:
+            if ticker not in self._preloaded_cache:
+                self._preloaded_cache[ticker] = {}
+            self._preloaded_cache[ticker][trade_date] = preloaded
+
+        return preloaded
+
+    def _extract_and_cache_price_info(self, ticker: str, market_data: str):
+        """Extract price info from market data and cache"""
+        try:
+            price_cache = self._get_price_cache()
+
+            import re
+            price_patterns = [
+                r'Current Price[.:]\s*([\d.]+)',
+                r'Latest Price[.:]\s*([\d.]+)',
+                r'Close[.:]\s*([\d.]+)',
+                r'close[.:]\s*([\d.]+)',
+            ]
+
+            current_price = None
+            for pattern in price_patterns:
+                match = re.search(pattern, market_data, re.IGNORECASE)
+                if match:
+                    current_price = float(match.group(1))
+                    break
+
+            if current_price:
+                price_cache.update(ticker, current_price, "CNY")
+                logger.debug(f"[DataCoordinator] Price cached: {ticker} = {current_price}")
+        except Exception as e:
+            logger.warning(f"[DataCoordinator] Price cache failed: {e}")
+
+    def _load_china_fundamentals(self, ticker: str, trade_date: str) -> str:
+        """Load China stock fundamentals data"""
+        try:
+            from datetime import datetime, timedelta
+            from tradingagents.dataflows.interface import get_china_stock_data_unified
+            from tradingagents.dataflows.optimized_china_data import OptimizedChinaDataProvider
+
+            recent_end = trade_date
+            recent_start = (datetime.strptime(trade_date, '%Y-%m-%d') - timedelta(days=5)).strftime('%Y-%m-%d')
+
+            price_data = get_china_stock_data_unified(ticker, recent_start, recent_end)
+
+            analyzer = OptimizedChinaDataProvider()
+            fundamentals = analyzer._generate_fundamentals_report(ticker, price_data, "standard")
+
+            return f"## A-Share Current Price Info\n{price_data}\n\n## A-Share Fundamentals Data\n{fundamentals}"
+        except Exception as e:
+            logger.error(f"[DataCoordinator] A-Share fundamentals load failed: {e}")
+            return f"Fundamentals data fetch failed: {e}"
+
+    def _load_hk_fundamentals(self, ticker: str) -> str:
+        """Load HK stock fundamentals data"""
+        try:
+            from tradingagents.dataflows.interface import get_hk_stock_data_unified
+            from tradingagents.dataflows.interface import get_hk_stock_info_unified
+
+            info = get_hk_stock_info_unified(ticker)
+            info_text = f"""## HK Stock Basic Info
+
+**Ticker**: {ticker}
+**Name**: {info.get('name', f'HK Stock {ticker}')}
+**Currency**: HKD
+**Exchange**: Hong Kong Stock Exchange (HKG)
+"""
+            return info_text
+        except Exception as e:
+            logger.error(f"[DataCoordinator] HK stock fundamentals load failed: {e}")
+            return f"Fundamentals data fetch failed: {e}"
+
+    def _load_us_fundamentals(self, ticker: str, trade_date: str) -> str:
+        """Load US stock fundamentals data"""
+        try:
+            from tradingagents.dataflows.interface import get_fundamentals_openai
+            fundamentals = get_fundamentals_openai(ticker, trade_date)
+            return f"## US Stock Fundamentals Data\n{fundamentals}"
+        except Exception as e:
+            logger.error(f"[DataCoordinator] US stock fundamentals load failed: {e}")
+            return f"Fundamentals data fetch failed: {e}"
+
+    def _load_news_data(self, ticker: str, trade_date: str, market_info: Dict) -> str:
+        """Load news data"""
+        try:
+            from tradingagents.dataflows.interface import get_stock_news_unified
+            return get_stock_news_unified(ticker, trade_date)
+        except Exception as e:
+            logger.warning(f"[DataCoordinator] News data load failed: {e}")
+            return f"News data fetch failed: {e}"
+
+    def _load_sentiment_data(self, ticker: str, trade_date: str, market_info: Dict) -> str:
+        """Load sentiment data"""
+        try:
+            from tradingagents.dataflows.interface import get_stock_sentiment_unified
+            return get_stock_sentiment_unified(ticker, trade_date)
+        except Exception as e:
+            logger.warning(f"[DataCoordinator] Sentiment data load failed: {e}")
+            return f"Sentiment data fetch failed: {e}"
+
+    def get_market_data(self, ticker: str, start_date: str, end_date: str) -> str:
+        """
+        Get market data, prefer cache
+
+        Args:
+            ticker: Stock ticker
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            str: Market data
+        """
+        # Try to get from preload cache
+        with self._cache_lock:
+            if ticker in self._preloaded_cache:
+                for trade_date, data in self._preloaded_cache[ticker].items():
+                    if self._is_cache_valid(data) and data.market_data:
+                        logger.debug(f"[DataCoordinator] Get market data from preload cache: {ticker}")
+                        return data.market_data
+
+        # Cache miss, get from API
+        logger.info(f"[DataCoordinator] Market data cache miss, fetch from API: {ticker}")
+        return self._fetch_market_data(ticker, start_date, end_date)
+
+    def get_fundamentals_data(self, ticker: str, start_date: str = None, end_date: str = None) -> str:
+        """
+        Get fundamentals data, prefer cache
+
+        Args:
+            ticker: Stock ticker
+            start_date: Start date (optional)
+            end_date: End date (optional)
+
+        Returns:
+            str: Fundamentals data
+        """
+        # Try to get from preload cache
+        with self._cache_lock:
+            if ticker in self._preloaded_cache:
+                for trade_date, data in self._preloaded_cache[ticker].items():
+                    if self._is_cache_valid(data) and data.fundamentals_data:
+                        logger.debug(f"[DataCoordinator] Get fundamentals from preload cache: {ticker}")
+                        return data.fundamentals_data
+
+        # Cache miss, get from API
+        logger.info(f"[DataCoordinator] Fundamentals data cache miss, fetch from API: {ticker}")
+        return self._fetch_fundamentals_data(ticker, start_date, end_date)
+
+    def _fetch_market_data(self, ticker: str, start_date: str, end_date: str) -> str:
+        """Fetch market data from API"""
+        try:
+            from tradingagents.utils.stock_utils import StockUtils
+
+            market_info = StockUtils.get_market_info(ticker)
+            is_china = market_info['is_china']
+            is_hk = market_info['is_hk']
+
+            if is_china:
+                from tradingagents.dataflows.interface import get_china_stock_data_unified
+                return f"## A-Share Market Data\n{get_china_stock_data_unified(ticker, start_date, end_date)}"
+            elif is_hk:
+                from tradingagents.dataflows.interface import get_hk_stock_data_unified
+                return f"## HK Stock Market Data\n{get_hk_stock_data_unified(ticker, start_date, end_date)}"
+            else:
+                from tradingagents.dataflows.providers.us.optimized import get_us_stock_data_cached
+                return f"## US Stock Market Data\n{get_us_stock_data_cached(ticker, start_date, end_date)}"
+        except Exception as e:
+            logger.error(f"[DataCoordinator] Market data API call failed: {e}")
+            return f"Market data fetch failed: {e}"
+
+    def _fetch_fundamentals_data(self, ticker: str, start_date: str = None, end_date: str = None) -> str:
+        """Fetch fundamentals data from API"""
+        try:
+            from tradingagents.utils.stock_utils import StockUtils
+            from datetime import datetime, timedelta
+
+            market_info = StockUtils.get_market_info(ticker)
+            is_china = market_info['is_china']
+            is_hk = market_info['is_hk']
+
+            if not end_date:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            if not start_date:
+                start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=5)).strftime('%Y-%m-%d')
+
+            if is_china:
+                return self._load_china_fundamentals(ticker, end_date)
+            elif is_hk:
+                return self._load_hk_fundamentals(ticker)
+            else:
+                return self._load_us_fundamentals(ticker, end_date)
+        except Exception as e:
+            logger.error(f"[DataCoordinator] Fundamentals data API call failed: {e}")
+            return f"Fundamentals data fetch failed: {e}"
+
+    def get_all_data(self, ticker: str, trade_date: str) -> Dict[str, str]:
+        """
+        Get all data needed by analysts
+
+        Args:
+            ticker: Stock ticker
+            trade_date: Trade date
+
+        Returns:
+            Dict: All data dictionary
+        """
+        preloaded = self.preload_analysis_data(ticker, trade_date)
+
+        return {
+            'market_data': preloaded.market_data,
+            'fundamentals_data': preloaded.fundamentals_data,
+            'news_data': preloaded.news_data,
+            'sentiment_data': preloaded.sentiment_data,
+            'price_info': preloaded.price_info
+        }
+
+    def get_price_info(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Get price info"""
+        price_cache = self._get_price_cache()
+        return price_cache.get_price_info(ticker)
+
+    def update_price(self, ticker: str, price: float, currency: str = "CNY"):
+        """Update price cache"""
+        price_cache = self._get_price_cache()
+        price_cache.update(ticker, price, currency)
+
+    def clear_cache(self, ticker: str = None):
+        """Clear cache"""
+        with self._cache_lock:
+            if ticker:
+                if ticker in self._preloaded_cache:
+                    del self._preloaded_cache[ticker]
+                    logger.debug(f"[DataCoordinator] Cache cleared: {ticker}")
+            else:
+                self._preloaded_cache.clear()
+                logger.debug("[DataCoordinator] All cache cleared")
+
+        price_cache = self._get_price_cache()
+        price_cache.clear(ticker)
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+        with self._cache_lock:
+            total_entries = sum(len(dates) for dates in self._preloaded_cache.values())
+
+        price_cache = self._get_price_cache()
+        price_stats = price_cache.get_cache_stats()
+
+        return {
+            "preloaded_stocks": len(self._preloaded_cache),
+            "preloaded_entries": total_entries,
+            "price_cache_stats": price_stats
+        }
+
+
+# Global singleton getter
+def get_data_coordinator() -> DataCoordinator:
+    return DataCoordinator()

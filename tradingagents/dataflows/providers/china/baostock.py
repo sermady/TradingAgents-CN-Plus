@@ -176,40 +176,44 @@ class BaoStockProvider(BaseStockDataProvider):
             logger.error(f"❌ BaoStock获取股票列表失败: {e}")
             return []
 
-    async def get_stock_basic_info(self, code: str) -> Dict[str, Any]:
+    async def get_stock_basic_info(self, symbol: str = None) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息
 
         Args:
-            code: 股票代码
+            symbol: 股票代码
 
         Returns:
             标准化的股票基础信息
         """
         if not self.connected:
-            return {}
+            return None
+
+        # 兼容旧代码：symbol 为 None 时返回 None
+        if symbol is None:
+            return None
+
+        code = symbol  # 内部使用 code 保持兼容性
 
         try:
-            # 获取详细信息
-            basic_info = await self._get_stock_info_detail(code)
+            basic_data = await self._get_stock_info_detail(code)
+            basic_data["code"] = code
 
-            # 标准化数据
-            return {
-                "code": code,
-                "name": basic_info.get("name", f"股票{code}"),
-                "industry": basic_info.get("industry", "未知"),
-                "area": basic_info.get("area", "未知"),
-                "list_date": basic_info.get("list_date", ""),
-                "full_symbol": self._get_full_symbol(code),
-                "market_info": self._get_market_info(code),
-                "data_source": "baostock",
-                "last_sync": datetime.now(timezone.utc),
-                "sync_status": "success",
-            }
+            try:
+                valuation_data = await self.get_valuation_data(code)
+                if valuation_data:
+                    basic_data["pe_ttm"] = valuation_data.get("pe_ttm")
+                    basic_data["pb"] = valuation_data.get("pb_mrq")
+                    basic_data["ps"] = valuation_data.get("ps_ttm")
+                    basic_data["pcf"] = valuation_data.get("pcf_ttm")
+            except Exception as val_e:
+                logger.warning(f"⚠️ 获取估值数据失败: {val_e}")
+
+            return self.standardize_basic_info(basic_data)
 
         except Exception as e:
             logger.error(f"❌ BaoStock获取{code}基础信息失败: {e}")
-            return {}
+            return None
 
     async def get_valuation_data(
         self, code: str, trade_date: Optional[str] = None
@@ -351,7 +355,7 @@ class BaoStockProvider(BaseStockDataProvider):
                 "area": "未知",
             }
 
-    async def get_stock_quotes(self, code: str) -> Dict[str, Any]:
+    async def get_stock_quotes(self, code: str) -> Optional[Dict[str, Any]]:
         """
         获取股票实时行情
 
@@ -362,16 +366,17 @@ class BaoStockProvider(BaseStockDataProvider):
             标准化的行情数据
         """
         if not self.connected:
-            return {}
+            return None
 
         try:
             # BaoStock没有实时行情接口，使用最新日K线数据
             quotes_data = await self._get_latest_kline_data(code)
 
             if not quotes_data:
-                return {}
+                return None
 
             # 标准化数据
+            # 注意: BaoStock 的 volume 单位是"股"，需要明确标注
             return {
                 "code": code,
                 "name": quotes_data.get("name", f"股票{code}"),
@@ -379,6 +384,7 @@ class BaoStockProvider(BaseStockDataProvider):
                 "change": quotes_data.get("change", 0),
                 "change_percent": quotes_data.get("change_percent", 0),
                 "volume": quotes_data.get("volume", 0),
+                "volume_unit": "shares",  # 明确标注: BaoStock volume 单位是"股"
                 "amount": quotes_data.get("amount", 0),
                 "open": quotes_data.get("open", 0),
                 "high": quotes_data.get("high", 0),
@@ -393,7 +399,7 @@ class BaoStockProvider(BaseStockDataProvider):
 
         except Exception as e:
             logger.error(f"❌ BaoStock获取{code}行情失败: {e}")
-            return {}
+            return None
 
     async def _get_latest_kline_data(self, code: str) -> Dict[str, Any]:
         """获取最新K线数据作为行情"""
@@ -488,6 +494,9 @@ class BaoStockProvider(BaseStockDataProvider):
 
         Returns:
             完整标准化代码，如果无法识别则返回原始代码（确保不为空）
+
+        Note:
+            统一使用 .SH/.SZ/.BJ 格式（与 base_provider 保持一致）
         """
         # 确保 code 不为空
         if not code:
@@ -496,9 +505,9 @@ class BaoStockProvider(BaseStockDataProvider):
         # 标准化为字符串
         code = str(code).strip()
 
-        # 根据代码前缀判断交易所
+        # 根据代码前缀判断交易所 - 统一使用 .SH/.SZ/.BJ 格式
         if code.startswith(("6", "9")):  # 上海证券交易所（增加9开头的B股）
-            return f"{code}.SS"
+            return f"{code}.SH"
         elif code.startswith(("0", "3", "2")):  # 深圳证券交易所（增加2开头的B股）
             return f"{code}.SZ"
         elif code.startswith(("8", "4")):  # 北京证券交易所（增加4开头的新三板）

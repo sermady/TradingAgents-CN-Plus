@@ -10,11 +10,12 @@ import pandas as pd
 import asyncio
 import logging
 import os
+import threading
+import json
 
 from ..base_provider import BaseStockDataProvider
 from tradingagents.config.providers_config import get_provider_config
 
-# 尝试导入tushare
 try:
     import tushare as ts
 
@@ -24,6 +25,39 @@ except ImportError:
     ts = None
 
 logger = logging.getLogger(__name__)
+
+
+BATCH_QUOTES_CACHE = {"data": None, "timestamp": None, "lock": threading.Lock()}
+BATCH_CACHE_TTL_SECONDS = 30
+
+
+def _is_batch_cache_valid() -> bool:
+    """检查批量缓存是否有效"""
+    if BATCH_QUOTES_CACHE["data"] is None or BATCH_QUOTES_CACHE["timestamp"] is None:
+        return False
+    age = (datetime.now() - BATCH_QUOTES_CACHE["timestamp"]).total_seconds()
+    return age < BATCH_CACHE_TTL_SECONDS
+
+
+def _get_cached_batch_quotes() -> Optional[Dict[str, Dict[str, Any]]]:
+    """获取缓存的批量行情"""
+    if _is_batch_cache_valid():
+        return BATCH_QUOTES_CACHE["data"]
+    return None
+
+
+def _set_cached_batch_quotes(data: Dict[str, Dict[str, Any]]) -> None:
+    """设置批量行情缓存"""
+    with BATCH_QUOTES_CACHE["lock"]:
+        BATCH_QUOTES_CACHE["data"] = data
+        BATCH_QUOTES_CACHE["timestamp"] = datetime.now()
+
+
+def _invalidate_batch_cache() -> None:
+    """使批量缓存失效"""
+    with BATCH_QUOTES_CACHE["lock"]:
+        BATCH_QUOTES_CACHE["data"] = None
+        BATCH_QUOTES_CACHE["timestamp"] = None
 
 
 class TushareProvider(BaseStockDataProvider):
@@ -472,7 +506,6 @@ class TushareProvider(BaseStockDataProvider):
 
         try:
             if symbol:
-                # 获取单个股票信息
                 ts_code = self._normalize_ts_code(symbol)
                 df = await asyncio.to_thread(
                     self.api.stock_basic,
@@ -483,35 +516,31 @@ class TushareProvider(BaseStockDataProvider):
                 if df is None or df.empty:
                     return None
 
-                # 基础信息
-                basic_info = self.standardize_basic_info(df.iloc[0].to_dict())
+                basic_data = df.iloc[0].to_dict()
 
-                # 🔥 从 daily_basic 获取 PE/PB 等财务指标
                 try:
                     daily_df = await asyncio.to_thread(
                         self.api.daily_basic,
                         ts_code=ts_code,
-                        fields="ts_code,total_mv,circ_mv,pe,pb,turnover_rate,volume_ratio,pe_ttm,pb_mrq",
+                        fields="ts_code,total_mv,circ_mv,pe,pb,ps,turnover_rate,volume_ratio,pe_ttm,pb_mrq",
                         limit=1,
                     )
 
                     if daily_df is not None and not daily_df.empty:
                         row = daily_df.iloc[0]
-                        # 合并财务指标到基础信息
-                        basic_info["pe"] = float(row["pe"]) if row["pe"] else None
-                        basic_info["pb"] = float(row["pb"]) if row["pb"] else None
-                        basic_info["pe_ttm"] = float(row["pe_ttm"]) if row["pe_ttm"] else None
-                        basic_info["total_mv"] = float(row["total_mv"]) if row["total_mv"] else None
-                        basic_info["circ_mv"] = float(row["circ_mv"]) if row["circ_mv"] else None
-                        basic_info["turnover_rate"] = float(row["turnover_rate"]) if row["turnover_rate"] else None
-                        basic_info["volume_ratio"] = float(row["volume_ratio"]) if row["volume_ratio"] else None
-                        self.logger.debug(f"✅ 合并 daily_basic 财务指标: PE={basic_info.get('pe')}, PB={basic_info.get('pb')}")
+                        basic_data["pe"] = row["pe"]
+                        basic_data["pb"] = row["pb"]
+                        basic_data["ps"] = row["ps"]
+                        basic_data["pe_ttm"] = row["pe_ttm"]
+                        basic_data["total_mv"] = row["total_mv"]
+                        basic_data["circ_mv"] = row["circ_mv"]
+                        basic_data["turnover_rate"] = row["turnover_rate"]
+                        basic_data["volume_ratio"] = row["volume_ratio"]
                 except Exception as daily_e:
-                    self.logger.warning(f"⚠️ 获取 daily_basic 财务指标失败: {daily_e}")
+                    self.logger.warning(f"获取 daily_basic 财务指标失败: {daily_e}")
 
-                return basic_info
+                return self.standardize_basic_info(basic_data)
             else:
-                # 获取所有股票信息
                 return await self.get_stock_list()
 
         except Exception as e:
@@ -642,10 +671,15 @@ class TushareProvider(BaseStockDataProvider):
             self.logger.error(f"❌ 获取实时行情失败 symbol={symbol}: {e}")
             return None
 
-    async def get_realtime_quotes_batch(self) -> Optional[Dict[str, Dict[str, Any]]]:
+    async def get_realtime_quotes_batch(
+        self, force_refresh: bool = False
+    ) -> Optional[Dict[str, Dict[str, Any]]]:
         """
         批量获取全市场实时行情
         使用 rt_k 接口的通配符功能，一次性获取所有A股实时行情
+
+        Args:
+            force_refresh: 是否强制刷新缓存
 
         Returns:
             Dict[str, Dict]: {symbol: quote_data}
@@ -654,39 +688,52 @@ class TushareProvider(BaseStockDataProvider):
         if not self.is_available():
             return None
 
+        if not force_refresh:
+            cached = _get_cached_batch_quotes()
+            if cached is not None:
+                self.logger.debug(f"[Cache] 使用缓存的批量行情: {len(cached)} 只股票")
+                return cached
+
         try:
-            # 使用通配符一次性获取全市场行情
-            # 3*.SZ: 创业板  6*.SH: 上交所  0*.SZ: 深交所主板  9*.BJ: 北交所
             df = await asyncio.to_thread(
                 self.api.rt_k, ts_code="3*.SZ,6*.SH,0*.SZ,9*.BJ"
             )
 
             if df is None or df.empty:
-                self.logger.warning("⚠️ rt_k 接口返回空数据")
+                self.logger.warning("rt_k 接口返回空数据")
                 return None
 
-            self.logger.info(f"✅ 获取到 {len(df)} 只股票的实时行情")
-
-            # 🔥 获取当前日期（UTC+8）
-            from datetime import datetime, timezone, timedelta
-
-            cn_tz = timezone(timedelta(hours=8))
+            cn_tz = __import__("datetime").timezone(
+                __import__("datetime").timedelta(hours=8)
+            )
             now_cn = datetime.now(cn_tz)
-            trade_date = now_cn.strftime(
-                "%Y%m%d"
-            )  # 格式：20251114（与 Tushare 格式一致）
+            trade_date = now_cn.strftime("%Y%m%d")
 
-            # 转换为字典格式
             result = {}
             for _, row in df.iterrows():
                 ts_code = row.get("ts_code")
                 if not ts_code or "." not in ts_code:
                     continue
 
-                # 提取6位代码
                 symbol = ts_code.split(".")[0]
 
-                # 构建行情数据
+                close = row.get("close")
+                pre_close = row.get("pre_close")
+
+                pct_chg = None
+                change_val = None
+                if close and pre_close:
+                    try:
+                        close_f = float(close)
+                        pre_close_f = float(pre_close)
+                        if pre_close_f > 0:
+                            pct_chg = round(
+                                ((close_f - pre_close_f) / pre_close_f) * 100, 2
+                            )
+                            change_val = round(close_f - pre_close_f, 2)
+                    except (ValueError, TypeError):
+                        pass
+
                 quote_data = {
                     "ts_code": ts_code,
                     "symbol": symbol,
@@ -694,45 +741,35 @@ class TushareProvider(BaseStockDataProvider):
                     "open": row.get("open"),
                     "high": row.get("high"),
                     "low": row.get("low"),
-                    "close": row.get("close"),  # 当前价
-                    "pre_close": row.get("pre_close"),
-                    "volume": row.get("vol"),  # 成交量（股）
-                    "amount": row.get("amount"),  # 成交额（元）
-                    "num": row.get("num"),  # 成交笔数
-                    "trade_date": trade_date,  # 🔥 添加交易日期字段
+                    "close": close,
+                    "pre_close": pre_close,
+                    "volume": row.get("vol"),
+                    "amount": row.get("amount"),
+                    "num": row.get("num"),
+                    "trade_date": trade_date,
+                    "pct_chg": pct_chg,
+                    "change": change_val,
                 }
 
-                # 计算涨跌幅
-                if quote_data.get("close") and quote_data.get("pre_close"):
-                    try:
-                        close = float(quote_data["close"])
-                        pre_close = float(quote_data["pre_close"])
-                        if pre_close > 0:
-                            pct_chg = ((close - pre_close) / pre_close) * 100
-                            quote_data["pct_chg"] = round(pct_chg, 2)
-                            quote_data["change"] = round(close - pre_close, 2)
-                    except (ValueError, TypeError):
-                        pass
-
                 result[symbol] = quote_data
+
+            _set_cached_batch_quotes(result)
+            self.logger.info(f"[RT-K] 获取到 {len(result)} 只股票的实时行情")
 
             return result
 
         except Exception as e:
-            # 检查是否为限流错误
             if self._is_rate_limit_error(str(e)):
-                self.logger.error(f"❌ 批量获取实时行情失败（限流）: {e}")
-                raise  # 抛出限流错误，让上层处理
+                self.logger.error(f"批量获取实时行情失败（限流）: {e}")
+                raise
 
-            self.logger.error(f"❌ 批量获取实时行情失败: {e}")
+            self.logger.error(f"批量获取实时行情失败: {e}")
             return None
 
-    async def get_realtime_price_from_batch(
-        self, symbol: str
-    ) -> Optional[float]:
+    async def get_realtime_price_from_batch(self, symbol: str) -> Optional[float]:
         """
         从批量实时行情中获取单只股票价格
-        使用 rt_k 接口的通配符功能一次性获取全市场行情，然后提取目标股票
+        使用缓存机制，避免重复调用 rt_k 接口
 
         Args:
             symbol: 股票代码（如 '000001.SZ' 或 '000001'）
@@ -744,27 +781,55 @@ class TushareProvider(BaseStockDataProvider):
             return None
 
         try:
-            # 标准化股票代码
             ts_code = self._normalize_ts_code(symbol)
+            code6 = ts_code.split(".")[0]
 
-            # 获取全市场实时行情
+            cached = _get_cached_batch_quotes()
+            if cached is not None:
+                if code6 in cached:
+                    close = cached[code6].get("close")
+                    return float(close) if close else None
+                return None
+
             batch_quotes = await self.get_realtime_quotes_batch()
             if not batch_quotes:
                 return None
 
-            # 提取6位代码
-            code6 = ts_code.split(".")[0]
-
-            # 查找目标股票
             if code6 in batch_quotes:
-                quote = batch_quotes[code6]
-                return float(quote.get("close")) if quote.get("close") else None
+                close = batch_quotes[code6].get("close")
+                return float(close) if close else None
 
             return None
 
         except Exception as e:
-            self.logger.warning(f"⚠️ 从批量行情获取 {symbol} 价格失败: {e}")
+            self.logger.warning(f"从批量行情获取 {symbol} 价格失败: {e}")
             return None
+
+    def get_batch_cache_status(self) -> Dict[str, Any]:
+        """获取批量行情缓存状态"""
+        if (
+            BATCH_QUOTES_CACHE["data"] is None
+            or BATCH_QUOTES_CACHE["timestamp"] is None
+        ):
+            return {
+                "cached": False,
+                "count": 0,
+                "age_seconds": None,
+                "ttl_seconds": BATCH_CACHE_TTL_SECONDS,
+            }
+
+        age = (datetime.now() - BATCH_QUOTES_CACHE["timestamp"]).total_seconds()
+        return {
+            "cached": True,
+            "count": len(BATCH_QUOTES_CACHE["data"]),
+            "age_seconds": round(age, 1),
+            "ttl_seconds": BATCH_CACHE_TTL_SECONDS,
+            "is_valid": age < BATCH_CACHE_TTL_SECONDS,
+        }
+
+    def invalidate_batch_cache(self) -> None:
+        """使批量缓存失效"""
+        _invalidate_batch_cache()
 
     def _is_rate_limit_error(self, error_msg: str) -> bool:
         """检测是否为 API 限流错误"""
@@ -1545,6 +1610,15 @@ class TushareProvider(BaseStockDataProvider):
             # 实控人信息
             "act_name": raw_data.get("act_name"),
             "act_ent_type": raw_data.get("act_ent_type"),
+            # 财务指标
+            "pe": self._convert_to_float(raw_data.get("pe")),
+            "pe_ttm": self._convert_to_float(raw_data.get("pe_ttm")),
+            "pb": self._convert_to_float(raw_data.get("pb")),
+            "ps": self._convert_to_float(raw_data.get("ps")),
+            "total_mv": self._convert_to_float(raw_data.get("total_mv")),
+            "circ_mv": self._convert_to_float(raw_data.get("circ_mv")),
+            "turnover_rate": self._convert_to_float(raw_data.get("turnover_rate")),
+            "volume_ratio": self._convert_to_float(raw_data.get("volume_ratio")),
             # 元数据
             "data_source": "tushare",
             "data_version": 1,

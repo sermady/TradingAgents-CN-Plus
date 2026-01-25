@@ -3,12 +3,40 @@
 成交量数据验证器
 
 统一成交量单位，验证成交量数据准确性
+
+=====================================================================
+重要说明：基本面分析师 vs 技术分析师的成交量差异是合理设计
+=====================================================================
+
+两个分析师使用的成交量数据含义不同，不应视为不一致：
+
+1. 技术分析师 (Market Analyst)
+   - 数据来源：daily 日线数据
+   - 含义：历史日成交量（全天收盘后固定值）
+   - 单位：股（已转换）
+   - 用途：分析历史趋势、量价关系
+
+2. 基本面分析师 (Fundamentals Analyst)
+   - 数据来源：market_quotes 实时行情
+   - 含义：当日累计成交量（交易中实时增长）
+   - 单位：股
+   - 用途：评估当前交易活跃度
+
+3. 什么时候应该一致？
+   - 交易日结束后（收盘时），两者应该接近
+   - 其他时间点，基本面分析师的数据 > 技术分析师的数据（因为是累计值）
+
+=====================================================================
 """
 
+import logging
 from typing import Dict, Any, List, Optional
 import numpy as np
 
 from .base_validator import BaseDataValidator, ValidationResult, ValidationSeverity
+
+# 添加 logger 定义
+logger = logging.getLogger(__name__)
 
 
 class VolumeValidator(BaseDataValidator):
@@ -27,15 +55,15 @@ class VolumeValidator(BaseDataValidator):
     """
 
     # 成交量单位
-    UNIT_LOTS = 'lots'      # 手
-    UNIT_SHARES = 'shares'  # 股
+    UNIT_LOTS = "lots"  # 手
+    UNIT_SHARES = "shares"  # 股
 
     # 成交量倍数标准
     SHARES_PER_LOT = 100  # 1手 = 100股
 
     # 异常成交量倍数阈值
     VOLUME_SPIKE_THRESHOLD = 3.0  # 成交量暴增阈值(3倍)
-    VOLUME_DROP_THRESHOLD = 0.3   # 成交量骤降阈值(30%)
+    VOLUME_DROP_THRESHOLD = 0.3  # 成交量骤降阈值(30%)
 
     def __init__(self, tolerance: float = 0.05):
         super().__init__(tolerance)
@@ -53,38 +81,41 @@ class VolumeValidator(BaseDataValidator):
             ValidationResult: 验证结果
         """
         result = ValidationResult(
-            is_valid=True,
-            confidence=0.0,
-            source=data.get('source', 'unknown')
+            is_valid=True, confidence=0.0, source=data.get("source", "unknown")
         )
 
         # 1. 验证当前成交量
-        if 'volume' in data or '成交量' in data or 'vol' in data:
+        if "volume" in data or "成交量" in data or "vol" in data:
             self._validate_current_volume(symbol, data, result)
 
         # 2. 验证历史成交量序列
-        if 'volume_history' in data or 'volume_list' in data:
+        if "volume_history" in data or "volume_list" in data:
             self._validate_volume_history(data, result)
 
         # 3. 检查成交量单位标注
         self._validate_volume_unit(data, result)
 
         # 4. 验证换手率
-        if 'turnover_rate' in data or '换手率' in data:
+        if "turnover_rate" in data or "换手率" in data:
             self._validate_turnover_rate(data, result)
 
         # 5. 计算总体置信度
         if result.discrepancies:
-            warning_count = len(result.get_issues_by_severity(ValidationSeverity.WARNING))
+            warning_count = len(
+                result.get_issues_by_severity(ValidationSeverity.WARNING)
+            )
             error_count = len(result.get_issues_by_severity(ValidationSeverity.ERROR))
-            result.confidence = max(0.0, 1.0 - (warning_count * 0.1) - (error_count * 0.3))
+            result.confidence = max(
+                0.0, 1.0 - (warning_count * 0.1) - (error_count * 0.3)
+            )
         else:
             result.confidence = 1.0
 
         return result
 
-    async def cross_validate(self, symbol: str, sources: List[str],
-                            metric: str) -> ValidationResult:
+    async def cross_validate(
+        self, symbol: str, sources: List[str], metric: str
+    ) -> ValidationResult:
         """
         多源交叉验证成交量数据
 
@@ -99,8 +130,8 @@ class VolumeValidator(BaseDataValidator):
         result = ValidationResult(
             is_valid=True,
             confidence=0.0,
-            source='multi_source',
-            metadata={'metric': metric, 'sources_checked': sources}
+            source="multi_source",
+            metadata={"metric": metric, "sources_checked": sources},
         )
 
         # 这里实现多源获取和比较逻辑
@@ -108,10 +139,11 @@ class VolumeValidator(BaseDataValidator):
 
         return result
 
-    def _validate_current_volume(self, symbol: str, data: Dict[str, Any],
-                                 result: ValidationResult) -> None:
+    def _validate_current_volume(
+        self, symbol: str, data: Dict[str, Any], result: ValidationResult
+    ) -> None:
         """验证当前成交量"""
-        volume = data.get('volume') or data.get('成交量') or data.get('vol')
+        volume = data.get("volume") or data.get("成交量") or data.get("vol")
 
         if volume is None:
             return
@@ -121,43 +153,46 @@ class VolumeValidator(BaseDataValidator):
             result.add_issue(
                 ValidationSeverity.ERROR,
                 "成交量必须为正数",
-                field='volume',
-                actual=volume
+                field="volume",
+                actual=volume,
             )
             return
 
         # 检查成交量是否在合理范围内(100 - 10亿股)
-        if not self.check_value_in_range(volume, 100, 1000000000, 'volume'):
+        if not self.check_value_in_range(volume, 100, 1000000000, "volume"):
             result.add_issue(
                 ValidationSeverity.WARNING,
                 f"成交量={volume} 超出常规范围",
-                field='volume',
-                actual=volume
+                field="volume",
+                actual=volume,
             )
 
         # 尝试推断单位
         inferred_unit = self._infer_volume_unit(volume, data)
         if inferred_unit != self.preferred_unit:
             # 需要转换单位
-            converted_volume = self._convert_volume(volume, inferred_unit, self.preferred_unit)
-            result.metadata['original_volume'] = volume
-            result.metadata['original_unit'] = inferred_unit
-            result.metadata['converted_volume'] = converted_volume
-            result.metadata['standard_unit'] = self.preferred_unit
+            converted_volume = self._convert_volume(
+                volume, inferred_unit, self.preferred_unit
+            )
+            result.metadata["original_volume"] = volume
+            result.metadata["original_unit"] = inferred_unit
+            result.metadata["converted_volume"] = converted_volume
+            result.metadata["standard_unit"] = self.preferred_unit
 
             result.add_issue(
                 ValidationSeverity.INFO,
                 f"成交量单位从 {inferred_unit} 转换为 {self.preferred_unit}: "
                 f"{volume} → {converted_volume}",
-                field='volume',
+                field="volume",
                 actual=volume,
-                expected=converted_volume
+                expected=converted_volume,
             )
 
-    def _validate_volume_history(self, data: Dict[str, Any],
-                                result: ValidationResult) -> None:
+    def _validate_volume_history(
+        self, data: Dict[str, Any], result: ValidationResult
+    ) -> None:
         """验证历史成交量序列"""
-        volume_list = data.get('volume_history') or data.get('volume_list')
+        volume_list = data.get("volume_history") or data.get("volume_list")
 
         if not volume_list or len(volume_list) < 2:
             return
@@ -168,7 +203,7 @@ class VolumeValidator(BaseDataValidator):
             result.add_issue(
                 ValidationSeverity.ERROR,
                 "成交量历史数据格式错误",
-                field='volume_history'
+                field="volume_history",
             )
             return
 
@@ -192,8 +227,8 @@ class VolumeValidator(BaseDataValidator):
                     ValidationSeverity.WARNING,
                     f"第{spike_index + 1}期成交量暴增 {spike_ratio:.1f}倍 "
                     f"(当前: {max_volume:.0f}, 平均: {avg_volume:.0f})",
-                    field='volume_history',
-                    actual=max_volume
+                    field="volume_history",
+                    actual=max_volume,
                 )
 
         # 成交量骤降检测
@@ -205,42 +240,46 @@ class VolumeValidator(BaseDataValidator):
                     ValidationSeverity.INFO,
                     f"第{drop_index + 1}期成交量骤降 {drop_ratio:.1%} "
                     f"(当前: {min_volume:.0f}, 平均: {avg_volume:.0f})",
-                    field='volume_history',
-                    actual=min_volume
+                    field="volume_history",
+                    actual=min_volume,
                 )
 
-    def _validate_volume_unit(self, data: Dict[str, Any],
-                             result: ValidationResult) -> None:
+    def _validate_volume_unit(
+        self, data: Dict[str, Any], result: ValidationResult
+    ) -> None:
         """验证成交量单位标注"""
-        volume = data.get('volume') or data.get('成交量') or data.get('vol')
-        unit = data.get('volume_unit') or data.get('成交量单位')
+        volume = data.get("volume") or data.get("成交量") or data.get("vol")
+        unit = data.get("volume_unit") or data.get("成交量单位")
 
         if volume and not unit:
             # 没有标注单位，尝试推断
             inferred_unit = self._infer_volume_unit(volume, data)
-            result.metadata['inferred_unit'] = inferred_unit
+            result.metadata["inferred_unit"] = inferred_unit
 
             result.add_issue(
                 ValidationSeverity.INFO,
                 f"成交量单位未明确标注,推断为: {inferred_unit}",
-                field='volume_unit'
+                field="volume_unit",
             )
 
-    def _validate_turnover_rate(self, data: Dict[str, Any],
-                               result: ValidationResult) -> None:
+    def _validate_turnover_rate(
+        self, data: Dict[str, Any], result: ValidationResult
+    ) -> None:
         """验证换手率"""
-        turnover_rate = data.get('turnover_rate') or data.get('换手率')
-        volume = data.get('volume') or data.get('成交量') or data.get('vol')
-        share_count = data.get('share_count') or data.get('total_shares') or data.get('总股本')
+        turnover_rate = data.get("turnover_rate") or data.get("换手率")
+        volume = data.get("volume") or data.get("成交量") or data.get("vol")
+        share_count = (
+            data.get("share_count") or data.get("total_shares") or data.get("总股本")
+        )
 
         if turnover_rate is not None:
             # 换手率必须在0-100%之间
-            if not self.check_value_in_range(turnover_rate, 0, 100, 'turnover_rate'):
+            if not self.check_value_in_range(turnover_rate, 0, 100, "turnover_rate"):
                 result.add_issue(
                     ValidationSeverity.ERROR,
                     f"换手率={turnover_rate}% 超出合理范围",
-                    field='turnover_rate',
-                    actual=turnover_rate
+                    field="turnover_rate",
+                    actual=turnover_rate,
                 )
 
             # 高换手率提醒
@@ -248,8 +287,8 @@ class VolumeValidator(BaseDataValidator):
                 result.add_issue(
                     ValidationSeverity.INFO,
                     f"换手率={turnover_rate}% 较高,交易活跃",
-                    field='turnover_rate',
-                    actual=turnover_rate
+                    field="turnover_rate",
+                    actual=turnover_rate,
                 )
 
         # 验证换手率计算: 换手率 = 成交量 / 流通股本 × 100%
@@ -261,23 +300,24 @@ class VolumeValidator(BaseDataValidator):
 
                 # 允许20%误差(因为流通股本可能不是总股本)
                 if turnover_rate > 0:
-                    diff_pct = abs((calculated_rate - turnover_rate) / turnover_rate) * 100
+                    diff_pct = (
+                        abs((calculated_rate - turnover_rate) / turnover_rate) * 100
+                    )
 
                     if diff_pct > 20:
                         result.add_issue(
                             ValidationSeverity.WARNING,
                             f"换手率计算可能不一致: 报告={turnover_rate:.2f}%, "
                             f"根据成交量({volume:.0f})和股本({share_count:.0f})计算={calculated_rate:.2f}%",
-                            field='turnover_rate',
+                            field="turnover_rate",
                             actual=turnover_rate,
-                            expected=calculated_rate
+                            expected=calculated_rate,
                         )
 
             except (ValueError, TypeError, ZeroDivisionError):
                 pass
 
-    def _infer_volume_unit(self, volume: float,
-                          data: Dict[str, Any]) -> str:
+    def _infer_volume_unit(self, volume: float, data: Dict[str, Any]) -> str:
         """
         推断成交量单位
 
@@ -287,8 +327,10 @@ class VolumeValidator(BaseDataValidator):
         - 结合换手率判断
         """
         # 如果有换手率和股本，可以准确推断
-        turnover_rate = data.get('turnover_rate') or data.get('换手率')
-        share_count = data.get('share_count') or data.get('total_shares') or data.get('总股本')
+        turnover_rate = data.get("turnover_rate") or data.get("换手率")
+        share_count = (
+            data.get("share_count") or data.get("total_shares") or data.get("总股本")
+        )
 
         if all([turnover_rate, share_count, volume]):
             try:
@@ -308,16 +350,16 @@ class VolumeValidator(BaseDataValidator):
             except (ValueError, TypeError, ZeroDivisionError):
                 pass
 
-        # 简单启发式判断
-        if volume > 1000000:  # 大于100万，可能是股
-            return self.UNIT_SHARES
-        elif volume % 100 == 0 and volume < 1000000:  # 能被100整除且较小，可能是手
-            return self.UNIT_LOTS
-        else:
-            return self.UNIT_SHARES  # 默认为股
+        # 🔧 修复：移除不可靠的启发式推断，默认为"股"
+        # 问题：954,158股会被误判为"手"（<100万且能被100整除），导致二次转换
+        logger.warning(
+            f"⚠️ 成交量单位未明确标注，默认推断为'股'。"
+            f"数据源应明确标注volume_unit字段以避免转换错误。"
+            f"当前值: {volume:,.0f}"
+        )
+        return self.UNIT_SHARES  # 默认为股
 
-    def _convert_volume(self, volume: float, from_unit: str,
-                       to_unit: str) -> float:
+    def _convert_volume(self, volume: float, from_unit: str, to_unit: str) -> float:
         """
         转换成交量单位
 
@@ -340,8 +382,9 @@ class VolumeValidator(BaseDataValidator):
 
         return volume
 
-    def standardize_volume(self, volume: float,
-                          current_unit: Optional[str] = None) -> tuple[float, str]:
+    def standardize_volume(
+        self, volume: float, current_unit: Optional[str] = None
+    ) -> tuple[float, str]:
         """
         标准化成交量到"股"
 
@@ -359,9 +402,13 @@ class VolumeValidator(BaseDataValidator):
         converted = self._convert_volume(volume, current_unit, self.preferred_unit)
         return converted, current_unit
 
-    def compare_volumes(self, volume1: float, volume2: float,
-                       unit1: Optional[str] = None,
-                       unit2: Optional[str] = None) -> tuple[bool, float]:
+    def compare_volumes(
+        self,
+        volume1: float,
+        volume2: float,
+        unit1: Optional[str] = None,
+        unit2: Optional[str] = None,
+    ) -> tuple[bool, float]:
         """
         比较两个成交量是否一致（自动转换单位）
 

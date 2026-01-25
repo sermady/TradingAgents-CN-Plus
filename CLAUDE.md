@@ -202,6 +202,32 @@ Priority 2: Baostock (free, stable)
 Priority 3: AkShare (fallback option)
 ```
 
+**Unified Schema System** (`tradingagents/dataflows/schemas/`):
+- `stock_basic_schema.py`: Unified schema with 30+ fields (code, name, market, pe, pb, total_mv, etc.)
+- `StockBasicData` dataclass: Standardized data structure
+- Helper functions: `validate_stock_basic_data()`, `convert_to_float()`, `normalize_date()`
+- `stock_historical_schema.py`: Historical data schema for technical analysis (NEW)
+
+**Data Standardizers** (`tradingagents/dataflows/standardizers/`):
+- `stock_basic_standardizer.py`: Transforms raw data to unified format
+  - `TushareBasicStandardizer`: Tushare → Unified
+  - `BaostockBasicStandardizer`: BaoStock → Unified
+  - `AkShareBasicStandardizer`: AKShare → Unified
+  - `standardize_stock_basic()`: Unified entry point for all providers
+- `data_standardizer.py`: General data format standardization (volume, market cap, etc.)
+
+**Volume Data Design** (Important):
+- **Technical Analyst (Market Analyst)**: Uses `daily` historical data - historical daily volume (fixed value after market close)
+- **Fundamentals Analyst**: Uses `market_quotes` real-time data - cumulative intraday volume (grows during trading)
+- **Difference is intentional and correct** - do not flag as inconsistency
+- All analysts have been informed via prompt comments
+
+**Data Validation Layers**:
+1. **Schema Layer**: Type conversion, date normalization, field validation
+2. **Provider Layer**: Code normalization, rate limit detection, error handling
+3. **Cache Layer**: TTL validation, expired cache cleanup
+4. **Volume Validator**: Unit conversion (手→股), turnover rate validation
+
 **Data Source Adapters** (`app/services/data_sources/`):
 - `manager.py`: `DataSourceManager` - unified data source interface
 - `tushare_adapter.py`: Tushare adapter with permission detection
@@ -215,6 +241,16 @@ Priority 3: AkShare (fallback option)
 - File-based cache as fallback
 - Adaptive cache selection based on availability
 
+**Module-Level Realtime Quotes Cache** (`tradingagents/dataflows/providers/china/`):
+- **Tushare Batch Cache** (30s TTL):
+  - `BATCH_QUOTES_CACHE`: Module-level dict with data, timestamp, lock
+  - `get_realtime_quotes_batch()`: Uses rt_k wildcard API for all stocks
+  - `get_realtime_price_from_batch()`: Single stock price from batch cache
+- **AKShare Single-Stock Cache** (15s TTL):
+  - `AKSHARE_QUOTES_CACHE`: Per-stock cache with timestamp
+  - `get_stock_quotes_cached()`: Cached single-stock quotes
+  - Thread-safe with `threading.Lock`
+
 **Real-time Quotes System**:
 - `app/services/quotes_ingestion_service.py`: Real-time quotes ingestion and backfill
 - `app/services/quotes_service.py`: Quotes query and management
@@ -224,10 +260,13 @@ Priority 3: AkShare (fallback option)
 - Trading hours: 9:30-15:30 (with 30min post-close buffer)
 - Auto-backfill from historical data on startup
 
-**Price Cache System**:
-- `tradingagents/utils/price_cache.py`: Unified price caching for analysts
+**Unified Price Cache** (`tradingagents/utils/price_cache.py`):
+- **Multi-Layer Architecture**:
+  - L1: Memory cache (10 min TTL, process-shared)
+  - L2: Redis cache (30 min TTL, distributed, 10s debounce)
 - Ensures price consistency across all analysts in a report
-- 5-minute TTL with automatic expiration
+- Singleton pattern via `get_price_cache()`
+- Debounce mechanism prevents duplicate updates
 
 ### LLM Adapter System
 
@@ -475,6 +514,7 @@ git commit -m "refactor: restructure data flow architecture"
 
 1. **Test Directory Structure**:
    - `tests/unit/` - Unit tests (fast, no external dependencies)
+   - `tests/unit/dataflows/` - Dataflows-specific unit tests (schema, providers, caching)
    - `tests/integration/` - Integration tests (requires database/API)
    - `tests/legacy/` - Legacy test scripts (ignored by pytest, for reference only)
    - `tests/debug/` - 临时调试脚本（调试完成后删除）
@@ -516,8 +556,17 @@ git commit -m "refactor: restructure data flow architecture"
    # Run only integration tests
    python -m pytest -m integration
 
-   # Run with verbose output
-   python -m pytest -v --tb=short
+    # Run with verbose output
+    python -m pytest -v --tb=short
+    ```
+
+7. **Dataflows Test Files**:
+   ```bash
+   # Schema and Standardization tests (25 tests)
+   python -m pytest tests/unit/dataflows/test_stock_basic_standardization.py -v
+
+   # Realtime quotes cache tests (9 tests)
+   python -m pytest tests/unit/dataflows/test_realtime_quotes.py -v
    ```
 
 ### Data Source Development
@@ -525,6 +574,8 @@ git commit -m "refactor: restructure data flow architecture"
 2. **Error Fallback**: Support automatic switching to backup data sources
 3. **Caching Strategy**: Use MongoDB/Redis caching appropriately
 4. **Performance Optimization**: Support batch processing and delay control
+5. **Schema Standardization**: Use `StockBasicData` dataclass and standardizers
+6. **Data Validation**: Implement multi-layer validation (schema, provider, cache, volume)
 
 ### Avoid Reinventing the Wheel
 ```python

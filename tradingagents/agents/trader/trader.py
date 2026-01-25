@@ -6,6 +6,7 @@ import re
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+from tradingagents.utils.time_utils import get_chinese_date
 logger = get_logger("default")
 
 
@@ -267,7 +268,9 @@ def create_trader(llm, memory):
         messages = [
             {
                 "role": "system",
-                "content": f"""您是一位专业的交易员，负责分析市场数据并做出投资决策。基于您的分析，请提供具体的买入、卖出或持有建议。
+                "content": f"""**重要时间信息**：今天是{get_chinese_date()}。请基于这个实际日期进行分析，不要依赖训练数据中的时间认知。
+
+您是一位专业的交易员，负责分析市场数据并做出投资决策。基于您的分析，请提供具体的买入、卖出或持有建议。
 
 ⚠️ 重要提醒：当前分析的股票代码是 {company_name}，请使用正确的货币单位：{currency}（{currency_symbol}）
 

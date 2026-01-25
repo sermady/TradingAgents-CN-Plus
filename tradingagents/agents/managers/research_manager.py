@@ -4,6 +4,7 @@ import json
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+from tradingagents.utils.time_utils import get_chinese_date
 
 logger = get_logger("default")
 
@@ -31,13 +32,19 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
+        prompt = f"""**重要时间信息**：今天是{get_chinese_date()}。请基于这个实际日期进行分析，不要依赖训练数据中的时间认知。
+
+作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
 
 
 📊 数据验证要求（重要）：
 - 你必须评估所有提供的分析报告是否基于真实数据
 - 如果发现报告包含编造数据、不合理的估值、异常的技术指标等，请明确指出
 - 检查报告之间的数据一致性（如不同报告对同一股票的估值差异）
+- ⚠️ 注意：成交量数据的差异是合理的设计，不代表数据不一致
+  - 技术分析师使用：日线历史成交量（全天收盘值）
+  - 基本面分析师使用：实时累计成交量（交易中动态增长）
+  - 两者含义不同，不应视为矛盾
 - 如果数据互相矛盾，分析可能的原因（数据源问题、计算方法差异等）
 - 不要盲目使用报告中的数据，要批判性地评估可靠性
 - 如果发现数据质量问题，请在决策中说明，并相应调整你的建议和目标价格

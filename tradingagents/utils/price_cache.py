@@ -1,20 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-统一价格缓存模块
-确保所有分析师使用同一价格的缓存机制，解决报告中的价格不一致问题
+Unified Price Cache Module
+Ensures all analysts use the same price cache mechanism
+Supports multi-level cache strategy (Memory + Redis)
 """
 
 import logging
 import threading
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import json
 
 logger = logging.getLogger(__name__)
 
 
 class UnifiedPriceCache:
-    """统一价格缓存类 (单例模式)"""
-    
+    """Unified Price Cache Class (Singleton)
+
+    Multi-level cache strategy:
+    - L1: Memory cache (fast, process-shared)
+    - L2: Redis cache (distributed, multi-process shared)
+    """
+
     _instance = None
     _lock = threading.Lock()
 
@@ -30,77 +37,305 @@ class UnifiedPriceCache:
         if self._initialized:
             return
         self._initialized = True
-        
-        # 缓存结构: {ticker: {'price': float, 'currency': str, 'timestamp': datetime}}
+
+        # Cache structure: {ticker: {'price': float, 'currency': str, 'timestamp': datetime, 'data': dict}}
         self.cache: Dict[str, Dict[str, Any]] = {}
-        self.ttl_seconds = 600  # 缓存有效期：10分钟 (延长以覆盖整个分析过程)
+        self.memory_ttl_seconds = 600  # Memory cache TTL: 10 minutes
+        self.redis_ttl_seconds = 1800  # Redis cache TTL: 30 minutes
         self.cache_lock = threading.Lock()
-        
-        logger.info("✅ [UnifiedPriceCache] 统一价格缓存已初始化")
+
+        # Redis client initialization
+        self._redis_client = None
+        self._redis_available = False
+        self._init_redis()
+
+        logger.info("[UnifiedPriceCache] Price cache initialized")
+
+    def _init_redis(self):
+        """Initialize Redis client"""
+        try:
+            import redis
+            import os
+            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_port = int(os.getenv("REDIS_PORT", 6379))
+            redis_db = int(os.getenv("REDIS_DB", 0))
+
+            self._redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5
+            )
+            self._redis_client.ping()
+            self._redis_available = True
+            logger.info(f"[UnifiedPriceCache] Redis cache connected: {redis_host}:{redis_port}")
+        except Exception as e:
+            logger.warning(f"[UnifiedPriceCache] Redis not available, using memory-only mode: {e}")
+            self._redis_available = False
+
+    def _get_redis_key(self, ticker: str) -> str:
+        """Generate Redis key"""
+        return f"price_cache:{ticker}"
+
+    def _is_valid(self, entry: Dict[str, Any]) -> bool:
+        """Check if entry is valid"""
+        if not entry or 'timestamp' not in entry:
+            return False
+
+        try:
+            ts = entry['timestamp']
+            if isinstance(ts, str):
+                ts = datetime.fromisoformat(ts)
+            elif not isinstance(ts, datetime):
+                return False
+            age = (datetime.now() - ts).total_seconds()
+            return age < self.memory_ttl_seconds
+        except (ValueError, TypeError, OSError):
+            return False
 
     def get_price(self, ticker: str) -> Optional[float]:
-        """获取缓存的价格"""
+        """Get cached price (prefer Redis, then memory)"""
+        if self._redis_available:
+            try:
+                redis_key = self._get_redis_key(ticker)
+                redis_data = self._redis_client.get(redis_key)
+                if redis_data:
+                    data = json.loads(redis_data)
+                    price = data.get('price')
+                    if price is not None:
+                        logger.debug(f"[PriceCache] Redis hit: {ticker} = {price}")
+                        return float(price)
+            except Exception as e:
+                logger.warning(f"[PriceCache] Redis read failed: {e}")
+
         with self.cache_lock:
             if ticker in self.cache:
                 entry = self.cache[ticker]
                 if self._is_valid(entry):
+                    logger.debug(f"[PriceCache] Memory hit: {ticker} = {entry['price']}")
                     return entry['price']
         return None
 
+    def get_historical_prices(self, ticker: str, start_date: str, end_date: str) -> Optional[List[Dict]]:
+        """Get cached historical price data"""
+        if self._redis_available:
+            try:
+                redis_key = f"price_history:{ticker}:{start_date}:{end_date}"
+                redis_data = self._redis_client.get(redis_key)
+                if redis_data:
+                    data = json.loads(redis_data)
+                    logger.debug(f"[PriceCache] Historical price Redis hit: {ticker}")
+                    return data
+            except Exception as e:
+                logger.warning(f"[PriceCache] Redis historical price read failed: {e}")
+        return None
+
     def get_price_info(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """获取完整的价格信息"""
+        """Get complete price info (prefer Redis, then memory)"""
+        if self._redis_available:
+            try:
+                redis_key = self._get_redis_key(ticker)
+                redis_data = self._redis_client.get(redis_key)
+                if redis_data:
+                    data = json.loads(redis_data)
+                    timestamp = datetime.fromisoformat(data.get('timestamp', '2000-01-01'))
+                    age = (datetime.now() - timestamp).total_seconds()
+                    if age < self.redis_ttl_seconds:
+                        logger.debug(f"[PriceCache] Price info Redis hit: {ticker}")
+                        return data
+            except Exception as e:
+                logger.warning(f"[PriceCache] Redis price info read failed: {e}")
+
         with self.cache_lock:
             if ticker in self.cache:
                 entry = self.cache[ticker]
                 if self._is_valid(entry):
+                    logger.debug(f"[PriceCache] Price info memory hit: {ticker}")
                     return entry.copy()
         return None
 
-    def update(self, ticker: str, price: float, currency: str = "¥"):
+    def update(self, ticker: str, price: float, currency: str = "CNY", data: Dict[str, Any] = None):
         """
-        更新缓存
-        
+        Update cache (both Redis and memory)
+
         Args:
-            ticker: 股票代码
-            price: 价格数值
-            currency: 货币符号
+            ticker: Stock ticker
+            price: Price value
+            currency: Currency symbol
+            data: Additional data dict
         """
+        entry = {
+            'price': float(price),
+            'currency': currency,
+            'timestamp': datetime.now().isoformat(),
+            'data': data or {}
+        }
+
+        # Update memory cache (with 10s debounce)
         with self.cache_lock:
-            # 如果缓存已存在且非常新（例如10秒内），则不更新，避免微小波动
-            # 除非是强制更新（此处未实现强制参数）
             if ticker in self.cache:
-                entry = self.cache[ticker]
-                age = (datetime.now() - entry['timestamp']).total_seconds()
-                if age < 10:  # 10秒内不重复更新
+                old_entry = self.cache[ticker]
+                age = (datetime.now() - datetime.fromisoformat(old_entry['timestamp'])).total_seconds()
+                if age < 10:  # Skip if updated within 10 seconds
                     return
 
-            self.cache[ticker] = {
-                'price': price,
-                'currency': currency,
-                'timestamp': datetime.now()
-            }
-            expire_time = (datetime.now() + timedelta(seconds=self.ttl_seconds)).strftime('%H:%M:%S')
-            logger.info(f"✅ [价格缓存] {ticker} 已更新: {currency}{price:.2f}, 过期: {expire_time}")
+            self.cache[ticker] = entry
+            expire_time = (datetime.now() + timedelta(seconds=self.memory_ttl_seconds)).strftime('%H:%M:%S')
+            logger.info(f"[PriceCache] {ticker} updated: {currency}{price:.2f}, memory expire: {expire_time}")
 
-    def _is_valid(self, entry: Dict[str, Any]) -> bool:
-        """检查条目是否有效"""
-        if not entry or 'timestamp' not in entry:
-            return False
-        
-        age = (datetime.now() - entry['timestamp']).total_seconds()
-        return age < self.ttl_seconds
+        # Update Redis cache
+        if self._redis_available:
+            try:
+                redis_key = self._get_redis_key(ticker)
+                self._redis_client.setex(
+                    redis_key,
+                    self.redis_ttl_seconds,
+                    json.dumps(entry, ensure_ascii=False)
+                )
+                redis_expire = (datetime.now() + timedelta(seconds=self.redis_ttl_seconds)).strftime('%H:%M:%S')
+                logger.debug(f"[PriceCache] Redis updated: {ticker}, expire: {redis_expire}")
+            except Exception as e:
+                logger.warning(f"[PriceCache] Redis update failed: {e}")
+
+    def cache_price_data(self, ticker: str, price_data: dict):
+        """Cache complete price data"""
+        if not price_data:
+            return
+
+        price = price_data.get('price', 0)
+        currency = price_data.get('currency', 'CNY')
+
+        with self.cache_lock:
+            self.cache[ticker] = {
+                'price': float(price),
+                'currency': currency,
+                'timestamp': datetime.now(),
+                'data': price_data
+            }
+
+        if self._redis_available:
+            try:
+                redis_key = self._get_redis_key(ticker)
+                entry = {
+                    'price': float(price),
+                    'currency': currency,
+                    'timestamp': datetime.now().isoformat(),
+                    'data': price_data
+                }
+                self._redis_client.setex(
+                    redis_key,
+                    self.redis_ttl_seconds,
+                    json.dumps(entry, ensure_ascii=False)
+                )
+            except Exception as e:
+                logger.warning(f"[PriceCache] Redis cache_price_data failed: {e}")
+
+    def cache_historical_prices(self, ticker: str, start_date: str, end_date: str, prices: list):
+        """Cache historical price data to Redis"""
+        if not self._redis_available or not prices:
+            return
+
+        try:
+            redis_key = f"price_history:{ticker}:{start_date}:{end_date}"
+            self._redis_client.setex(
+                redis_key,
+                self.redis_ttl_seconds,
+                json.dumps(prices, ensure_ascii=False, default=str)
+            )
+            logger.debug(f"[PriceCache] Historical prices cached to Redis: {ticker} ({len(prices)} records)")
+        except Exception as e:
+            logger.warning(f"[PriceCache] Historical price cache failed: {e}")
+
+    def get_current_price(self, ticker: str) -> Optional[float]:
+        """Get cached current price"""
+        return self.get_price(ticker)
+
+    def is_price_fresh(self, ticker: str, max_age_seconds: int = 600) -> bool:
+        """Check if price data is fresh"""
+        if self._redis_available:
+            try:
+                redis_key = self._get_redis_key(ticker)
+                ttl = self._redis_client.ttl(redis_key)
+                if ttl > 0:
+                    return True
+            except Exception:
+                pass
+
+        with self.cache_lock:
+            if ticker in self.cache:
+                entry = self.cache[ticker]
+                if self._is_valid(entry):
+                    age = (datetime.now() - entry['timestamp']).total_seconds()
+                    return age < max_age_seconds
+        return False
+
+    def get_cached_tickers(self) -> List[str]:
+        """Get all cached tickers"""
+        with self.cache_lock:
+            valid_tickers = []
+            for ticker, entry in self.cache.items():
+                if self._is_valid(entry):
+                    valid_tickers.append(ticker)
+            return valid_tickers
 
     def clear(self, ticker: str = None):
-        """清除缓存"""
+        """Clear cache"""
         with self.cache_lock:
             if ticker:
                 if ticker in self.cache:
                     del self.cache[ticker]
-                    logger.debug(f"🗑️ [价格缓存] {ticker} 已清除")
+                    logger.debug(f"[PriceCache] {ticker} cleared")
+
+                if self._redis_available:
+                    try:
+                        redis_key = self._get_redis_key(ticker)
+                        self._redis_client.delete(redis_key)
+                    except Exception as e:
+                        logger.warning(f"[PriceCache] Redis clear failed: {e}")
             else:
                 self.cache.clear()
-                logger.debug("🗑️ [价格缓存] 全部已清除")
+                logger.debug("[PriceCache] All cleared")
 
-# 全局单例获取函数
+                if self._redis_available:
+                    try:
+                        pattern = "price_cache:*"
+                        keys = self._redis_client.keys(pattern)
+                        if keys:
+                            self._redis_client.delete(*keys)
+                        pattern = "price_history:*"
+                        keys = self._redis_client.keys(pattern)
+                        if keys:
+                            self._redis_client.delete(*keys)
+                    except Exception as e:
+                        logger.warning(f"[PriceCache] Redis clear all failed: {e}")
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+        with self.cache_lock:
+            valid_count = 0
+            for entry in self.cache.values():
+                try:
+                    ts = entry.get('timestamp')
+                    if isinstance(ts, str):
+                        ts = datetime.fromisoformat(ts)
+                    elif not isinstance(ts, datetime):
+                        continue
+                    age = (datetime.now() - ts).total_seconds()
+                    if age < self.memory_ttl_seconds:
+                        valid_count += 1
+                except (ValueError, TypeError, OSError):
+                    continue
+            return {
+                "memory_cache_count": len(self.cache),
+                "valid_memory_cache": valid_count,
+                "redis_available": self._redis_available,
+                "memory_ttl_seconds": self.memory_ttl_seconds,
+                "redis_ttl_seconds": self.redis_ttl_seconds
+            }
+
+
+# Global singleton getter
 def get_price_cache() -> UnifiedPriceCache:
     return UnifiedPriceCache()
