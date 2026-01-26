@@ -86,6 +86,7 @@ class AKShareProvider(BaseStockDataProvider):
             import time
 
             # 尝试导入 curl_cffi，如果可用则使用它来绕过反爬虫
+            curl_requests = None  # 初始化变量以通过静态分析
             try:
                 from curl_cffi import requests as curl_requests
 
@@ -102,7 +103,7 @@ class AKShareProvider(BaseStockDataProvider):
             # AKShare的stock_news_em()函数没有设置必要的headers，导致API返回空响应
             if not hasattr(requests, "_akshare_headers_patched"):
                 original_get = requests.get
-                last_request_time = {"time": 0}  # 使用字典以便在闭包中修改
+                last_request_time = {"time": 0.0}  # 使用浮点数初始化
 
                 def patched_get(url, **kwargs):
                     """
@@ -208,7 +209,7 @@ class AKShareProvider(BaseStockDataProvider):
 
                 # 应用patch
                 requests.get = patched_get
-                requests._akshare_headers_patched = True
+                requests._akshare_headers_patched = True  # type: ignore
 
                 if use_curl_cffi:
                     logger.info(
@@ -390,6 +391,10 @@ class AKShareProvider(BaseStockDataProvider):
         if not self.connected:
             return []
 
+        # 确保 self.ak 已初始化
+        if self.ak is None:
+            return []
+
         try:
             logger.info("📋 获取AKShare股票列表...")
 
@@ -421,7 +426,9 @@ class AKShareProvider(BaseStockDataProvider):
             logger.error(f"❌ AKShare获取股票列表失败: {e}")
             return []
 
-    async def get_stock_basic_info(self, symbol: str = None) -> Optional[Dict[str, Any]]:
+    async def get_stock_basic_info(
+        self, symbol: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息
 
@@ -458,6 +465,9 @@ class AKShareProvider(BaseStockDataProvider):
 
     async def _get_stock_list_cached(self):
         """获取缓存的股票列表（避免重复获取）"""
+        if self.ak is None:
+            return None
+
         from datetime import datetime, timedelta
 
         # 如果缓存存在且未过期（1小时），直接返回
@@ -483,6 +493,14 @@ class AKShareProvider(BaseStockDataProvider):
 
     async def _get_stock_info_detail(self, code: str) -> Dict[str, Any]:
         """获取股票详细信息"""
+        if self.ak is None:
+            return {
+                "code": code,
+                "name": f"股票{code}",
+                "industry": "未知",
+                "area": "未知",
+            }
+
         try:
             # 方法1: 尝试获取个股详细信息（包含行业、地区等详细信息）
             def fetch_individual_info():
@@ -628,6 +646,7 @@ class AKShareProvider(BaseStockDataProvider):
         批量获取股票实时行情（优化版：一次获取全市场快照）
 
         优先使用新浪财经接口（更稳定），失败时回退到东方财富接口
+        支持指数退避重试和详细错误日志
 
         Args:
             codes: 股票代码列表
@@ -635,25 +654,49 @@ class AKShareProvider(BaseStockDataProvider):
         Returns:
             股票代码到行情数据的映射字典
         """
-        if not self.connected:
+        if not self.connected or self.ak is None:
             return {}
 
-        # 重试逻辑
-        max_retries = 2
-        retry_delay = 1  # 秒
+        max_retries = 3
+        initial_delay = 1.0
+        max_delay = 10.0
+        backoff_multiplier = 2.0
+
+        import os
+
+        proxy_status = {
+            "http_proxy": os.environ.get("HTTP_PROXY") or "",
+            "https_proxy": os.environ.get("HTTPS_PROXY") or "",
+        }
+        proxy_enabled = any(v for v in proxy_status.values())
+
+        last_exception = None
 
         for attempt in range(max_retries):
+            attempt_start = (
+                asyncio.get_event_loop().time()
+                if hasattr(asyncio.get_event_loop(), "time")
+                else 0
+            )
             try:
                 logger.debug(
                     f"📊 批量获取 {len(codes)} 只股票的实时行情... (尝试 {attempt + 1}/{max_retries})"
                 )
 
-                # 优先使用新浪财经接口（更稳定，不容易被封）
                 def fetch_spot_data_sina():
                     import time
 
-                    time.sleep(0.3)  # 添加延迟避免频率限制
+                    time.sleep(0.3)
                     return self.ak.stock_zh_a_spot()
+
+                def fetch_spot_data_em():
+                    import time
+
+                    time.sleep(0.5)
+                    return self.ak.stock_zh_a_spot_em()
+
+                spot_df = None
+                data_source = None
 
                 try:
                     spot_df = await asyncio.to_thread(fetch_spot_data_sina)
@@ -661,42 +704,36 @@ class AKShareProvider(BaseStockDataProvider):
                     logger.debug("✅ 使用新浪财经接口获取数据")
                 except Exception as e:
                     logger.warning(f"⚠️ 新浪财经接口失败: {e}，尝试东方财富接口...")
+                    try:
+                        spot_df = await asyncio.to_thread(fetch_spot_data_em)
+                        data_source = "eastmoney"
+                        logger.debug("✅ 使用东方财富接口获取数据")
+                    except Exception as e2:
+                        raise ConnectionError(f"Sina failed: {e}, EM failed: {e2}")
 
-                    # 回退到东方财富接口
-                    def fetch_spot_data_em():
-                        import time
-
-                        time.sleep(0.5)
-                        return self.ak.stock_zh_a_spot_em()
-
-                    spot_df = await asyncio.to_thread(fetch_spot_data_em)
-                    data_source = "eastmoney"
-                    logger.debug("✅ 使用东方财富接口获取数据")
-
-                if spot_df is None or spot_df.empty:
+                if spot_df is None or getattr(spot_df, "empty", True):
                     logger.warning("⚠️ 全市场快照为空")
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
+                        delay = min(
+                            initial_delay * (backoff_multiplier**attempt), max_delay
+                        )
+                        logger.debug(f"等待 {delay:.1f}秒后重试...")
+                        await asyncio.sleep(delay)
                         continue
                     return {}
 
-                # 构建代码到行情的映射
                 quotes_map = {}
                 codes_set = set(codes)
 
-                # 构建代码映射表（支持带前缀的代码匹配）
-                # 例如：sh600000 -> 600000, sz000001 -> 000001
                 code_mapping = {}
                 for code in codes:
-                    code_mapping[code] = code  # 原始代码
-                    # 添加可能的前缀变体
+                    code_mapping[code] = code
                     for prefix in ["sh", "sz", "bj"]:
                         code_mapping[f"{prefix}{code}"] = code
 
                 for _, row in spot_df.iterrows():
                     raw_code = str(row.get("代码", ""))
 
-                    # 尝试匹配代码（支持带前缀和不带前缀）
                     matched_code = None
                     if raw_code in code_mapping:
                         matched_code = code_mapping[raw_code]
@@ -793,13 +830,34 @@ class AKShareProvider(BaseStockDataProvider):
                 return quotes_map
 
             except Exception as e:
-                logger.warning(
-                    f"⚠️ 批量获取实时行情失败 (尝试 {attempt + 1}/{max_retries}): {e}"
+                last_exception = e
+                error_type = type(e).__name__
+                is_network_error = any(
+                    x in str(e).lower()
+                    for x in [
+                        "connection",
+                        "remote",
+                        "timeout",
+                        "aborted",
+                        "reset",
+                        "closed",
+                    ]
                 )
+
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
+                    delay = min(
+                        initial_delay * (backoff_multiplier**attempt), max_delay
+                    )
+                    logger.warning(
+                        f"⚠️ 批量获取实时行情失败 ({attempt + 1}/{max_retries}): "
+                        f"error_type={error_type}, network={is_network_error}, 等待{delay:.1f}秒后重试..."
+                    )
+                    await asyncio.sleep(delay)
                 else:
-                    logger.error(f"❌ 批量获取实时行情失败，已达最大重试次数: {e}")
+                    logger.error(
+                        f"❌ 批量获取实时行情失败，已达最大重试次数: "
+                        f"proxy_enabled={proxy_enabled}, error_type={error_type}, error={str(e)[:200]}"
+                    )
                     return {}
 
     async def get_stock_quotes(self, code: str) -> Optional[Dict[str, Any]]:
@@ -816,7 +874,7 @@ class AKShareProvider(BaseStockDataProvider):
         Returns:
             标准化的行情数据
         """
-        if not self.connected:
+        if not self.connected or self.ak is None:
             return None
 
         try:
@@ -960,6 +1018,9 @@ class AKShareProvider(BaseStockDataProvider):
 
     async def _get_realtime_quotes_data(self, code: str) -> Dict[str, Any]:
         """获取实时行情数据"""
+        if self.ak is None:
+            return {}
+
         try:
             # 方法1: 获取A股实时行情
             def fetch_spot_data():
@@ -1082,7 +1143,7 @@ class AKShareProvider(BaseStockDataProvider):
         Returns:
             历史行情数据DataFrame
         """
-        if not self.connected:
+        if not self.connected or self.ak is None:
             return None
 
         try:
@@ -1159,6 +1220,11 @@ class AKShareProvider(BaseStockDataProvider):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+            # 🔥 修复：AKShare A股历史数据成交量单位是手，统一转换为股
+            # stock_zh_a_hist 接口返回的成交量单位是手，而系统统一使用股
+            if "volume" in df.columns:
+                df["volume"] = df["volume"] * 100
+
             return df
 
         except Exception as e:
@@ -1175,7 +1241,7 @@ class AKShareProvider(BaseStockDataProvider):
         Returns:
             财务数据字典
         """
-        if not self.connected:
+        if not self.connected or self.ak is None:
             return {}
 
         try:
