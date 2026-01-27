@@ -9,6 +9,7 @@ from langgraph.graph import END, StateGraph, START, MessagesState
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+
 logger = get_logger("default")
 
 
@@ -58,6 +59,12 @@ class AgentState(MessagesState):
 
     sender: Annotated[str, "Agent that sent this message"]
 
+    # Centralized Data Store (Pre-fetched by DataCoordinator)
+    market_data: Annotated[str, "Raw technical analysis data"]
+    financial_data: Annotated[str, "Raw fundamental data"]
+    news_data: Annotated[str, "Raw aggregated news data"]
+    sentiment_data: Annotated[str, "Raw social sentiment data"]
+
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]
     sentiment_report: Annotated[str, "Report from the Social Media Analyst"]
@@ -66,11 +73,20 @@ class AgentState(MessagesState):
     ]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
 
-    # 🔧 死循环修复: 工具调用计数器
-    market_tool_call_count: Annotated[int, "Market analyst tool call counter"]
-    news_tool_call_count: Annotated[int, "News analyst tool call counter"]
-    sentiment_tool_call_count: Annotated[int, "Social media analyst tool call counter"]
-    fundamentals_tool_call_count: Annotated[int, "Fundamentals analyst tool call counter"]
+    # 🔧 死循环修复: 工具调用计数器 (已废弃)
+    # 注：重构后分析师使用 Data Coordinator 预取数据，不再直接调用工具
+    # 保留这些字段以确保向后兼容性，但值为 0 且不再更新
+    # TODO: 未来版本可以移除这些字段
+    market_tool_call_count: Annotated[
+        int, "Market analyst tool call counter (DEPRECATED)"
+    ]
+    news_tool_call_count: Annotated[int, "News analyst tool call counter (DEPRECATED)"]
+    sentiment_tool_call_count: Annotated[
+        int, "Social media analyst tool call counter (DEPRECATED)"
+    ]
+    fundamentals_tool_call_count: Annotated[
+        int, "Fundamentals analyst tool call counter (DEPRECATED)"
+    ]
 
     # researcher team discussion step
     investment_debate_state: Annotated[

@@ -4,16 +4,18 @@
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import *  # ToolNode 已弃用，预加载模式使用 DataCoordinator
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import Toolkit
 
 from .conditional_logic import ConditionalLogic
+from .data_coordinator import data_coordinator_node
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+
 logger = get_logger("default")
 
 
@@ -25,21 +27,25 @@ class GraphSetup:
         quick_thinking_llm: ChatOpenAI,
         deep_thinking_llm: ChatOpenAI,
         toolkit: Toolkit,
-        tool_nodes: Dict[str, ToolNode],
         bull_memory,
         bear_memory,
         trader_memory,
         invest_judge_memory,
         risk_manager_memory,
         conditional_logic: ConditionalLogic,
+        # DEPRECATED: tool_nodes 已弃用
+        # 统一预加载模式下，DataCoordinator 负责预加载数据，分析师直接从 state 获取
+        # 此参数保留用于向后兼容，实际不再使用
+        tool_nodes: Dict = None,
         config: Dict[str, Any] = None,
-        react_llm = None,
+        react_llm=None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.toolkit = toolkit
-        self.tool_nodes = tool_nodes
+        # DEPRECATED: tool_nodes 已弃用，保留空字典以保持兼容
+        self.tool_nodes = tool_nodes or {}
         self.bull_memory = bull_memory
         self.bear_memory = bear_memory
         self.trader_memory = trader_memory
@@ -67,75 +73,37 @@ class GraphSetup:
         # Create analyst nodes
         analyst_nodes = {}
         delete_nodes = {}
-        tool_nodes = {}
+
+        # 注意：ToolNode 已弃用，分析师使用 DataCoordinator 预加载的数据
+        # 分析流程：DataCoordinator 预加载 → Analyst 直接从 state 获取数据 → 生成报告
 
         if "market" in selected_analysts:
-            # 现在所有LLM都使用标准市场分析师（包括阿里百炼的OpenAI兼容适配器）
-            llm_provider = self.config.get("llm_provider", "").lower()
-
-            # 检查是否使用OpenAI兼容的阿里百炼适配器
-            using_dashscope_openai = (
-                "dashscope" in llm_provider and
-                hasattr(self.quick_thinking_llm, '__class__') and
-                'OpenAI' in self.quick_thinking_llm.__class__.__name__
-            )
-
-            if using_dashscope_openai:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（阿里百炼OpenAI兼容模式）")
-            elif "dashscope" in llm_provider or "阿里百炼" in self.config.get("llm_provider", ""):
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（阿里百炼原生模式）")
-            elif "deepseek" in llm_provider:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（DeepSeek）")
-            else:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师")
-
-            # 所有LLM都使用标准分析师
+            logger.debug(f"📈 [DEBUG] Setup Market Analyst")
             analyst_nodes["market"] = create_market_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
             delete_nodes["market"] = create_msg_delete()
-            tool_nodes["market"] = self.tool_nodes["market"]
 
         if "social" in selected_analysts:
+            logger.debug(f"💬 [DEBUG] Setup Social Media Analyst")
             analyst_nodes["social"] = create_social_media_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
             delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
 
         if "news" in selected_analysts:
+            logger.debug(f"📰 [DEBUG] Setup News Analyst")
             analyst_nodes["news"] = create_news_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
             delete_nodes["news"] = create_msg_delete()
-            tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
-            # 现在所有LLM都使用标准基本面分析师（包括阿里百炼的OpenAI兼容适配器）
-            llm_provider = self.config.get("llm_provider", "").lower()
-
-            # 检查是否使用OpenAI兼容的阿里百炼适配器
-            using_dashscope_openai = (
-                "dashscope" in llm_provider and
-                hasattr(self.quick_thinking_llm, '__class__') and
-                'OpenAI' in self.quick_thinking_llm.__class__.__name__
-            )
-
-            if using_dashscope_openai:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（阿里百炼OpenAI兼容模式）")
-            elif "dashscope" in llm_provider or "阿里百炼" in self.config.get("llm_provider", ""):
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（阿里百炼原生模式）")
-            elif "deepseek" in llm_provider:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（DeepSeek）")
-            else:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师")
-
-            # 所有LLM都使用标准分析师（包含强制工具调用机制）
+            logger.debug(f"💼 [DEBUG] Setup Fundamentals Analyst")
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
             delete_nodes["fundamentals"] = create_msg_delete()
-            tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
@@ -160,13 +128,16 @@ class GraphSetup:
         # Create workflow
         workflow = StateGraph(AgentState)
 
+        # Add Data Coordinator node (New Entry Point)
+        workflow.add_node("Data Coordinator", data_coordinator_node)
+
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
             workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            # No tool nodes added for analysts anymore
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -179,32 +150,30 @@ class GraphSetup:
         workflow.add_node("Risk Judge", risk_manager_node)
 
         # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
 
-        # Connect analysts in sequence
+        # 1. START -> Data Coordinator
+        workflow.add_edge(START, "Data Coordinator")
+
+        # 2. Data Coordinator -> First Analyst
+        first_analyst = selected_analysts[0]
+        workflow.add_edge("Data Coordinator", f"{first_analyst.capitalize()} Analyst")
+
+        # 3. Connect analysts in sequence (Linear flow, no tool loops)
         for i, analyst_type in enumerate(selected_analysts):
             current_analyst = f"{analyst_type.capitalize()} Analyst"
-            current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
-            # Add conditional edges for current analyst
-            workflow.add_conditional_edges(
-                current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
-            )
-            workflow.add_edge(current_tools, current_analyst)
+            # Direct edge: Analyst -> Clear Msg
+            workflow.add_edge(current_analyst, current_clear)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
+                next_analyst = f"{selected_analysts[i + 1].capitalize()} Analyst"
                 workflow.add_edge(current_clear, next_analyst)
             else:
                 workflow.add_edge(current_clear, "Bull Researcher")
 
-        # Add remaining edges
+        # 4. Add remaining edges (Debate and Risk flows)
         workflow.add_conditional_edges(
             "Bull Researcher",
             self.conditional_logic.should_continue_debate,

@@ -58,11 +58,11 @@ class Toolkit:
             self.update_config(config)
 
     @staticmethod
-    @tool
     def get_reddit_news(
         curr_date: Annotated[str, "Date you want to get news for in yyyy-mm-dd format"],
     ) -> str:
         """
+        [内部API] 获取 Reddit 全球新闻（请使用 get_stock_news_unified）
         Retrieve global news from Reddit within a specified time frame.
         Args:
             curr_date (str): Date you want to get news for in yyyy-mm-dd format
@@ -75,7 +75,6 @@ class Toolkit:
         return global_news_result
 
     @staticmethod
-    @tool
     def get_finnhub_news(
         ticker: Annotated[
             str,
@@ -85,6 +84,7 @@ class Toolkit:
         end_date: Annotated[str, "End date in yyyy-mm-dd format"],
     ):
         """
+        [内部API] 获取 Finnhub 股票新闻（请使用 get_stock_news_unified）
         Retrieve the latest news about a given stock from Finnhub within a date range
         Args:
             ticker (str): Ticker of a company. e.g. AAPL, TSM
@@ -107,7 +107,6 @@ class Toolkit:
         return finnhub_news_result
 
     @staticmethod
-    @tool
     def get_reddit_stock_info(
         ticker: Annotated[
             str,
@@ -116,6 +115,7 @@ class Toolkit:
         curr_date: Annotated[str, "Current date you want to get news for"],
     ) -> str:
         """
+        [内部API] 获取 Reddit 股票信息（请使用 get_stock_sentiment_unified）
         Retrieve the latest news about a given stock from Reddit, given the current date.
         Args:
             ticker (str): Ticker of a company. e.g. AAPL, TSM
@@ -129,12 +129,12 @@ class Toolkit:
         return stock_news_results
 
     @staticmethod
-    @tool
     def get_chinese_social_sentiment(
         ticker: Annotated[str, "Ticker of a company. e.g. AAPL, TSM"],
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     ) -> str:
         """
+        [内部API] 获取中国社交媒体情绪（请使用 get_stock_sentiment_unified）
         获取中国社交媒体和财经平台上关于特定股票的情绪分析和讨论热度。
         整合雪球、东方财富股吧、新浪财经等中国本土平台的数据。
         Args:
@@ -197,11 +197,11 @@ class Toolkit:
             return f"中国股票数据获取失败: {str(e)}。请检查网络连接或稍后重试。"
 
     @staticmethod
-    @tool
     def get_china_market_overview(
         curr_date: Annotated[str, "当前日期，格式 yyyy-mm-dd"],
     ) -> str:
         """
+        [内部API] 获取中国股市概览（请使用 get_stock_market_data_unified）
         获取中国股市整体概览，包括主要指数的实时行情。
         涵盖上证指数、深证成指、创业板指、科创50等主要指数。
         Args:
@@ -238,13 +238,13 @@ class Toolkit:
             return f"中国市场概览获取失败: {str(e)}。正在从TDX迁移到Tushare数据源。"
 
     @staticmethod
-    @tool
     def get_YFin_data(
         symbol: Annotated[str, "ticker symbol of the company"],
         start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
         end_date: Annotated[str, "End date in yyyy-mm-dd format"],
     ) -> str:
         """
+        [内部API] 获取 Yahoo Finance 历史数据（请使用 get_stock_market_data_unified）
         Retrieve the stock price data for a given ticker symbol from Yahoo Finance.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
@@ -259,13 +259,13 @@ class Toolkit:
         return result_data
 
     @staticmethod
-    @tool
     def get_YFin_data_online(
         symbol: Annotated[str, "ticker symbol of the company"],
         start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
         end_date: Annotated[str, "End date in yyyy-mm-dd format"],
     ) -> str:
         """
+        [内部API] 获取 Yahoo Finance 在线数据（请使用 get_stock_market_data_unified）
         Retrieve the stock price data for a given ticker symbol from Yahoo Finance.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
@@ -280,7 +280,6 @@ class Toolkit:
         return result_data
 
     @staticmethod
-    @tool
     def get_stockstats_indicators_report(
         symbol: Annotated[str, "ticker symbol of the company"],
         indicator: Annotated[
@@ -292,6 +291,7 @@ class Toolkit:
         look_back_days: Annotated[int, "how many days to look back"] = 30,
     ) -> str:
         """
+        [内部API] 获取技术指标报告离线（请使用 get_stock_market_data_unified）
         Retrieve stock stats indicators for a given ticker symbol and indicator.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
@@ -309,7 +309,6 @@ class Toolkit:
         return result_stockstats
 
     @staticmethod
-    @tool
     def get_stockstats_indicators_report_online(
         symbol: Annotated[str, "ticker symbol of the company"],
         indicator: Annotated[
@@ -321,6 +320,7 @@ class Toolkit:
         look_back_days: Annotated[int, "how many days to look back"] = 30,
     ) -> str:
         """
+        [内部API] 获取技术指标报告在线（请使用 get_stock_market_data_unified）
         Retrieve stock stats indicators for a given ticker symbol and indicator.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
@@ -338,7 +338,6 @@ class Toolkit:
         return result_stockstats
 
     @staticmethod
-    @tool
     def get_finnhub_company_insider_sentiment(
         ticker: Annotated[str, "ticker symbol for the company"],
         curr_date: Annotated[
@@ -347,6 +346,7 @@ class Toolkit:
         ],
     ):
         """
+        [内部API] 获取内部人士情绪（请使用 get_stock_fundamentals_unified）
         Retrieve insider sentiment information about a company (retrieved from public SEC information) for the past 30 days
         Args:
             ticker (str): ticker symbol of the company
@@ -362,7 +362,6 @@ class Toolkit:
         return data_sentiment
 
     @staticmethod
-    @tool
     def get_finnhub_company_insider_transactions(
         ticker: Annotated[str, "ticker symbol"],
         curr_date: Annotated[
@@ -371,6 +370,7 @@ class Toolkit:
         ],
     ):
         """
+        [内部API] 获取内部人士交易（请使用 get_stock_fundamentals_unified）
         Retrieve insider transaction information about a company (retrieved from public SEC information) for the past 30 days
         Args:
             ticker (str): ticker symbol of the company
@@ -386,7 +386,6 @@ class Toolkit:
         return data_trans
 
     @staticmethod
-    @tool
     def get_simfin_balance_sheet(
         ticker: Annotated[str, "ticker symbol"],
         freq: Annotated[
@@ -396,6 +395,7 @@ class Toolkit:
         curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
     ):
         """
+        [内部API] 获取资产负债表（请使用 get_stock_fundamentals_unified）
         Retrieve the most recent balance sheet of a company
         Args:
             ticker (str): ticker symbol of the company
@@ -410,7 +410,6 @@ class Toolkit:
         return data_balance_sheet
 
     @staticmethod
-    @tool
     def get_simfin_cashflow(
         ticker: Annotated[str, "ticker symbol"],
         freq: Annotated[
@@ -420,6 +419,7 @@ class Toolkit:
         curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
     ):
         """
+        [内部API] 获取现金流量表（请使用 get_stock_fundamentals_unified）
         Retrieve the most recent cash flow statement of a company
         Args:
             ticker (str): ticker symbol of the company
@@ -434,7 +434,6 @@ class Toolkit:
         return data_cashflow
 
     @staticmethod
-    @tool
     def get_simfin_income_stmt(
         ticker: Annotated[str, "ticker symbol"],
         freq: Annotated[
@@ -444,6 +443,7 @@ class Toolkit:
         curr_date: Annotated[str, "current date you are trading at, yyyy-mm-dd"],
     ):
         """
+        [内部API] 获取损益表（请使用 get_stock_fundamentals_unified）
         Retrieve the most recent income statement of a company
         Args:
             ticker (str): ticker symbol of the company
@@ -460,12 +460,12 @@ class Toolkit:
         return data_income_stmt
 
     @staticmethod
-    @tool
     def get_google_news(
         query: Annotated[str, "Query to search with"],
         curr_date: Annotated[str, "Curr date in yyyy-mm-dd format"],
     ):
         """
+        [内部API] 获取 Google 新闻（请使用 get_stock_news_unified）
         Retrieve the latest news from Google News based on a query and date range.
         Args:
             query (str): Query to search with
@@ -480,17 +480,17 @@ class Toolkit:
         return google_news_results
 
     @staticmethod
-    @tool
     def get_realtime_stock_news(
         ticker: Annotated[str, "Ticker of a company. e.g. AAPL, TSM"],
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     ) -> str:
         """
+        [内部API] 获取实时股票新闻（请使用 get_stock_news_unified）
         获取股票的实时新闻分析，解决传统新闻源的滞后性问题。
         整合多个专业财经API，提供15-30分钟内的最新新闻。
         支持多种新闻源轮询机制，优先使用实时新闻聚合器，失败时自动尝试备用新闻源。
         对于A股和港股，会优先使用中文财经新闻源（如东方财富）。
-        
+
         Args:
             ticker (str): 股票代码，如 AAPL, TSM, 600036.SH
             curr_date (str): 当前日期，格式为 yyyy-mm-dd
@@ -501,12 +501,12 @@ class Toolkit:
         return get_realtime_stock_news(ticker, curr_date, hours_back=6)
 
     @staticmethod
-    @tool
     def get_stock_news_openai(
         ticker: Annotated[str, "the company's ticker"],
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     ):
         """
+        [内部API] 获取 OpenAI 股票新闻（请使用 get_stock_news_unified）
         Retrieve the latest news about a given stock by using OpenAI's news API.
         Args:
             ticker (str): Ticker of a company. e.g. AAPL, TSM
@@ -520,11 +520,11 @@ class Toolkit:
         return openai_news_results
 
     @staticmethod
-    @tool
     def get_global_news_openai(
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     ):
         """
+        [内部API] 获取 OpenAI 全球宏观经济新闻（请使用 get_stock_news_unified）
         Retrieve the latest macroeconomics news on a given date using OpenAI's macroeconomics news API.
         Args:
             curr_date (str): Current date in yyyy-mm-dd format

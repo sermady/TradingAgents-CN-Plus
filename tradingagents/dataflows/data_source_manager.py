@@ -8,6 +8,7 @@
 import os
 import time
 import warnings
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -809,7 +810,7 @@ class DataSourceManager:
         stock_name: str,
         start_date: str,
         end_date: str,
-        realtime_price: float = None,  # 🆕 新增：实时价格
+        realtime_quote: Dict[str, Any] = None,  # 🆕 修改：接收完整实时行情字典
     ) -> str:
         """
         格式化股票数据响应（包含技术指标）
@@ -820,11 +821,63 @@ class DataSourceManager:
             stock_name: 股票名称
             start_date: 开始日期
             end_date: 结束日期
+            realtime_quote: 实时行情字典，包含 price, open, high, low, volume 等
 
         Returns:
             str: 格式化的数据报告（包含技术指标）
         """
         try:
+            # 🔧 检查并合并实时行情数据
+            if realtime_quote and realtime_quote.get("date") == end_date:
+                try:
+                    # 检查是否已有当天数据
+                    has_today_data = False
+                    if not data.empty:
+                        last_date = pd.to_datetime(
+                            data.iloc[-1].get("date", data.iloc[-1].get("trade_date"))
+                        ).strftime("%Y-%m-%d")
+                        if last_date == end_date:
+                            has_today_data = True
+                            # 如果已有当天数据（可能是收盘后的历史数据），用实时数据覆盖（通常实时数据更新）
+                            # 或者如果是盘中，历史数据可能不完整
+                            pass
+
+                    if not has_today_data:
+                        logger.info(
+                            f"🔄 [实时数据合并] 将实时行情追加到历史数据: {end_date}"
+                        )
+
+                        # 构建新行
+                        new_row = {
+                            "date": pd.to_datetime(end_date),
+                            "trade_date": end_date,
+                            "open": realtime_quote.get("open", 0.0),
+                            "high": realtime_quote.get("high", 0.0),
+                            "low": realtime_quote.get("low", 0.0),
+                            "close": realtime_quote.get("price", 0.0),
+                            "volume": realtime_quote.get("volume", 0),
+                            "amount": realtime_quote.get("amount", 0.0),
+                            "code": symbol,
+                        }
+
+                        # 创建DataFrame并合并
+                        new_df = pd.DataFrame([new_row])
+                        # 确保列名匹配
+                        for col in data.columns:
+                            if col not in new_df.columns:
+                                new_df[col] = (
+                                    0
+                                    if pd.api.types.is_numeric_dtype(data[col])
+                                    else None
+                                )
+
+                        data = pd.concat([data, new_df], ignore_index=True)
+                        logger.info(
+                            f"✅ [实时数据合并] 成功追加当天数据, 最新价格: {new_row['close']}"
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ [实时数据合并] 追加失败: {e}")
+
             original_data_count = len(data)
             logger.info(
                 f"📊 [技术指标] 开始计算技术指标，原始数据: {original_data_count}条"
@@ -857,6 +910,10 @@ class DataSourceManager:
 
                 cache = get_price_cache()
                 cached_price = cache.get_price(symbol)
+
+                # 如果有实时行情，优先使用
+                if realtime_quote and realtime_quote.get("price"):
+                    cached_price = realtime_quote.get("price")
 
                 if cached_price is not None and not data.empty:
                     # 获取最后一行数据的原始价格
@@ -959,8 +1016,8 @@ class DataSourceManager:
 
             # 计算最新价格和涨跌幅
             # 🆕 优先使用实时价格
-            if realtime_price is not None and realtime_price > 0:
-                latest_price = realtime_price
+            if realtime_quote and realtime_quote.get("price"):
+                latest_price = realtime_quote.get("price")
                 price_source = "实时"
                 logger.info(f"✅ [价格策略] 使用实时价格: ¥{latest_price:.2f}")
             else:
@@ -978,6 +1035,27 @@ class DataSourceManager:
                     cache.update(symbol, latest_price)
             except Exception as e:
                 logger.warning(f"⚠️ [价格统一] 缓存更新失败: {e}")
+
+            prev_close = (
+                data.iloc[-2].get("close", latest_price)
+                if len(data) > 1
+                else latest_price
+            )
+
+            change = latest_price - prev_close
+            change_pct = (change / prev_close * 100) if prev_close != 0 else 0
+
+            # 获取最新数据的实际日期
+            latest_data_date = latest_data.get("date", "N/A")
+            if isinstance(latest_data_date, pd.Timestamp):
+                latest_data_date = latest_data_date.strftime("%Y-%m-%d")
+            elif isinstance(latest_data_date, str):
+                # 如果是YYYYMMDD格式，转换为YYYY-MM-DD
+                if len(latest_data_date) == 8 and latest_data_date.isdigit():
+                    latest_data_date = f"{latest_data_date[:4]}-{latest_data_date[4:6]}-{latest_data_date[6:8]}"
+                # 如果已经是YYYY-MM-DD格式，直接使用
+                elif "-" in latest_data_date:
+                    pass  # Already in correct format
 
             prev_close = (
                 data.iloc[-2].get("close", latest_price)
@@ -1370,8 +1448,19 @@ class DataSourceManager:
         logger.info(f"📊 [实时行情] 获取实时行情: {symbol}")
 
         try:
-            # 优先使用MongoDB缓存的实时行情
-            if self.use_mongodb_cache:
+            # 🔥 强制使用 AKShare 作为实时数据源（不依赖 current_source）
+            quote = None
+
+            # 优先级1: AKShare (真正实时, 秒级更新)
+            try:
+                quote = self._get_akshare_realtime_quote(symbol)
+                if quote:
+                    logger.info(f"✅ [实时行情-AKShare] 成功获取 {symbol} 实时行情")
+            except Exception as e:
+                logger.warning(f"⚠️ [实时行情-AKShare] 获取失败: {e}")
+
+            # 优先级2: 如果 AKShare 失败，尝试使用MongoDB缓存的实时行情
+            if not quote and self.use_mongodb_cache:
                 try:
                     from tradingagents.dataflows.cache.app_adapter import (
                         get_market_quote_dataframe,
@@ -1396,29 +1485,18 @@ class DataSourceManager:
                             "is_realtime": True,
                         }
 
-                        # 🔥 统一价格缓存更新
-                        try:
-                            from tradingagents.utils.price_cache import get_price_cache
-
-                            get_price_cache().update(symbol, quote["price"])
-                        except Exception as e:
-                            logger.warning(f"⚠️ [实时行情] 缓存更新失败: {e}")
-
                         logger.info(
-                            f"✅ [实时行情-MongoDB] {symbol} 价格={quote['price']:.2f}"
+                            f"✅ [实时行情-MongoDB] {symbol} 价格={quote['price']:.2f} (备用)"
                         )
-                        return quote
                 except Exception as e:
                     logger.debug(f"MongoDB实时行情获取失败: {e}")
 
-            # 使用当前数据源的实时行情接口
-            quote = None
-            if self.current_source == ChinaDataSource.TUSHARE:
-                quote = self._get_tushare_realtime_quote(symbol)
-            elif self.current_source == ChinaDataSource.AKSHARE:
-                quote = self._get_akshare_realtime_quote(symbol)
-            else:
-                logger.warning(f"⚠️ {self.current_source.value}不支持实时行情")
+            # 优先级3: 如果 AKShare 和 MongoDB 都失败，返回 None
+            # 不使用 Tushare 实时接口（因为需要高级权限）
+            if not quote:
+                logger.warning(
+                    f"⚠️ [实时行情] 无法获取 {symbol} 的实时行情（所有数据源失败）"
+                )
                 return None
 
             if quote:
@@ -1466,59 +1544,145 @@ class DataSourceManager:
 
     def _get_akshare_realtime_quote(self, symbol: str) -> Optional[Dict]:
         """使用AKShare获取实时行情"""
-        try:
-            import akshare as ak
+        max_retries = 2
+        last_error = None
 
-            # AKShare的实时行情接口
-            # 转换股票代码格式
-            if symbol.startswith("6"):
-                ak_symbol = f"sh{symbol}"
-            elif symbol.startswith(("0", "3", "2")):
-                ak_symbol = f"sz{symbol}"
-            elif symbol.startswith(("8", "4")):
-                ak_symbol = f"bj{symbol}"
-            else:
-                ak_symbol = symbol
+        for attempt in range(max_retries):
+            try:
+                import akshare as ak
+                import requests
+                import time
 
-            # 获取实时行情
-            df = ak.stock_zh_a_spot_em()
-            stock_data = df[df["代码"] == symbol]
+                # 转换股票代码格式为新浪格式（用于备用接口）
+                if symbol.startswith("6"):
+                    sina_symbol = f"sh{symbol}"
+                elif symbol.startswith(("0", "3", "2")):
+                    sina_symbol = f"sz{symbol}"
+                elif symbol.startswith(("8", "4")):
+                    sina_symbol = f"bj{symbol}"
+                else:
+                    sina_symbol = symbol
 
-            if not stock_data.empty:
-                row = stock_data.iloc[0]
-                # 🔥 成交量单位转换：AKShare 返回的成交量单位是"手"，需要乘以100转换为"股"
-                # 例如：22,482.8手 = 2,248,280股，但同花顺显示的是22,483,000股
-                # 这里需要验证数据的准确性
-                volume_raw = float(row["成交量"]) if row["成交量"] else 0
-                # AKShare 返回的成交量单位是"手"，转换为"股"
-                volume_in_shares = volume_raw * 100
+                # 🔥 优先尝试新浪实时接口（单个股票，数据量小）
+                try:
+                    url = f"http://hq.sinajs.cn/list={sina_symbol}"
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    }
 
-                quote = {
-                    "symbol": symbol,
-                    "price": float(row["最新价"]),
-                    "open": float(row["今开"]),
-                    "high": float(row["最高"]),
-                    "low": float(row["最低"]),
-                    "volume": volume_in_shares,  # 🔥 已转换为股
-                    "amount": float(row["成交额"]),
-                    "change": float(row["涨跌额"]),
-                    "change_pct": float(row["涨跌幅"]),
-                    "date": datetime.now().strftime("%Y-%m-%d"),
-                    "time": datetime.now().strftime("%H:%M:%S"),
-                    "source": "akshare_realtime",
-                    "is_realtime": True,
-                }
-                logger.info(
-                    f"✅ [实时行情-AKShare] {symbol} 价格={quote['price']:.2f}, 成交量={volume_in_shares:,.0f}股"
-                )
-                return quote
-            else:
-                logger.warning(f"⚠️ AKShare未找到{symbol}的实时行情")
-                return None
+                    response = requests.get(url, headers=headers, timeout=10)
+                    response.encoding = "gbk"
 
-        except Exception as e:
-            logger.error(f"❌ AKShare实时行情获取失败: {e}", exc_info=True)
-            return None
+                    if response.status_code == 200:
+                        data_str = response.text.strip()
+                        if "var hq_str_" in data_str:
+                            # 解析新浪数据
+                            start_idx = data_str.index('"') + 1
+                            end_idx = data_str.rindex('"')
+                            data_str = data_str[start_idx:end_idx]
+
+                            data = data_str.split(",")
+                            if len(data) >= 33:
+                                price = float(data[3])
+                                open_price = float(data[1])
+                                high_price = float(data[4])
+                                low_price = float(data[5])
+                                volume = int(float(data[8])) * 100  # 转换为股
+
+                                quote = {
+                                    "symbol": symbol,
+                                    "price": price,
+                                    "open": open_price,
+                                    "high": high_price,
+                                    "low": low_price,
+                                    "volume": volume,
+                                    "amount": 0.0,
+                                    "change": float(data[2]),
+                                    "change_pct": float(data[2]) / float(data[1]) * 100
+                                    if float(data[1]) > 0
+                                    else 0.0,
+                                    "date": datetime.now().strftime("%Y-%m-%d"),
+                                    "time": datetime.now().strftime("%H:%M:%S"),
+                                    "source": "sina_realtime",
+                                    "is_realtime": True,
+                                }
+                                logger.info(
+                                    f"✅ [实时行情-新浪] {symbol} 价格={quote['price']:.2f}, 成交量={volume:,.0f}股"
+                                )
+                                return quote
+                except Exception as e:
+                    logger.debug(f"新浪接口失败，尝试东方财富: {e}")
+                    last_error = e
+
+                # 备用：东方财富单股票接口（如果新浪失败）
+                # 🔥 优化：使用 stock_bid_ask_em 获取单只股票，而不是 stock_zh_a_spot_em 获取全市场
+                logger.info(f"🔄 [AKShare] 尝试获取 {symbol} 单股票实时行情 (第{attempt + 1}次)")
+                df = ak.stock_bid_ask_em(symbol=symbol)
+
+                if df is not None and not df.empty:
+                    # 将 DataFrame 转换为字典
+                    data_dict = dict(zip(df["item"], df["value"]))
+
+                    # 成交量单位转换：手 → 股（1手 = 100股）
+                    volume_in_lots = int(data_dict.get("总手", 0))
+                    volume_in_shares = volume_in_lots * 100
+
+                    quote = {
+                        "symbol": symbol,
+                        "price": float(data_dict.get("最新", 0)),
+                        "open": float(data_dict.get("今开", 0)),
+                        "high": float(data_dict.get("最高", 0)),
+                        "low": float(data_dict.get("最低", 0)),
+                        "volume": volume_in_shares,
+                        "amount": float(data_dict.get("金额", 0)),
+                        "change": float(data_dict.get("涨跌", 0)),
+                        "change_pct": float(data_dict.get("涨幅", 0)),
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "source": "eastmoney_realtime",
+                        "is_realtime": True,
+                    }
+                    logger.info(
+                        f"✅ [实时行情-东方财富单股票] {symbol} 价格={quote['price']:.2f}, 成交量={volume_in_shares:,.0f}股"
+                    )
+                    return quote
+                else:
+                    logger.warning(f"⚠️ AKShare未找到{symbol}的实时行情")
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                    continue
+
+            except requests.exceptions.Timeout:
+                last_error = "请求超时"
+                logger.warning(f"⚠️ [AKShare] 请求超时 (第{attempt + 1}次)")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                continue
+
+            except requests.exceptions.ProxyError as e:
+                last_error = f"代理错误: {e}"
+                logger.warning(f"⚠️ [AKShare] 代理连接失败 (第{attempt + 1}次): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                continue
+
+            except requests.exceptions.ConnectionError as e:
+                last_error = f"连接错误: {e}"
+                logger.warning(f"⚠️ [AKShare] 网络连接失败 (第{attempt + 1}次): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                continue
+
+            except Exception as e:
+                last_error = e
+                logger.warning(f"⚠️ [AKShare] 获取失败 (第{attempt + 1}次): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                continue
+
+        # 所有重试都失败
+        logger.error(f"❌ AKShare实时行情获取失败: {last_error}", exc_info=True)
+        return None
 
     def get_stock_data(
         self,
@@ -1543,6 +1707,7 @@ class DataSourceManager:
         """
         # 🔥 获取实时价格（始终尝试，不仅仅是盘中）
         realtime_price = None
+        realtime_quote = None
         try:
             from tradingagents.utils.market_time import MarketTimeUtils
 
@@ -1556,9 +1721,10 @@ class DataSourceManager:
                 logger.info(f"✅ [实时价格] 获取成功: ¥{realtime_price:.2f}")
             else:
                 logger.warning(f"⚠️ [实时价格] 获取失败，将使用历史数据中的价格")
+                # ✅ 不覆盖 realtime_quote，保留可能的成功结果
         except Exception as e:
             logger.debug(f"实时行情获取失败（使用历史数据）: {e}")
-            realtime_quote = None
+            # ✅ 不覆盖 realtime_quote，保留可能的成功结果
 
         # 记录详细的输入参数
         logger.info(
@@ -1589,19 +1755,25 @@ class DataSourceManager:
 
             if self.current_source == ChinaDataSource.MONGODB:
                 result, actual_source = self._get_mongodb_data(
-                    symbol, start_date, end_date, period, realtime_price
+                    symbol, start_date, end_date, period, realtime_quote
                 )
             elif self.current_source == ChinaDataSource.TUSHARE:
                 logger.info(
                     f"🔍 [股票代码追踪] 调用 Tushare 数据源，传入参数: symbol='{symbol}', period='{period}'"
                 )
-                result = self._get_tushare_data(symbol, start_date, end_date, period)
+                result = self._get_tushare_data(
+                    symbol, start_date, end_date, period, realtime_quote
+                )
                 actual_source = "tushare"
             elif self.current_source == ChinaDataSource.AKSHARE:
-                result = self._get_akshare_data(symbol, start_date, end_date, period)
+                result = self._get_akshare_data(
+                    symbol, start_date, end_date, period, realtime_quote
+                )
                 actual_source = "akshare"
             elif self.current_source == ChinaDataSource.BAOSTOCK:
-                result = self._get_baostock_data(symbol, start_date, end_date, period)
+                result = self._get_baostock_data(
+                    symbol, start_date, end_date, period, realtime_quote
+                )
                 actual_source = "baostock"
             # TDX 已移除
             else:
@@ -1692,7 +1864,7 @@ class DataSourceManager:
                 exc_info=True,
             )
             return self._try_fallback_sources(
-                symbol, start_date, end_date, realtime_price=realtime_price
+                symbol, start_date, end_date, realtime_quote=realtime_quote
             )
 
     def _merge_realtime_quote_to_result(
@@ -1785,7 +1957,7 @@ class DataSourceManager:
         start_date: str,
         end_date: str,
         period: str = "daily",
-        realtime_price: float = None,
+        realtime_quote: Dict[str, Any] = None,
     ) -> tuple[str, str | None]:
         """
         从MongoDB获取多周期数据 - 包含技术指标计算
@@ -1820,9 +1992,9 @@ class DataSourceManager:
                 if "name" in df.columns and not df["name"].empty:
                     stock_name = df["name"].iloc[0]
 
-                # 调用统一的格式化方法（包含技术指标计算，传入实时价格）
+                # 调用统一的格式化方法（包含技术指标计算，传入实时行情）
                 result = self._format_stock_data_response(
-                    df, symbol, stock_name, start_date, end_date, realtime_price
+                    df, symbol, stock_name, start_date, end_date, realtime_quote
                 )
 
                 logger.info(
@@ -1835,7 +2007,7 @@ class DataSourceManager:
                     f"🔄 [MongoDB] 未找到{period}数据: {symbol}，开始尝试备用数据源"
                 )
                 return self._try_fallback_sources(
-                    symbol, start_date, end_date, period, realtime_price
+                    symbol, start_date, end_date, period, realtime_quote
                 )
 
         except Exception as e:
@@ -1844,11 +2016,16 @@ class DataSourceManager:
             )
             # MongoDB异常，降级到其他数据源
             return self._try_fallback_sources(
-                symbol, start_date, end_date, period, realtime_price
+                symbol, start_date, end_date, period, realtime_quote
             )
 
     def _get_tushare_data(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily"
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_quote: Dict[str, Any] = None,
     ) -> str:
         """使用Tushare获取多周期数据 - 使用provider + 统一缓存"""
         logger.debug(
@@ -1907,7 +2084,7 @@ class DataSourceManager:
                     stock_name,
                     start_date,
                     end_date,
-                    realtime_price,
+                    realtime_quote,
                 )
 
             # 2. 缓存未命中，从provider获取
@@ -1953,7 +2130,7 @@ class DataSourceManager:
 
                 # 格式化返回
                 result = self._format_stock_data_response(
-                    data, symbol, stock_name, start_date, end_date, realtime_price
+                    data, symbol, stock_name, start_date, end_date, realtime_quote
                 )
 
                 duration = time.time() - start_time
@@ -1988,7 +2165,12 @@ class DataSourceManager:
             raise
 
     def _get_akshare_data(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily"
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_quote: Dict[str, Any] = None,
     ) -> str:
         """使用AKShare获取多周期数据 - 包含技术指标计算"""
         logger.debug(
@@ -2035,7 +2217,7 @@ class DataSourceManager:
 
                 # 调用统一的格式化方法（包含技术指标计算）
                 result = self._format_stock_data_response(
-                    data, symbol, stock_name, start_date, end_date, realtime_price
+                    data, symbol, stock_name, start_date, end_date, realtime_quote
                 )
 
                 logger.debug(
@@ -2058,7 +2240,12 @@ class DataSourceManager:
             return f"❌ AKShare获取{symbol}数据失败: {e}"
 
     def _get_baostock_data(
-        self, symbol: str, start_date: str, end_date: str, period: str = "daily"
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_quote: Dict[str, Any] = None,
     ) -> str:
         """使用BaoStock获取多周期数据 - 包含技术指标计算"""
         # 使用BaoStock的统一接口
@@ -2095,7 +2282,7 @@ class DataSourceManager:
 
             # 调用统一的格式化方法（包含技术指标计算）
             result = self._format_stock_data_response(
-                data, symbol, stock_name, start_date, end_date, realtime_price
+                data, symbol, stock_name, start_date, end_date, realtime_quote
             )
 
             logger.info(f"✅ [BaoStock] 已计算技术指标: MA5/10/20/60, MACD, RSI, BOLL")
@@ -2120,7 +2307,7 @@ class DataSourceManager:
         start_date: str,
         end_date: str,
         period: str = "daily",
-        realtime_price: float = None,
+        realtime_quote: Dict[str, Any] = None,
     ) -> tuple[str, str | None]:
         """
         尝试备用数据源 - 避免递归调用
@@ -2146,15 +2333,15 @@ class DataSourceManager:
                     # 直接调用具体的数据源方法，避免递归
                     if source == ChinaDataSource.TUSHARE:
                         result = self._get_tushare_data(
-                            symbol, start_date, end_date, period
+                            symbol, start_date, end_date, period, realtime_quote
                         )
                     elif source == ChinaDataSource.AKSHARE:
                         result = self._get_akshare_data(
-                            symbol, start_date, end_date, period
+                            symbol, start_date, end_date, period, realtime_quote
                         )
                     elif source == ChinaDataSource.BAOSTOCK:
                         result = self._get_baostock_data(
-                            symbol, start_date, end_date, period
+                            symbol, start_date, end_date, period, realtime_quote
                         )
                     # TDX 已移除
                     else:

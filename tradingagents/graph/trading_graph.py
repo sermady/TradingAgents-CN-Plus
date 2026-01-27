@@ -13,7 +13,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from tradingagents.llm_adapters import ChatDashScopeOpenAI, ChatGoogleOpenAI
 
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import *  # ToolNode 已弃用，预加载模式使用 DataCoordinator
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -908,8 +908,9 @@ class TradingAgentsGraph:
             self.invest_judge_memory = None
             self.risk_manager_memory = None
 
-        # Create tool nodes
-        self.tool_nodes = self._create_tool_nodes()
+        # Create tool nodes - 统一预加载模式，不再需要 ToolNode
+        # 保留空字典以保持向后兼容
+        self.tool_nodes = {}
 
         # Initialize components
         # 🔥 [修复] 从配置中读取辩论轮次参数
@@ -929,13 +930,13 @@ class TradingAgentsGraph:
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.toolkit,
-            self.tool_nodes,
             self.bull_memory,
             self.bear_memory,
             self.trader_memory,
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
+            self.tool_nodes,  # DEPRECATED: 已弃用，但保留兼容
             self.config,
             getattr(self, "react_llm", None),
         )
@@ -952,63 +953,15 @@ class TradingAgentsGraph:
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
 
-    def _create_tool_nodes(self) -> Dict[str, ToolNode]:
-        """Create tool nodes for different data sources.
+    def _create_tool_nodes(self) -> Dict:
+        """[已弃用] 创建工具节点
 
-        注意：ToolNode 包含所有可能的工具，但 LLM 只会调用它绑定的工具。
-        ToolNode 的作用是执行 LLM 生成的 tool_calls，而不是限制 LLM 可以调用哪些工具。
+        注意：统一预加载模式下，Data Coordinator 负责预加载数据，
+        分析师节点直接从 state 获取数据，不再需要动态工具调用。
+
+        此方法保留用于向后兼容，返回空字典。
         """
-        return {
-            "market": ToolNode(
-                [
-                    # 统一工具（推荐）
-                    self.toolkit.get_stock_market_data_unified,
-                    # 在线工具（备用）
-                    self.toolkit.get_YFin_data_online,
-                    self.toolkit.get_stockstats_indicators_report_online,
-                    # 离线工具（备用）
-                    self.toolkit.get_YFin_data,
-                    self.toolkit.get_stockstats_indicators_report,
-                ]
-            ),
-            "social": ToolNode(
-                [
-                    # 统一工具（推荐）
-                    self.toolkit.get_stock_sentiment_unified,
-                    # 在线工具（备用）
-                    self.toolkit.get_stock_news_openai,
-                    # 离线工具（备用）
-                    self.toolkit.get_reddit_stock_info,
-                ]
-            ),
-            "news": ToolNode(
-                [
-                    # 统一工具（推荐）
-                    self.toolkit.get_stock_news_unified,
-                    # 在线工具（备用）
-                    self.toolkit.get_global_news_openai,
-                    self.toolkit.get_google_news,
-                    # 离线工具（备用）
-                    self.toolkit.get_finnhub_news,
-                    self.toolkit.get_reddit_news,
-                ]
-            ),
-            "fundamentals": ToolNode(
-                [
-                    # 统一工具（推荐）
-                    self.toolkit.get_stock_fundamentals_unified,
-                    # 离线工具（备用）
-                    self.toolkit.get_finnhub_company_insider_sentiment,
-                    self.toolkit.get_finnhub_company_insider_transactions,
-                    self.toolkit.get_simfin_balance_sheet,
-                    self.toolkit.get_simfin_cashflow,
-                    self.toolkit.get_simfin_income_stmt,
-                    # 中国市场工具（备用）
-                    self.toolkit.get_china_stock_data,
-                    self.toolkit.get_china_fundamentals,
-                ]
-            ),
-        }
+        return {}
 
     def propagate(self, company_name, trade_date, progress_callback=None, task_id=None):
         """Run the trading agents graph for a company on a specific date.

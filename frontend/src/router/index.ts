@@ -59,12 +59,22 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'single',
         name: 'SingleAnalysis',
-        component: () => import('@/views/Analysis/SingleAnalysis.vue')
+        component: () => import('@/views/Analysis/SingleAnalysis.vue'),
+        meta: {
+          title: '个股分析',
+          requiresAuth: true,
+          hideInMenu: true
+        }
       },
       {
         path: 'batch',
         name: 'BatchAnalysis',
-        component: () => import('@/views/Analysis/BatchAnalysis.vue')
+        component: () => import('@/views/Analysis/BatchAnalysis.vue'),
+        meta: {
+          title: '批量分析',
+          requiresAuth: true,
+          hideInMenu: true
+        }
       },
 
     ]

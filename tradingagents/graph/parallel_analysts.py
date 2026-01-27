@@ -13,7 +13,7 @@ Implements parallel analyst execution to improve analysis speed (expected 3x spe
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import *  # ToolNode 已弃用，预加载模式使用 DataCoordinator
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
@@ -37,7 +37,8 @@ class ParallelAnalystExecutor:
         """初始化并行执行器 Initialize parallel executor"""
         self.base_setup = base_setup
         self.toolkit = base_setup.toolkit
-        self.tool_nodes = base_setup.tool_nodes
+        # ToolNode 已弃用，保留空字典以保持兼容
+        self.tool_nodes = {}
         self.conditional_logic = base_setup.conditional_logic
 
     def setup_parallel_graph(
@@ -52,37 +53,33 @@ class ParallelAnalystExecutor:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
 
         # Create analyst nodes
+        # 注意：ToolNode 已弃用，使用 DataCoordinator 预加载模式
         analyst_nodes = {}
         delete_nodes = {}
-        tool_nodes = {}
 
         if "market" in selected_analysts:
             analyst_nodes["market"] = create_market_analyst(
                 self.base_setup.quick_thinking_llm, self.toolkit
             )
             delete_nodes["market"] = create_msg_delete()
-            tool_nodes["market"] = self.tool_nodes["market"]
 
         if "social" in selected_analysts:
             analyst_nodes["social"] = create_social_media_analyst(
                 self.base_setup.quick_thinking_llm, self.toolkit
             )
             delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
 
         if "news" in selected_analysts:
             analyst_nodes["news"] = create_news_analyst(
                 self.base_setup.quick_thinking_llm, self.toolkit
             )
             delete_nodes["news"] = create_msg_delete()
-            tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(
                 self.base_setup.quick_thinking_llm, self.toolkit
             )
             delete_nodes["fundamentals"] = create_msg_delete()
-            tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
@@ -110,12 +107,13 @@ class ParallelAnalystExecutor:
         workflow = StateGraph(AgentState)
 
         # Add analyst nodes to graph
+        # 注意：ToolNode 已弃用，分析师使用 DataCoordinator 预加载的数据
         for analyst_type, node in analyst_nodes.items():
             workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            # 已移除 tools_* 节点，改为直接使用预加载数据
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -133,18 +131,19 @@ class ParallelAnalystExecutor:
             workflow.add_edge(START, f"{analyst_type.capitalize()} Analyst")
 
         # Add conditional edges for each analyst (并行执行）
+        # 注意：ToolNode 已弃用，分析师直接使用预加载数据完成分析
+        # 条件边逻辑简化为：Analyst -> should_continue_* -> Msg Clear
         for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
-            current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
-            # 添加条件边
+            # 由于使用预加载数据，分析师应该直接生成报告
+            # 添加条件边：检查是否需要继续（理论上应该直接结束到 Msg Clear）
             workflow.add_conditional_edges(
                 current_analyst,
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
+                [current_clear],  # 移除 tools_* 节点
             )
-            workflow.add_edge(current_tools, current_analyst)
 
         # Wait for all analysts to complete, then proceed to Bull Researcher
         # 使用同步节点等待所有分析师完成
