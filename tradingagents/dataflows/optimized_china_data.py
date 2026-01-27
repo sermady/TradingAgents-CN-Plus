@@ -68,16 +68,18 @@ class OptimizedChinaDataProvider:
             total_equity = financial_data.get("total_equity", "N/A")
             report_period = financial_data.get("report_period", "N/A")
 
-            # 格式化数值（如果是数字则添加千分位，否则显示原值）
-            def format_number(value):
+            # 格式化数值（如果是数字则转换为亿元并保留2位小数）
+            def format_number_yi(value):
                 if isinstance(value, (int, float)):
-                    return f"{value:,.2f}"
+                    # 转换为亿元
+                    val_yi = value / 100000000.0
+                    return f"{val_yi:,.2f}"
                 return str(value)
 
-            revenue_str = format_number(revenue)
-            net_profit_str = format_number(net_profit)
-            total_assets_str = format_number(total_assets)
-            total_equity_str = format_number(total_equity)
+            revenue_str = format_number_yi(revenue)
+            net_profit_str = format_number_yi(net_profit)
+            total_assets_str = format_number_yi(total_assets)
+            total_equity_str = format_number_yi(total_equity)
 
             # 计算财务比率
             roe = "N/A"
@@ -102,10 +104,10 @@ class OptimizedChinaDataProvider:
 
 ## 📊 财务概况
 - **报告期**: {report_period}
-- **营业收入**: {revenue_str} 元
-- **净利润**: {net_profit_str} 元
-- **总资产**: {total_assets_str} 元
-- **股东权益**: {total_equity_str} 元
+- **营业收入**: {revenue_str} 亿元
+- **净利润**: {net_profit_str} 亿元
+- **总资产**: {total_assets_str} 亿元
+- **股东权益**: {total_equity_str} 亿元
 
 ## 📈 财务比率
 - **净资产收益率(ROE)**: {roe}

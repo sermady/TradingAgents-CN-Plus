@@ -22,10 +22,11 @@ from app.services.favorites_service import FavoritesService
 # 测试自选股服务初始化
 # ==============================================================================
 
+
 @pytest.mark.unit
 def test_favorites_service_init():
     """测试自选股服务初始化"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -38,11 +39,12 @@ def test_favorites_service_init():
 # 测试添加自选股
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_add_favorite():
     """测试添加自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 未存在，可以添加
@@ -59,7 +61,7 @@ async def test_add_favorite():
             "stock_code": "000001",
             "stock_name": "平安银行",
             "note": "银行股",
-            "added_at": datetime.utcnow()
+            "added_at": datetime.utcnow(),
         }
 
         result = await service.add_favorite("user_123", "000001", note="银行股")
@@ -72,14 +74,14 @@ async def test_add_favorite():
 @pytest.mark.asyncio
 async def test_add_favorite_duplicate():
     """测试添加重复自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 已存在
         mock_collection.find_one.return_value = {
             "_id": "fav_123",
             "user_id": "user_123",
-            "stock_code": "000001"
+            "stock_code": "000001",
         }
         mock_mongo.__getitem__ = Mock(return_value=mock_collection)
         mock_get_mongo.return_value = mock_mongo
@@ -97,11 +99,12 @@ async def test_add_favorite_duplicate():
 # 测试删除自选股
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_remove_favorite():
     """测试删除自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_result = AsyncMock()
@@ -123,7 +126,7 @@ async def test_remove_favorite():
 @pytest.mark.asyncio
 async def test_remove_favorite_not_found():
     """测试删除不存在的自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_result = AsyncMock()
@@ -144,11 +147,12 @@ async def test_remove_favorite_not_found():
 # 测试查询自选股
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_get_user_favorites():
     """测试获取用户自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 返回自选股列表
@@ -159,15 +163,15 @@ async def test_get_user_favorites():
                 "user_id": "user_123",
                 "stock_code": "000001",
                 "stock_name": "平安银行",
-                "note": "银行股"
+                "note": "银行股",
             },
             {
                 "_id": "fav_2",
                 "user_id": "user_123",
                 "stock_code": "600519",
                 "stock_name": "贵州茅台",
-                "note": "白酒股"
-            }
+                "note": "白酒股",
+            },
         ]
         mock_collection.find.return_value = mock_cursor
         mock_collection.find.return_value.sort.return_value = mock_cursor
@@ -188,7 +192,7 @@ async def test_get_user_favorites():
 @pytest.mark.asyncio
 async def test_get_user_favorites_empty():
     """测试获取用户自选股（空）"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 空结果
@@ -211,14 +215,14 @@ async def test_get_user_favorites_empty():
 @pytest.mark.asyncio
 async def test_check_favorite_exists():
     """测试检查自选股是否存在"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 已存在
         mock_collection.find_one.return_value = {
             "_id": "fav_123",
             "user_id": "user_123",
-            "stock_code": "000001"
+            "stock_code": "000001",
         }
         mock_mongo.__getitem__ = Mock(return_value=mock_collection)
         mock_get_mongo.return_value = mock_mongo
@@ -235,7 +239,7 @@ async def test_check_favorite_exists():
 @pytest.mark.asyncio
 async def test_check_favorite_not_exists():
     """测试检查自选股不存在"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 不存在
@@ -255,11 +259,12 @@ async def test_check_favorite_not_exists():
 # 测试分组管理
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_add_to_group():
     """测试添加到分组"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_result = AsyncMock()
@@ -271,11 +276,7 @@ async def test_add_to_group():
         service = FavoritesService()
 
         # 添加到分组
-        result = await service.add_to_group(
-            "user_123",
-            "000001",
-            "group_name": "银行股"
-        )
+        result = await service.add_to_group("user_123", "000001", "银行股")
 
         assert result.modified_count == 1
         mock_collection.update_one.assert_called_once()
@@ -285,7 +286,7 @@ async def test_add_to_group():
 @pytest.mark.asyncio
 async def test_get_favorites_by_group():
     """测试按分组获取自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_cursor = AsyncMock()
@@ -296,15 +297,15 @@ async def test_get_favorites_by_group():
                 "user_id": "user_123",
                 "stock_code": "000001",
                 "group_name": "银行股",
-                "stock_name": "平安银行"
+                "stock_name": "平安银行",
             },
             {
                 "_id": "fav_2",
                 "user_id": "user_123",
                 "stock_code": "601398",
                 "group_name": "银行股",
-                "stock_name": "工商银行"
-            }
+                "stock_name": "工商银行",
+            },
         ]
         mock_collection.find.return_value = mock_cursor
         mock_mongo.__getitem__ = Mock(return_value=mock_collection)
@@ -324,18 +325,19 @@ async def test_get_favorites_by_group():
 # 测试排序功能
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_sort_favorites():
     """测试自选股排序"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_cursor = AsyncMock()
         # 按添加时间排序
         mock_cursor.to_list.return_value = [
             {"stock_code": "000001", "added_at": "2024-01-15"},
-            {"stock_code": "600519", "added_at": "2024-01-16"}
+            {"stock_code": "600519", "added_at": "2024-01-16"},
         ]
         mock_collection.find.return_value = mock_cursor
         mock_collection.find.return_value.sort.return_value = mock_cursor
@@ -346,9 +348,7 @@ async def test_sort_favorites():
 
         # 按添加时间降序
         favorites = await service.get_user_favorites(
-            "user_123",
-            sort_by="added_at",
-            sort_order="desc"
+            "user_123", sort_by="added_at", sort_order="desc"
         )
 
         assert len(favorites) == 2
@@ -360,11 +360,12 @@ async def test_sort_favorites():
 # 测试更新备注
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_update_note():
     """测试更新自选股备注"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_result = AsyncMock()
@@ -377,9 +378,7 @@ async def test_update_note():
 
         # 更新备注
         result = await service.update_note(
-            "user_123",
-            "000001",
-            note="长期持有，稳健增长"
+            "user_123", "000001", note="长期持有，稳健增长"
         )
 
         assert result.modified_count == 1
@@ -389,18 +388,21 @@ async def test_update_note():
 # 测试批量操作
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_add_multiple_favorites():
     """测试批量添加自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 返回已存在的股票
         mock_collection.find.return_value = [
             {"stock_code": "000001"}  # 已存在
         ]
-        mock_collection.insert_many.return_value = AsyncMock(inserted_ids=["fav_1", "fav_2"])
+        mock_collection.insert_many.return_value = AsyncMock(
+            inserted_ids=["fav_1", "fav_2"]
+        )
         mock_mongo.__getitem__ = Mock(return_value=mock_collection)
         mock_get_mongo.return_value = mock_mongo
 
@@ -419,7 +421,7 @@ async def test_add_multiple_favorites():
 @pytest.mark.asyncio
 async def test_remove_multiple_favorites():
     """测试批量删除自选股"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_result = AsyncMock()
@@ -441,11 +443,12 @@ async def test_remove_multiple_favorites():
 # 测试错误处理
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_error_handling_in_add():
     """测试添加时的错误处理"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         # 数据库错误
@@ -468,11 +471,12 @@ async def test_error_handling_in_add():
 # 测试边界条件
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_add_empty_stock_code():
     """测试添加空股票代码"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_get_mongo.return_value = mock_mongo
 
@@ -488,7 +492,7 @@ async def test_add_empty_stock_code():
 @pytest.mark.asyncio
 async def test_get_favorites_with_limit():
     """测试限制自选股数量"""
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_cursor = AsyncMock()
@@ -497,7 +501,9 @@ async def test_get_favorites_with_limit():
             for i in range(1, 11)  # 10条
         ]
         mock_collection.find.return_value = mock_cursor
-        mock_collection.find.return_value.sort.return_value.limit.return_value = mock_cursor
+        mock_collection.find.return_value.sort.return_value.limit.return_value = (
+            mock_cursor
+        )
         mock_mongo.__getitem__ = Mock(return_value=mock_collection)
         mock_get_mongo.return_value = mock_mongo
 
@@ -513,6 +519,7 @@ async def test_get_favorites_with_limit():
 # 测试性能
 # ==============================================================================
 
+
 @pytest.mark.unit
 @pytest.mark.slow
 @pytest.mark.asyncio
@@ -520,7 +527,7 @@ async def test_favorites_performance():
     """测试自选股性能"""
     import time
 
-    with patch('app.services.favorites_service.get_mongo_db') as mock_get_mongo:
+    with patch("app.services.favorites_service.get_mongo_db") as mock_get_mongo:
         mock_mongo = Mock()
         mock_collection = AsyncMock()
         mock_cursor = AsyncMock()

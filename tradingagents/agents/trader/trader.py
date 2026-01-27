@@ -149,6 +149,195 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
     return result
 
 
+def _enhance_trading_decision(
+    original_content: str,
+    validation: dict,
+    current_price: float,
+    currency_symbol: str,
+    company_name: str,
+    market_info: dict,
+    fundamentals_report: str,
+    investment_plan: str
+) -> str:
+    """
+    增强交易决策内容，添加止损位、仓位建议、时间窗口等关键信息
+
+    Args:
+        original_content: LLM生成的原始交易决策内容
+        validation: 验证结果
+        current_price: 当前股价
+        currency_symbol: 货币符号
+        company_name: 股票代码
+        market_info: 市场信息
+        fundamentals_report: 基本面报告
+        investment_plan: 投资计划
+
+    Returns:
+        str: 增强后的交易决策内容
+    """
+    extracted = validation.get("extracted", {})
+    recommendation = extracted.get("recommendation", "未知")
+    target_price = extracted.get("target_price")
+    target_price_range = extracted.get("target_price_range")
+    confidence = extracted.get("confidence", 0.5)
+    risk_score = extracted.get("risk_score", 0.5)
+
+    # 计算止损位
+    stop_loss = None
+    if current_price:
+        if recommendation == "买入":
+            # 买入时，止损位通常设置在当前价格下方5-10%
+            stop_loss_pct = 0.08 if risk_score > 0.5 else 0.05
+            stop_loss = round(current_price * (1 - stop_loss_pct), 2)
+        elif recommendation == "持有":
+            stop_loss_pct = 0.10
+            stop_loss = round(current_price * (1 - stop_loss_pct), 2)
+
+    # 计算仓位建议
+    position_pct = _calculate_position_size(recommendation, confidence, risk_score)
+
+    # 计算时间窗口
+    time_horizon = _determine_time_horizon(recommendation, confidence)
+
+    # 生成建仓策略
+    entry_strategy = _generate_entry_strategy(recommendation, current_price, confidence)
+
+    # 生成风险提示
+    risk_warnings = _generate_risk_warnings(recommendation, risk_score, market_info)
+
+    # 构建增强报告
+    enhanced_report = f"""# {company_name} 最终交易决策
+
+## 核心决策摘要
+
+| 项目 | 内容 |
+|------|------|
+| **投资建议** | **{recommendation}** |
+| **目标价位** | {target_price_range or (f"{currency_symbol}{target_price:.2f}" if target_price else "待确定")} |
+| **止损价位** | {f"{currency_symbol}{stop_loss:.2f}" if stop_loss else "待设定"} |
+| **当前价格** | {f"{currency_symbol}{current_price:.2f}" if current_price else "未知"} |
+| **置信度** | {confidence:.0%} |
+| **风险等级** | {_risk_level_text(risk_score)} ({risk_score:.0%}) |
+
+## 仓位管理建议
+
+- **建议仓位**: 占投资组合的 **{position_pct}%**
+- **时间窗口**: {time_horizon}
+- **建仓策略**: {entry_strategy}
+
+## 止损止盈策略
+
+### 止损设置
+- **止损价位**: {f"{currency_symbol}{stop_loss:.2f}" if stop_loss else "建议设置在成本价下方5-8%"}
+- **止损原因**: 控制单笔交易最大亏损，保护本金安全
+
+### 止盈设置
+- **目标价位**: {target_price_range or (f"{currency_symbol}{target_price:.2f}" if target_price else "参考分析报告")}
+- **分批止盈**: 建议在目标价位附近分2-3批逐步减仓
+
+## 风险提示
+
+{chr(10).join([f"- {warning}" for warning in risk_warnings])}
+
+---
+
+## 详细分析
+
+{original_content}
+
+---
+*报告生成时间: {get_chinese_date()}*
+*本报告仅供参考，不构成投资建议。投资有风险，入市需谨慎。*
+"""
+
+    return enhanced_report
+
+
+def _calculate_position_size(recommendation: str, confidence: float, risk_score: float) -> int:
+    """计算建议仓位百分比"""
+    base_position = 10  # 基础仓位10%
+
+    if recommendation == "买入":
+        # 买入时根据置信度和风险调整仓位
+        position = base_position + (confidence - 0.5) * 20 - risk_score * 10
+    elif recommendation == "卖出":
+        position = 0  # 卖出建议减仓至0
+    else:  # 持有
+        position = base_position
+
+    # 限制在合理范围内
+    return max(0, min(30, int(position)))
+
+
+def _determine_time_horizon(recommendation: str, confidence: float) -> str:
+    """确定投资时间窗口"""
+    if recommendation == "买入":
+        if confidence >= 0.8:
+            return "中长期（3-6个月）"
+        elif confidence >= 0.6:
+            return "中期（1-3个月）"
+        else:
+            return "短期（1-4周）"
+    elif recommendation == "卖出":
+        return "立即执行或1周内完成"
+    else:
+        return "观望期（1-2周后重新评估）"
+
+
+def _generate_entry_strategy(recommendation: str, current_price: float, confidence: float) -> str:
+    """生成建仓策略"""
+    if recommendation == "买入":
+        if confidence >= 0.75:
+            return "可一次性建仓，但建议保留20%资金应对回调"
+        else:
+            return "建议分3批建仓：首批40%，回调5%加仓30%，再回调加仓30%"
+    elif recommendation == "卖出":
+        return "建议分批减仓：首批50%立即卖出，剩余根据反弹情况处理"
+    else:
+        return "维持现有仓位，设置好止损位观望"
+
+
+def _risk_level_text(risk_score: float) -> str:
+    """风险等级文字描述"""
+    if risk_score <= 0.3:
+        return "低风险"
+    elif risk_score <= 0.5:
+        return "中低风险"
+    elif risk_score <= 0.7:
+        return "中高风险"
+    else:
+        return "高风险"
+
+
+def _generate_risk_warnings(recommendation: str, risk_score: float, market_info: dict) -> list:
+    """生成风险提示列表"""
+    warnings = []
+
+    # 基础风险提示
+    warnings.append("股市有风险，投资需谨慎，过往业绩不代表未来表现")
+
+    # 根据风险等级添加提示
+    if risk_score > 0.6:
+        warnings.append("当前风险评级较高，建议控制仓位，严格执行止损策略")
+
+    # 根据建议添加提示
+    if recommendation == "买入":
+        warnings.append("买入后需持续关注公司基本面变化和市场情绪")
+        warnings.append("建议设置止损位，避免单笔交易亏损超过本金的5%")
+    elif recommendation == "卖出":
+        warnings.append("卖出决策需结合个人持仓成本和投资目标综合考虑")
+
+    # 市场特定提示
+    if market_info.get('is_china'):
+        warnings.append("A股市场受政策影响较大，需关注监管动态和宏观政策变化")
+    elif market_info.get('is_hk'):
+        warnings.append("港股市场流动性需关注，注意汇率风险")
+    elif market_info.get('is_us'):
+        warnings.append("美股市场受美联储政策和地缘政治影响，注意时差和汇率风险")
+
+    return warnings
+
+
 def validate_trading_decision(content: str, currency_symbol: str, company_name: str, current_price: float = None) -> dict:
     """
     验证交易决策的有效性，并自动填充缺失字段
@@ -341,11 +530,23 @@ def create_trader(llm, memory):
         logger.info(f"[Trader] 决策验证结果: 建议={validation['recommendation']}, "
                    f"目标价={validation['has_target_price']}")
 
+        # 🔧 增强最终交易决策内容
+        enhanced_decision = _enhance_trading_decision(
+            original_content=result.content,
+            validation=validation,
+            current_price=current_price,
+            currency_symbol=currency_symbol,
+            company_name=company_name,
+            market_info=market_info,
+            fundamentals_report=fundamentals_report,
+            investment_plan=investment_plan
+        )
+
         logger.debug(f"[DEBUG] ===== 交易员节点结束 =====")
 
         return {
             "messages": [result],
-            "trader_investment_plan": result.content,
+            "trader_investment_plan": enhanced_decision,
             "sender": name,
         }
 

@@ -62,6 +62,12 @@ def get_chinese_date() -> str:
     return get_current_date_str("%Y年%m月%d日")
 
 
+def get_chinese_weekday() -> str:
+    """获取中文星期几（如：周二）"""
+    weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    return weekdays[date.today().weekday()]
+
+
 def get_iso_date() -> str:
     """获取ISO格式的当前日期（如：2026-01-25）"""
     return get_current_date_str("%Y-%m-%d")
@@ -75,5 +81,6 @@ def get_chinese_datetime() -> str:
 if __name__ == "__main__":
     # 测试输出
     print(f"当前日期（中文）: {get_chinese_date()}")
+    print(f"当前星期: {get_chinese_weekday()}")
     print(f"当前日期（ISO）: {get_iso_date()}")
     print(f"当前日期时间（中文）: {get_chinese_datetime()}")

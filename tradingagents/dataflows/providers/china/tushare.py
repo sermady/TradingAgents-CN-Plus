@@ -356,6 +356,7 @@ class TushareProvider(BaseStockDataProvider):
 
                     # 测试连接（异步）- 使用超时和重试机制
                     retry_count = 0
+                    max_retries = 3
                     while retry_count < max_retries:
                         try:
                             self.logger.info(
@@ -538,6 +539,21 @@ class TushareProvider(BaseStockDataProvider):
                         basic_data["volume_ratio"] = row["volume_ratio"]
                 except Exception as daily_e:
                     self.logger.warning(f"获取 daily_basic 财务指标失败: {daily_e}")
+
+                try:
+                    fina_df = await asyncio.to_thread(
+                        self.api.fina_indicator,
+                        ts_code=ts_code,
+                        fields="ts_code,q_profit_yoy",
+                        limit=1,
+                    )
+                    if fina_df is not None and not fina_df.empty:
+                        basic_data["q_profit_yoy"] = fina_df.iloc[0]["q_profit_yoy"]
+                        self.logger.info(f"🔍 [Tushare] 获取到 {ts_code} q_profit_yoy: {basic_data['q_profit_yoy']}, pe_ttm: {basic_data.get('pe_ttm')}")
+                    else:
+                        self.logger.warning(f"⚠️ [Tushare] fina_indicator 返回空数据: {ts_code}")
+                except Exception as fina_e:
+                    self.logger.warning(f"获取 fina_indicator 财务指标失败: {fina_e}")
 
                 return self.standardize_basic_info(basic_data)
             else:

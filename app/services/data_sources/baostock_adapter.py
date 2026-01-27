@@ -2,7 +2,7 @@
 """
 BaoStock data source adapter
 """
-from typing import Optional
+from typing import Optional, Dict
 import logging
 from datetime import datetime, timedelta
 import pandas as pd
@@ -236,6 +236,93 @@ class BaoStockAdapter(DataSourceAdapter):
         if not self.is_available():
             return None
         return None
+
+    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+        """获取指定日期的全市场行情快照
+        注意：Baostock 需要逐个查询，速度较慢，仅作为最后的兜底
+        """
+        if not self.is_available():
+            return None
+        try:
+            import baostock as bs
+            lg = bs.login()
+            if lg.error_code != '0':
+                return None
+            try:
+                # 1. Get stock list first
+                rs = bs.query_stock_basic()
+                if rs.error_code != '0':
+                    return None
+
+                stock_list = []
+                while (rs.error_code == '0') & rs.next():
+                    stock_list.append(rs.get_row_data())
+
+                # Filter active A-shares
+                stocks = [s for s in stock_list if len(s) > 5 and s[4] == '1' and s[5] == '1']
+                if not stocks:
+                    return None
+
+                result = {}
+                formatted_date = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:8]}"
+
+                # Batch processing log
+                logger.info(f"Baostock: Starting daily quotes backfill for {trade_date} (approx {len(stocks)} stocks)...")
+
+                count = 0
+                for stock in stocks:
+                    code = stock[0]
+                    if not code: continue
+
+                    # query_history_k_data_plus
+                    # fields: date,code,open,high,low,close,preclose,volume,amount,pctChg
+                    rs_k = bs.query_history_k_data_plus(
+                        code,
+                        "code,open,high,low,close,preclose,volume,amount,pctChg",
+                        start_date=formatted_date,
+                        end_date=formatted_date,
+                        frequency="d",
+                        adjustflag="3"
+                    )
+
+                    if rs_k.error_code == '0' and rs_k.next():
+                        row = rs_k.get_row_data()
+                        # row indices correspond to fields string split by comma
+                        # 0:code, 1:open, 2:high, 3:low, 4:close, 5:preclose, 6:volume, 7:amount, 8:pctChg
+
+                        symbol = code.replace('sh.', '').replace('sz.', '')
+                        code6 = symbol.zfill(6)
+
+                        def sf(val):
+                            try:
+                                if val == '' or val is None: return None
+                                return float(val)
+                            except: return None
+
+                        # volume in Baostock is shares (already correct? wait, check log)
+                        # Baostock docs: volume unit is shares.
+
+                        result[code6] = {
+                            'open': sf(row[1]),
+                            'high': sf(row[2]),
+                            'low': sf(row[3]),
+                            'close': sf(row[4]),
+                            'pre_close': sf(row[5]),
+                            'volume': sf(row[6]),
+                            'amount': sf(row[7]),
+                            'pct_chg': sf(row[8])
+                        }
+                        count += 1
+                        if count % 500 == 0:
+                            logger.info(f"Baostock: Processed {count} stocks...")
+
+                logger.info(f"Baostock: Finished backfill. Got {len(result)} records.")
+                return result
+            finally:
+                bs.logout()
+        except Exception as e:
+            logger.error(f"Baostock: Failed to get daily quotes: {e}")
+            return None
 
     def get_kline(self, code: str, period: str = "day", limit: int = 120, adj: Optional[str] = None):
         """BaoStock not used for K-line here; return None to allow fallback"""

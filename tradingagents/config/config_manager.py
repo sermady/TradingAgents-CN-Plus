@@ -94,15 +94,15 @@ class ConfigManager:
         if env_file.exists():
             # 🔧 [修复] override=False 确保环境变量优先级高于 .env 文件
             # 这样 Docker 容器中的环境变量不会被 .env 文件中的占位符覆盖
-            logger.info(f"🔍 [ConfigManager] 加载 .env 文件: {env_file}")
+            logger.info(f"[ConfigManager] 加载 .env 文件: {env_file}")
             logger.info(
-                f"🔍 [ConfigManager] 加载前 DASHSCOPE_API_KEY: {'有值' if os.getenv('DASHSCOPE_API_KEY') else '空'}"
+                f"[ConfigManager] 加载前 DASHSCOPE_API_KEY: {'有值' if os.getenv('DASHSCOPE_API_KEY') else '空'}"
             )
 
             load_dotenv(env_file, override=False)
 
             logger.info(
-                f"🔍 [ConfigManager] 加载后 DASHSCOPE_API_KEY: {'有值' if os.getenv('DASHSCOPE_API_KEY') else '空'}"
+                f"[ConfigManager] 加载后 DASHSCOPE_API_KEY: {'有值' if os.getenv('DASHSCOPE_API_KEY') else '空'}"
             )
 
     def _get_env_api_key(self, provider: str) -> str:
@@ -188,7 +188,7 @@ class ConfigManager:
             logger.info(
                 f"🔍 [ConfigManager] MONGODB_CONNECTION_STRING={'已设置' if connection_string else '未设置'}"
             )
-            logger.info(f"🔍 [ConfigManager] MONGODB_DATABASE_NAME={database_name}")
+            logger.info(f"[ConfigManager] MONGODB_DATABASE_NAME={database_name}")
 
             if not connection_string:
                 logger.error(
@@ -196,7 +196,7 @@ class ConfigManager:
                 )
                 return
 
-            logger.info(f"🔄 [ConfigManager] 正在创建 MongoDBStorage 实例...")
+            logger.info(f"[ConfigManager] 正在创建 MongoDBStorage 实例...")
             self.mongodb_storage = MongoDBStorage(
                 connection_string=connection_string, database_name=database_name
             )
@@ -482,7 +482,7 @@ class ConfigManager:
             )
             success = self.mongodb_storage.save_usage_record(record)
             if success:
-                logger.info(f"✅ [Token记录] MongoDB 保存成功: {provider}/{model_name}")
+                logger.info(f"[Token记录] MongoDB 保存成功: {provider}/{model_name}")
                 return record
             else:
                 logger.error(f"⚠️ [Token记录] MongoDB保存失败，回退到JSON文件存储")
@@ -511,7 +511,7 @@ class ConfigManager:
             records = records[-max_records:]
 
         self.save_usage_records(records)
-        logger.info(f"✅ [Token记录] JSON 文件保存成功: {self.usage_file}")
+        logger.info(f"[Token记录] JSON 文件保存成功: {self.usage_file}")
         return record
 
     def calculate_cost(
@@ -761,7 +761,7 @@ class ConfigManager:
             if directory and not os.path.exists(directory):
                 try:
                     os.makedirs(directory, exist_ok=True)
-                    logger.info(f"✅ 创建目录: {directory}")
+                    logger.info(f"创建目录: {directory}")
                 except Exception as e:
                     logger.error(f"❌ 创建目录失败 {directory}: {e}")
 

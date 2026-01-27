@@ -181,8 +181,8 @@ class Settings(BaseSettings):
         description="启用接口轮换机制（Tushare → AKShare东方财富 → AKShare新浪财经）",
     )
     QUOTES_TUSHARE_HOURLY_LIMIT: int = Field(
-        default=2,
-        description="Tushare rt_k接口每小时调用次数限制（免费用户2次，付费用户可设置更高）",
+        default=1,
+        description="Tushare rt_k接口每小时调用次数限制（免费用户1次，付费用户可设置更高）",
     )
     QUOTES_AUTO_DETECT_TUSHARE_PERMISSION: bool = Field(
         default=True,

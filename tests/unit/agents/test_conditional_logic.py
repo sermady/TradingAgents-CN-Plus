@@ -49,7 +49,7 @@ def test_should_continue_market_with_report():
     # Arrange
     logic = ConditionalLogic()
     state = {
-        "messages": [],
+        "messages": [HumanMessage(content="开始市场分析")],
         "market_report": "市场分析报告内容" * 200,  # 足过100字符
         "market_tool_call_count": 0,
     }
@@ -102,8 +102,9 @@ def test_should_continue_market_with_tool_calls():
     """测试有工具调用时应该执行工具"""
     # Arrange
     logic = ConditionalLogic()
+    mock_tool_call = {"name": "test_tool", "id": "test_id", "args": {}}
     state = {
-        "messages": [AIMessage(content="分析中...", tool_calls=[Mock()])],
+        "messages": [AIMessage(content="分析中...", tool_calls=[mock_tool_call])],
         "market_report": "",
         "market_tool_call_count": 1,
     }
@@ -121,7 +122,7 @@ def test_should_continue_social_with_report():
     # Arrange
     logic = ConditionalLogic()
     state = {
-        "messages": [],
+        "messages": [HumanMessage(content="开始社交分析")],
         "sentiment_report": "情绪分析报告内容" * 200,
         "sentiment_tool_call_count": 0,
     }
@@ -174,8 +175,9 @@ def test_should_continue_social_with_tool_calls():
     """测试有工具调用时应该执行工具"""
     # Arrange
     logic = ConditionalLogic()
+    mock_tool_call = {"name": "test_tool", "id": "test_id", "args": {}}
     state = {
-        "messages": [AIMessage(content="分析中...", tool_calls=[Mock()])],
+        "messages": [AIMessage(content="分析中...", tool_calls=[mock_tool_call])],
         "sentiment_report": "",
         "sentiment_tool_call_count": 1,
     }
@@ -193,7 +195,7 @@ def test_should_continue_news_with_report():
     # Arrange
     logic = ConditionalLogic()
     state = {
-        "messages": [],
+        "messages": [HumanMessage(content="开始新闻分析")],
         "news_report": "新闻分析报告内容" * 200,
         "news_tool_call_count": 0,
     }
@@ -246,8 +248,9 @@ def test_should_continue_news_with_tool_calls():
     """测试有工具调用时应该执行工具"""
     # Arrange
     logic = ConditionalLogic()
+    mock_tool_call = {"name": "test_tool", "id": "test_id", "args": {}}
     state = {
-        "messages": [AIMessage(content="分析中...", tool_calls=[Mock()])],
+        "messages": [AIMessage(content="分析中...", tool_calls=[mock_tool_call])],
         "news_report": "",
         "news_tool_call_count": 1,
     }
@@ -265,7 +268,7 @@ def test_should_continue_fundamentals_with_report():
     # Arrange
     logic = ConditionalLogic()
     state = {
-        "messages": [],
+        "messages": [HumanMessage(content="开始基本面分析")],
         "fundamentals_report": "基本面分析报告内容" * 200,
         "fundamentals_tool_call_count": 0,
     }
@@ -318,8 +321,9 @@ def test_should_continue_fundamentals_with_tool_calls():
     """测试有工具调用时应该执行工具"""
     # Arrange
     logic = ConditionalLogic()
+    mock_tool_call = {"name": "test_tool", "id": "test_id", "args": {}}
     state = {
-        "messages": [AIMessage(content="分析中...", tool_calls=[Mock()])],
+        "messages": [AIMessage(content="分析中...", tool_calls=[mock_tool_call])],
         "fundamentals_report": "",
         "fundamentals_tool_call_count": 0,
     }

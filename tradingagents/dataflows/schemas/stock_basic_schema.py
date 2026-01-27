@@ -144,6 +144,11 @@ STOCK_BASIC_OPTIONAL_FIELDS = {
         "description": "市现率（股价/每股现金流）",
         "example": 4.5,
     },
+    "peg": {
+        "type": "number",
+        "description": "PEG指标（市盈率TTM/净利润增长率）",
+        "example": 1.2,
+    },
     "total_mv": {"type": "number", "description": "总市值（亿元）", "example": 1500.5},
     "circ_mv": {"type": "number", "description": "流通市值（亿元）", "example": 1480.2},
     "turnover_rate": {"type": "number", "description": "换手率（%）", "example": 0.85},
@@ -358,6 +363,7 @@ class StockBasicData:
     pb: Optional[float] = None
     ps: Optional[float] = None
     pcf: Optional[float] = None
+    peg: Optional[float] = None
     total_mv: Optional[float] = None
     circ_mv: Optional[float] = None
     turnover_rate: Optional[float] = None
@@ -414,7 +420,7 @@ class StockBasicData:
             industry_sw=raw_data.get("industry_sw", ""),
             industry_gn=raw_data.get("industry_gn", ""),
             list_date=normalize_date(raw_data.get("list_date")) or "",
-            delist_date=normalize_date(raw_data.get("delist_date")),
+            delist_date=normalize_date(raw_data.get("delist_date")) or "",
             is_hs=raw_data.get("is_hs", "N"),
             act_name=raw_data.get("act_name", ""),
             act_ent_type=raw_data.get("act_ent_type", ""),
@@ -423,6 +429,7 @@ class StockBasicData:
             pb=convert_to_float(raw_data.get("pb")),
             ps=convert_to_float(raw_data.get("ps")),
             pcf=convert_to_float(raw_data.get("pcf")),
+            peg=convert_to_float(raw_data.get("peg")),
             total_mv=convert_to_float(raw_data.get("total_mv")),
             circ_mv=convert_to_float(raw_data.get("circ_mv")),
             turnover_rate=convert_to_float(raw_data.get("turnover_rate")),

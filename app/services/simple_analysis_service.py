@@ -3284,6 +3284,14 @@ class SimpleAnalysisService:
                 },
             }
 
+            # 导入报告摘要生成器
+            try:
+                from tradingagents.utils.report_summarizer import summarize_report
+                summarizer_available = True
+            except ImportError:
+                summarizer_available = False
+                logger.warning("⚠️ 报告摘要生成器不可用，将保存完整报告")
+
             # 保存各模块报告 - 完全按照web目录的方式
             for module_key, module_info in report_modules.items():
                 try:
@@ -3296,8 +3304,41 @@ class SimpleAnalysisService:
                         else:
                             report_content = str(module_content)
 
+                        # 🔧 对大型辩论报告生成摘要版本
+                        filename = module_info["filename"]
+                        if summarizer_available and len(report_content) > 15000:
+                            if module_key == "investment_debate_state":
+                                # 研究团队决策报告 - 生成摘要
+                                summary, full_content = summarize_report(
+                                    report_content, "research", stock_symbol, stock_symbol
+                                )
+                                # 保存完整版
+                                full_path = reports_dir / "research_team_decision_full.md"
+                                with open(full_path, "w", encoding="utf-8") as f:
+                                    f.write(full_content)
+                                saved_files["research_team_decision_full"] = str(full_path)
+                                logger.info(f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)")
+                                # 使用摘要版作为主文件
+                                report_content = summary
+                                logger.info(f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+
+                            elif module_key == "risk_debate_state":
+                                # 风险管理决策报告 - 生成摘要
+                                summary, full_content = summarize_report(
+                                    report_content, "risk", stock_symbol, stock_symbol
+                                )
+                                # 保存完整版
+                                full_path = reports_dir / "risk_management_decision_full.md"
+                                with open(full_path, "w", encoding="utf-8") as f:
+                                    f.write(full_content)
+                                saved_files["risk_management_decision_full"] = str(full_path)
+                                logger.info(f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)")
+                                # 使用摘要版作为主文件
+                                report_content = summary
+                                logger.info(f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+
                         # 保存到文件 - 使用web目录的文件名
-                        file_path = reports_dir / module_info["filename"]
+                        file_path = reports_dir / filename
                         with open(file_path, "w", encoding="utf-8") as f:
                             f.write(report_content)
 

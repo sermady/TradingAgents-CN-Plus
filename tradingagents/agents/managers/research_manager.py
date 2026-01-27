@@ -4,7 +4,7 @@ import json
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
-from tradingagents.utils.time_utils import get_chinese_date
+from tradingagents.utils.time_utils import get_chinese_date, get_chinese_weekday
 
 logger = get_logger("default")
 
@@ -32,9 +32,9 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""**重要时间信息**：今天是{get_chinese_date()}。请基于这个实际日期进行分析，不要依赖训练数据中的时间认知。
+        prompt = f"""**重要时间信息**：今天是{get_chinese_date()} {get_chinese_weekday()}。请基于这个实际日期进行分析，不要依赖训练数据中的时间认知。
 
-作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
+        作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
 
 
 📊 数据验证要求（重要）：

@@ -58,6 +58,19 @@ class DataSourceAdapter(ABC):
         """返回 { '000001': {'close': 10.0, 'pct_chg': 1.2, 'amount': 1.2e8}, ... }"""
         raise NotImplementedError
 
+    @abstractmethod
+    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+        """获取指定日期的全市场行情快照
+
+        Args:
+            trade_date: 交易日期 (YYYYMMDD)
+
+        Returns:
+            Dict[code, quote_data] where quote_data includes:
+            close, pct_chg, amount, volume, open, high, low, pre_close
+        """
+        raise NotImplementedError
+
     # 新增：K线与新闻抽象接口
     @abstractmethod
     def get_kline(self, code: str, period: str = "day", limit: int = 120, adj: Optional[str] = None):

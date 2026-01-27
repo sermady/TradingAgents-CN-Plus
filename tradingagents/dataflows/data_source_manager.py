@@ -1710,14 +1710,37 @@ class DataSourceManager:
             str: 合并后的结果
         """
         try:
+            # 🔧 安全提取实时行情数据，处理 None 值
+            price = realtime_quote.get("price")
+            change = realtime_quote.get("change")
+            change_pct = realtime_quote.get("change_pct")
+            open_price = realtime_quote.get("open")
+            high_price = realtime_quote.get("high")
+            low_price = realtime_quote.get("low")
+            quote_date = realtime_quote.get("date", "")
+            quote_time = realtime_quote.get("time", "实时")
+
+            # 检查必要字段是否存在
+            if price is None:
+                logger.warning(f"⚠️ 实时行情缺少价格数据: {symbol}")
+                return historical_result
+
+            # 格式化数值，处理 None 值
+            price_str = f"¥{price:.2f}" if price is not None else "N/A"
+            change_str = f"{change:+.2f}" if change is not None else "N/A"
+            change_pct_str = f"{change_pct:+.2f}%" if change_pct is not None else "N/A"
+            open_str = f"¥{open_price:.2f}" if open_price is not None else "N/A"
+            high_str = f"¥{high_price:.2f}" if high_price is not None else "N/A"
+            low_str = f"¥{low_price:.2f}" if low_price is not None else "N/A"
+
             # 在结果开头添加实时行情标识
             realtime_notice = f"""
 ⚡ 实时行情（盘中）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 实时价格: ¥{realtime_quote["price"]:.2f}
-📈 涨跌: {realtime_quote["change"]:+.2f} ({realtime_quote["change_pct"]:+.2f}%)
-📊 今开: ¥{realtime_quote["open"]:.2f}  |  最高: ¥{realtime_quote["high"]:.2f}  |  最低: ¥{realtime_quote["low"]:.2f}
-🕐 更新时间: {realtime_quote["date"]} {realtime_quote.get("time", "实时")}
+💰 实时价格: {price_str}
+📈 涨跌: {change_str} ({change_pct_str})
+📊 今开: {open_str}  |  最高: {high_str}  |  最低: {low_str}
+🕐 更新时间: {quote_date} {quote_time}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 """
@@ -2086,24 +2109,10 @@ class DataSourceManager:
     #     logger.error(f"❌ TDX数据源已不再支持")
     #     return f"❌ TDX数据源已不再支持"
 
-    def _get_volume_safely(self, data) -> float:
-        """安全地获取成交量数据，支持多种列名"""
-        try:
-            # 支持多种可能的成交量列名
-            volume_columns = ["volume", "vol", "turnover", "trade_volume"]
-
-            for col in volume_columns:
-                if col in data.columns:
-                    logger.info(f"✅ 找到成交量列: {col}")
-                    return data[col].sum()
-
-            # 如果都没找到，记录警告并返回0
-            logger.warning(f"⚠️ 未找到成交量列，可用列: {list(data.columns)}")
-            return 0
-
-        except Exception as e:
-            logger.error(f"❌ 获取成交量失败: {e}")
-            return 0
+    # 🔧 FIX: 删除重复的 _get_volume_safely 方法定义
+    # 正确的版本在第769行，使用 iloc[-1] 获取最后一天的成交量
+    # 这里的版本使用 sum() 是错误的，会导致成交量数据不一致
+    # 详见: docs/reports/report_optimization_plan.md
 
     def _try_fallback_sources(
         self,

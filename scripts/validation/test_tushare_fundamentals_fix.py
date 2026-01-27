@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""
-测试 Tushare 基本面数据获取修复
-
-验证 _get_tushare_fundamentals 方法是否正确调用 get_daily_basic
-并返回 PE、PB、PS 等财务指标数据
-"""
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import os
+
+os.environ["PYTHONIOENCODING"] = "utf-8"
 
 import logging
 
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s'
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    encoding="utf-8",
 )
 logger = logging.getLogger(__name__)
 
@@ -32,12 +32,13 @@ def test_tushare_fundamentals_implementation():
         manager = get_data_source_manager()
 
         # 检查方法是否存在
-        if not hasattr(manager, '_get_tushare_fundamentals'):
+        if not hasattr(manager, "_get_tushare_fundamentals"):
             logger.error("❌ _get_tushare_fundamentals 方法不存在")
             return False
 
         # 检查方法签名
         import inspect
+
         sig = inspect.signature(manager._get_tushare_fundamentals)
         logger.info(f"✅ 方法签名: _get_tushare_fundamentals{sig}")
 
@@ -49,7 +50,7 @@ def test_tushare_fundamentals_implementation():
             logger.warning("⚠️ 方法缺少文档字符串")
 
         # 检查是否有辅助方法
-        if hasattr(manager, '_convert_to_tushare_code'):
+        if hasattr(manager, "_convert_to_tushare_code"):
             logger.info("✅ 辅助方法 _convert_to_tushare_code 存在")
         else:
             logger.error("❌ 辅助方法 _convert_to_tushare_code 不存在")
@@ -60,6 +61,7 @@ def test_tushare_fundamentals_implementation():
     except Exception as e:
         logger.error(f"❌ 测试失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -100,6 +102,7 @@ def test_convert_to_tushare_code():
     except Exception as e:
         logger.error(f"❌ 测试失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -144,6 +147,7 @@ def test_get_tushare_fundamentals():
             logger.info("✅ 成功获取基本面数据！")
             # 提取 PE 值
             import re
+
             pe_match = re.search(r"市盈率\(PE\): ([\d.]+)", result)
             if pe_match:
                 pe_value = float(pe_match.group(1))
@@ -163,6 +167,7 @@ def test_get_tushare_fundamentals():
     except Exception as e:
         logger.error(f"❌ 测试失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -209,5 +214,5 @@ def main():
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     exit(main())

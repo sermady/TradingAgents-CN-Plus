@@ -12,5 +12,6 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)"
     ]
-  }
+  },
+  "language": "Chinese"
 }

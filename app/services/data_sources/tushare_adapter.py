@@ -164,7 +164,70 @@ class TushareAdapter(DataSourceAdapter):
                 result[code6] = {'close': close, 'pct_chg': pct_chg, 'amount': amount, 'volume': vol, 'open': op, 'high': hi, 'low': lo, 'pre_close': pre_close}
             return result
         except Exception as e:
-            logger.error(f'Failed to fetch realtime quotes from Tushare rt_k: {e}')
+            error_msg = str(e)
+            if "每小时最多访问" in error_msg:
+                logger.warning(f"Tushare rt_k rate limit hit: {error_msg}")
+            else:
+                logger.error(f'Failed to fetch realtime quotes from Tushare rt_k: {e}')
+            return None
+
+    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+        """获取指定日期的全市场行情快照"""
+        if not self.is_available():
+            return None
+        try:
+            # fields=ts_code,trade_date,open,high,low,close,pre_close,pct_chg,vol,amount
+            df = self._provider.api.daily(trade_date=trade_date)
+            if df is None or getattr(df, 'empty', True):
+                return None
+
+            result: Dict[str, Dict[str, Optional[float]]] = {}
+            for _, row in df.iterrows():
+                ts_code = str(row.get('ts_code') or '')
+                if not ts_code:
+                    continue
+                code6 = ts_code.split('.')[0].zfill(6)
+
+                # Extract fields
+                # safe float conversion
+                def to_float(val):
+                    try:
+                        return float(val) if val is not None else None
+                    except:
+                        return None
+
+                close = to_float(row.get('close'))
+                open_p = to_float(row.get('open'))
+                high = to_float(row.get('high'))
+                low = to_float(row.get('low'))
+                pre_close = to_float(row.get('pre_close'))
+                pct_chg = to_float(row.get('pct_chg'))
+
+                # Tushare daily vol is in hands (100 shares)
+                vol = to_float(row.get('vol'))
+                if vol is not None:
+                    vol = vol * 100
+
+                # Tushare daily amount is in thousand yuan
+                amount = to_float(row.get('amount'))
+                if amount is not None:
+                    amount = amount * 1000
+
+                result[code6] = {
+                    'close': close,
+                    'pct_chg': pct_chg,
+                    'amount': amount,
+                    'volume': vol,
+                    'open': open_p,
+                    'high': high,
+                    'low': low,
+                    'pre_close': pre_close
+                }
+
+            logger.info(f"Tushare: Successfully fetched daily quotes for {trade_date} ({len(result)} records)")
+            return result
+        except Exception as e:
+            logger.error(f"Tushare: Failed to fetch daily quotes for {trade_date}: {e}")
             return None
 
     def get_kline(self, code: str, period: str = "day", limit: int = 120, adj: Optional[str] = None):
@@ -228,7 +291,7 @@ class TushareAdapter(DataSourceAdapter):
                         "high": float(row.get('high')) if row.get('high') is not None else None,
                         "low": float(row.get('low')) if row.get('low') is not None else None,
                         "close": float(row.get('close')) if row.get('close') is not None else None,
-                        "volume": float(row.get('vol')) if row.get('vol') is not None else None,
+                        "volume": float(row.get('vol')) * 100 if row.get('vol') is not None else None,
                         "amount": float(row.get('amount')) if row.get('amount') is not None else None,
                     })
                 except Exception:

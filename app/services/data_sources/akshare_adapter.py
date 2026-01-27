@@ -3,14 +3,78 @@
 AKShare data source adapter
 """
 
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import logging
+import os
+import time
 from datetime import datetime, timedelta
+from functools import wraps
 import pandas as pd
 
 from .base import DataSourceAdapter
 
 logger = logging.getLogger(__name__)
+
+AKSHARE_RETRY_CONFIG = {
+    "max_retries": 3,
+    "initial_delay": 1.0,
+    "max_delay": 10.0,
+    "backoff_multiplier": 2.0,
+    "jitter": 0.3,
+}
+
+
+def get_proxy_status() -> Dict[str, str]:
+    """获取当前代理配置状态"""
+    return {
+        "http_proxy": os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or "",
+        "https_proxy": os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or "",
+        "no_proxy": os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "",
+    }
+
+
+def akshare_retry_with_backoff(func):
+    """装饰器：为 AKShare 请求添加指数退避重试机制"""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        max_retries = AKSHARE_RETRY_CONFIG["max_retries"]
+        initial_delay = AKSHARE_RETRY_CONFIG["initial_delay"]
+        max_delay = AKSHARE_RETRY_CONFIG["max_delay"]
+        backoff = AKSHARE_RETRY_CONFIG["backoff_multiplier"]
+        jitter = AKSHARE_RETRY_CONFIG["jitter"]
+
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                delay = min(initial_delay * (backoff**attempt), max_delay)
+                if attempt < max_retries - 1:
+                    delay += (time.time() % jitter) * delay
+                    logger.warning(
+                        f"⚠️ AKShare 请求失败，{delay:.1f}秒后重试 ({attempt + 1}/{max_retries}): "
+                        f"{type(e).__name__}: {str(e)[:100]}"
+                    )
+                    time.sleep(delay)
+
+        proxy_status = get_proxy_status()
+        proxy_enabled = any(v for v in proxy_status.values())
+        logger.error(
+            f"❌ AKShare 请求失败，已达最大重试次数 ({max_retries}): "
+            f"error_type={type(last_exception).__name__}, "
+            f"proxy_enabled={proxy_enabled}, "
+            f"error={str(last_exception)[:200]}"
+        )
+        return None
+
+    return wrapper
 
 
 class AKShareAdapter(DataSourceAdapter):
@@ -251,158 +315,221 @@ class AKShareAdapter(DataSourceAdapter):
         if not self.is_available():
             return None
 
-        try:
-            import akshare as ak  # type: ignore
+        max_retries = AKSHARE_RETRY_CONFIG["max_retries"]
+        initial_delay = AKSHARE_RETRY_CONFIG["initial_delay"]
+        max_delay = AKSHARE_RETRY_CONFIG["max_delay"]
+        backoff = AKSHARE_RETRY_CONFIG["backoff_multiplier"]
 
-            # 根据 source 参数选择接口
-            if source == "sina":
-                df = ak.stock_zh_a_spot()  # 新浪财经接口
-                logger.info("使用 AKShare 新浪财经接口获取实时行情")
-            else:  # 默认使用东方财富
-                df = ak.stock_zh_a_spot_em()  # 东方财富接口
-                logger.info("使用 AKShare 东方财富接口获取实时行情")
+        last_exception = None
+        proxy_status = get_proxy_status()
+        proxy_enabled = any(v for v in proxy_status.values())
 
-            if df is None or getattr(df, "empty", True):
-                logger.warning(f"AKShare {source} 返回空数据")
-                return None
+        for attempt in range(max_retries):
+            attempt_start = time.time()
+            try:
+                import akshare as ak  # type: ignore
 
-            # 列名兼容（两个接口的列名可能不同）
-            code_col = next(
-                (c for c in ["代码", "code", "symbol", "股票代码"] if c in df.columns),
-                None,
-            )
-            price_col = next(
-                (
-                    c
-                    for c in ["最新价", "现价", "最新价(元)", "price", "最新", "trade"]
-                    if c in df.columns
-                ),
-                None,
-            )
-            pct_col = next(
-                (
-                    c
-                    for c in ["涨跌幅", "涨跌幅(%)", "涨幅", "pct_chg", "changepercent"]
-                    if c in df.columns
-                ),
-                None,
-            )
-            amount_col = next(
-                (
-                    c
-                    for c in [
-                        "成交额",
-                        "成交额(元)",
-                        "amount",
-                        "成交额(万元)",
-                        "amount(万元)",
-                    ]
-                    if c in df.columns
-                ),
-                None,
-            )
-            open_col = next(
-                (c for c in ["今开", "开盘", "open", "今开(元)"] if c in df.columns),
-                None,
-            )
-            high_col = next((c for c in ["最高", "high"] if c in df.columns), None)
-            low_col = next((c for c in ["最低", "low"] if c in df.columns), None)
-            pre_close_col = next(
-                (
-                    c
-                    for c in ["昨收", "昨收(元)", "pre_close", "昨收价", "settlement"]
-                    if c in df.columns
-                ),
-                None,
-            )
-            volume_col = next(
-                (
-                    c
-                    for c in ["成交量", "成交量(手)", "volume", "成交量(股)", "vol"]
-                    if c in df.columns
-                ),
-                None,
-            )
-
-            if not code_col or not price_col:
-                logger.error(
-                    f"AKShare {source} 缺少必要列: code={code_col}, price={price_col}, columns={list(df.columns)}"
-                )
-                return None
-
-            result: Dict[str, Dict[str, Optional[float]]] = {}
-            for _, row in df.iterrows():  # type: ignore
-                code_raw = row.get(code_col)
-                if not code_raw:
-                    continue
-                # 标准化股票代码：处理交易所前缀（如 sz000001, sh600036）
-                code_str = str(code_raw).strip()
-
-                # 如果代码长度超过6位，去掉前面的交易所前缀（如 sz, sh）
-                if len(code_str) > 6:
-                    # 去掉前面的非数字字符（通常是2个字符的交易所代码）
-                    code_str = "".join(filter(str.isdigit, code_str))
-
-                # 如果是纯数字，移除前导0后补齐到6位
-                if code_str.isdigit():
-                    code_clean = (
-                        code_str.lstrip("0") or "0"
-                    )  # 移除前导0，如果全是0则保留一个0
-                    code = code_clean.zfill(6)  # 补齐到6位
+                if source == "sina":
+                    df = ak.stock_zh_a_spot()
+                    logger.debug("使用 AKShare 新浪财经接口获取实时行情")
                 else:
-                    # 如果不是纯数字，尝试提取数字部分
-                    code_digits = "".join(filter(str.isdigit, code_str))
-                    if code_digits:
-                        code = code_digits.zfill(6)
-                    else:
-                        # 无法提取有效代码，跳过
+                    df = ak.stock_zh_a_spot_em()
+                    logger.debug("使用 AKShare 东方财富接口获取实时行情")
+
+                if df is None or getattr(df, "empty", True):
+                    logger.warning(f"⚠️ AKShare {source} 返回空数据")
+                    if attempt < max_retries - 1:
+                        delay = min(initial_delay * (backoff**attempt), max_delay)
+                        logger.debug(
+                            f"等待 {delay:.1f}秒后重试 ({attempt + 1}/{max_retries})"
+                        )
+                        time.sleep(delay)
                         continue
+                    return None
 
-                close = self._safe_float(row.get(price_col))
-                pct = self._safe_float(row.get(pct_col)) if pct_col else None
-                amt = self._safe_float(row.get(amount_col)) if amount_col else None
-                op = self._safe_float(row.get(open_col)) if open_col else None
-                hi = self._safe_float(row.get(high_col)) if high_col else None
-                lo = self._safe_float(row.get(low_col)) if low_col else None
-                pre = (
-                    self._safe_float(row.get(pre_close_col)) if pre_close_col else None
+                code_col = next(
+                    (
+                        c
+                        for c in ["代码", "code", "symbol", "股票代码"]
+                        if c in df.columns
+                    ),
+                    None,
                 )
-                vol = self._safe_float(row.get(volume_col)) if volume_col else None
+                price_col = next(
+                    (
+                        c
+                        for c in [
+                            "最新价",
+                            "现价",
+                            "最新价(元)",
+                            "price",
+                            "最新",
+                            "trade",
+                        ]
+                        if c in df.columns
+                    ),
+                    None,
+                )
+                pct_col = next(
+                    (
+                        c
+                        for c in [
+                            "涨跌幅",
+                            "涨跌幅(%)",
+                            "涨幅",
+                            "pct_chg",
+                            "changepercent",
+                        ]
+                        if c in df.columns
+                    ),
+                    None,
+                )
+                amount_col = next(
+                    (
+                        c
+                        for c in [
+                            "成交额",
+                            "成交额(元)",
+                            "amount",
+                            "成交额(万元)",
+                            "amount(万元)",
+                        ]
+                        if c in df.columns
+                    ),
+                    None,
+                )
+                open_col = next(
+                    (
+                        c
+                        for c in ["今开", "开盘", "open", "今开(元)"]
+                        if c in df.columns
+                    ),
+                    None,
+                )
+                high_col = next((c for c in ["最高", "high"] if c in df.columns), None)
+                low_col = next((c for c in ["最低", "low"] if c in df.columns), None)
+                pre_close_col = next(
+                    (
+                        c
+                        for c in [
+                            "昨收",
+                            "昨收(元)",
+                            "pre_close",
+                            "昨收价",
+                            "settlement",
+                        ]
+                        if c in df.columns
+                    ),
+                    None,
+                )
+                volume_col = next(
+                    (
+                        c
+                        for c in ["成交量", "成交量(手)", "volume", "成交量(股)", "vol"]
+                        if c in df.columns
+                    ),
+                    None,
+                )
 
-                # 🔥 成交量单位转换：AKShare 返回的是手，需要转换为股
-                # 如果列名明确标注"手"或通用列名，需要乘以100
-                if vol is not None:
-                    if volume_col and (
-                        "手" in volume_col or volume_col in ["成交量", "volume", "vol"]
-                    ):
-                        vol = vol * 100  # 手 -> 股
-                    elif volume_col == "成交量(股)":
-                        # 已经是股，不需要转换
-                        pass
-
-                # 🔥 日志：记录AKShare返回的成交量
-                if code in ["300750", "000001", "600000"]:  # 只记录几个示例股票
-                    logger.info(
-                        f"📊 [AKShare实时] {code} - volume_col={volume_col}, vol={vol}, amount={amt}"
+                if not code_col or not price_col:
+                    logger.error(
+                        f"AKShare {source} 缺少必要列: code={code_col}, price={price_col}"
                     )
+                    return None
 
-                result[code] = {
-                    "close": close,
-                    "pct_chg": pct,
-                    "amount": amt,
-                    "volume": vol,
-                    "open": op,
-                    "high": hi,
-                    "low": lo,
-                    "pre_close": pre,
-                }
+                result: Dict[str, Dict[str, Optional[float]]] = {}
+                for _, row in df.iterrows():
+                    code_raw = row.get(code_col)
+                    if not code_raw:
+                        continue
+                    code_str = str(code_raw).strip()
 
-            logger.info(f"✅ AKShare {source} 获取到 {len(result)} 只股票的实时行情")
-            return result
+                    if len(code_str) > 6:
+                        code_str = "".join(filter(str.isdigit, code_str))
 
-        except Exception as e:
-            logger.error(f"获取AKShare {source} 实时快照失败: {e}")
-            return None
+                    if code_str.isdigit():
+                        code_clean = code_str.lstrip("0") or "0"
+                        code = code_clean.zfill(6)
+                    else:
+                        code_digits = "".join(filter(str.isdigit, code_str))
+                        if code_digits:
+                            code = code_digits.zfill(6)
+                        else:
+                            continue
+
+                    close = self._safe_float(row.get(price_col))
+                    pct = self._safe_float(row.get(pct_col)) if pct_col else None
+                    amt = self._safe_float(row.get(amount_col)) if amount_col else None
+                    op = self._safe_float(row.get(open_col)) if open_col else None
+                    hi = self._safe_float(row.get(high_col)) if high_col else None
+                    lo = self._safe_float(row.get(low_col)) if low_col else None
+                    pre = (
+                        self._safe_float(row.get(pre_close_col))
+                        if pre_close_col
+                        else None
+                    )
+                    vol = self._safe_float(row.get(volume_col)) if volume_col else None
+
+                    if vol is not None:
+                        if volume_col and (
+                            "手" in volume_col
+                            or volume_col in ["成交量", "volume", "vol"]
+                        ):
+                            vol = vol * 100
+
+                    if code in ["300750", "000001", "600000"]:
+                        logger.debug(f"📊 [AKShare实时] {code} - vol={vol}, amt={amt}")
+
+                    result[code] = {
+                        "close": close,
+                        "pct_chg": pct,
+                        "amount": amt,
+                        "volume": vol,
+                        "open": op,
+                        "high": hi,
+                        "low": lo,
+                        "pre_close": pre,
+                    }
+
+                duration = time.time() - attempt_start
+                logger.info(
+                    f"✅ AKShare {source} 获取到 {len(result)} 只股票 ({duration:.2f}s)"
+                )
+                return result
+
+            except Exception as e:
+                last_exception = e
+                duration = time.time() - attempt_start
+
+                error_type = type(e).__name__
+                is_network_error = any(
+                    x in str(e).lower()
+                    for x in ["connection", "remote", "timeout", "aborted", "reset"]
+                )
+
+                logger.warning(
+                    f"⚠️ AKShare {source} 请求失败 ({attempt + 1}/{max_retries}): "
+                    f"error_type={error_type}, duration={duration:.2f}s, error={str(e)[:100]}"
+                )
+
+                if attempt < max_retries - 1:
+                    delay = min(initial_delay * (backoff**attempt), max_delay)
+                    logger.debug(f"等待 {delay:.1f}秒后重试...")
+                    time.sleep(delay)
+
+        logger.error(
+            f"❌ AKShare {source} 获取失败，已达最大重试次数: "
+            f"proxy_enabled={proxy_enabled}, error_type={type(last_exception).__name__}, "
+            f"error={str(last_exception)[:200]}"
+        )
+        return None
+
+    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+        """获取指定日期的全市场行情快照
+        AKShare 获取指定日期全市场数据效率极低，暂不支持
+        """
+        logger.warning("AKShare does not efficiently support full-market daily quotes backfill")
+        return None
 
     def get_kline(
         self,

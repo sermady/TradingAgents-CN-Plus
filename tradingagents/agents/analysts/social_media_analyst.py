@@ -158,6 +158,65 @@ def create_social_media_analyst(llm, toolkit):
             report = ""
             if len(result.tool_calls) == 0:
                 report = result.content
+            else:
+                # 有工具调用但未处理，执行工具并生成报告
+                logger.info(f"[社交媒体分析师] 非Google模型有 {len(result.tool_calls)} 个工具调用，手动执行")
+                tool_results = []
+                for tool_call in result.tool_calls:
+                    tool_name = tool_call.get('name', '')
+                    tool_args = tool_call.get('args', {})
+                    for tool in tools:
+                        current_name = getattr(tool, 'name', getattr(tool, '__name__', ''))
+                        if current_name == tool_name:
+                            try:
+                                if hasattr(tool, 'invoke'):
+                                    tool_result = tool.invoke(tool_args)
+                                else:
+                                    tool_result = tool(**tool_args)
+                                tool_results.append(str(tool_result))
+                            except Exception as e:
+                                logger.error(f"[社交媒体分析师] 工具执行失败: {e}")
+                                tool_results.append(f"工具执行失败: {e}")
+                            break
+                if tool_results:
+                    report = "\n\n".join(tool_results)
+
+        # 🔧 降级机制：如果报告仍为空，生成默认报告
+        if not report or len(report.strip()) == 0:
+            logger.warning(f"[社交媒体分析师] 报告为空，启用降级机制")
+            report = f"""# {ticker} 情绪分析报告
+
+## 分析概况
+**股票代码**: {ticker}
+**公司名称**: {company_name}
+**分析日期**: {current_date}
+
+## 情绪分析结果
+
+### 数据获取状态
+由于社交媒体数据源限制或API调用异常，未能获取到完整的情绪数据。
+
+### 建议关注渠道
+- **雪球**: https://xueqiu.com/S/{ticker}
+- **东方财富股吧**: https://guba.eastmoney.com/
+- **同花顺社区**: https://t.10jqka.com.cn/
+
+### 替代分析建议
+1. 手动查看上述平台的投资者讨论热度
+2. 关注财经媒体对该股票的报道倾向
+3. 监控机构研报的评级变化
+
+### 情绪指标（待验证）
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| 整体情绪 | 中性 | 待数据验证 |
+| 讨论热度 | 待分析 | 需手动确认 |
+| 投资者信心 | 待评估 | 建议参考其他来源 |
+
+---
+*注：本报告为降级报告，建议结合其他数据源进行综合分析*
+"""
+            logger.info(f"[社交媒体分析师] 生成降级报告，长度: {len(report)}")
 
         # 🔧 更新工具调用计数器
         return {

@@ -218,6 +218,15 @@ class TradingAgentsLogger:
         if not self.config["handlers"]["console"]["enabled"]:
             return
 
+        # 使用TextIOWrapper包装stdout以支持UTF-8编码
+        try:
+            import io
+
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
         console_handler = logging.StreamHandler(sys.stdout)
         console_level = getattr(logging, self.config["handlers"]["console"]["level"])
         console_handler.setLevel(console_level)

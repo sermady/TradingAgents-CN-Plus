@@ -16,7 +16,7 @@ from bson import ObjectId
 from typing import Dict, Any, List
 
 from app.services.database_service import DatabaseService
-from app.models.base import PyObjectId
+from app.models.user import PyObjectId
 
 
 # ==============================================================================

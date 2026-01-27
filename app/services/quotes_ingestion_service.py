@@ -37,7 +37,7 @@ class QuotesIngestionService:
         self._tushare_permission_checked = False  # 是否已检测过权限
         self._tushare_has_premium = False  # 是否有付费权限
         self._tushare_last_call_time = None  # 上次调用时间（用于免费用户限流）
-        self._tushare_hourly_limit = 2  # 免费用户每小时最多调用次数
+        self._tushare_hourly_limit = settings.QUOTES_TUSHARE_HOURLY_LIMIT  # 免费用户每小时最多调用次数
         self._tushare_call_count = 0  # 当前小时内调用次数
         self._tushare_call_times = deque()  # 记录调用时间的队列（用于限流）
 
@@ -502,16 +502,27 @@ class QuotesIngestionService:
         """一次性补齐上一笔收盘快照（用于冷启动或数据陈旧）。允许在休市期调用。"""
         try:
             manager = DataSourceManager()
-            # 使用近实时快照作为兜底，休市期返回的即为最后收盘数据
-            quotes_map, source = manager.get_realtime_quotes_with_fallback()
+            # 使用智能快照获取策略：优先实时接口，失败则降级到日线数据
+            quotes_map, source = manager.get_snapshot_with_fallback()
+
             if not quotes_map:
-                logger.warning("backfill: 未获取到行情数据，跳过")
+                logger.error("❌ backfill: 所有途径均未获取到行情数据，跳过")
                 return
+
             try:
-                trade_date = manager.find_latest_trade_date_with_fallback() or datetime.now(self.tz).strftime("%Y%m%d")
+                # 如果是日线数据源 (e.g. baostock_daily)，通常意味着获取的是最新交易日收盘数据
+                # 如果是实时数据源，我们需要确认交易日期
+                if "_daily" in str(source):
+                     # 从 source 名称推断或者重新获取最新交易日
+                     trade_date = manager.find_latest_trade_date_with_fallback() or datetime.now(self.tz).strftime("%Y%m%d")
+                else:
+                     trade_date = manager.find_latest_trade_date_with_fallback() or datetime.now(self.tz).strftime("%Y%m%d")
             except Exception:
                 trade_date = datetime.now(self.tz).strftime("%Y%m%d")
+
+            logger.info(f"📊 [Backfill] 获取到 {len(quotes_map)} 条数据 (Source: {source}, Date: {trade_date})，准备入库...")
             await self._bulk_upsert(quotes_map, trade_date, source)
+
         except Exception as e:
             logger.error(f"❌ backfill 行情补数失败: {e}")
 
@@ -633,6 +644,11 @@ class QuotesIngestionService:
 
             # 尝试获取行情
             quotes_map, source_name = self._fetch_quotes_from_source(source_type, akshare_api)
+
+            # 🔥 Tushare 失败时的即时降级策略
+            if not quotes_map and source_type == "tushare":
+                logger.warning("⚠️ Tushare 获取失败，立即尝试降级到 AKShare (Eastmoney)...")
+                quotes_map, source_name = self._fetch_quotes_from_source("akshare", "eastmoney")
 
             if not quotes_map:
                 logger.warning(f"⚠️ {source_name or source_type} 未获取到行情数据，跳过本次入库")
