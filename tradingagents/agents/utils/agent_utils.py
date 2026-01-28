@@ -1200,6 +1200,11 @@ class Toolkit:
         统一的股票新闻工具
         自动识别股票类型（A股、港股、美股）并调用相应的新闻数据源
 
+        数据源策略:
+        - A股/港股: 使用东方财富新闻（AKShare）
+        - 美股: 使用 Finnhub 新闻
+        - 注: 已移除 Google 新闻（国内访问不稳定）
+
         Args:
             ticker: 股票代码（如：000001、0700.HK、AAPL）
             curr_date: 当前日期（格式：YYYY-MM-DD）
@@ -1268,28 +1273,6 @@ class Toolkit:
                 except Exception as em_e:
                     logger.error(f"❌ [统一新闻工具] 东方财富新闻获取失败: {em_e}")
                     result_data.append(f"## 东方财富新闻\n获取失败: {em_e}")
-
-                # 2. 获取Google新闻作为补充
-                try:
-                    # 获取公司中文名称用于搜索
-                    if is_china:
-                        # A股使用股票代码搜索，添加更多中文关键词
-                        clean_ticker = ticker.replace('.SH', '').replace('.SZ', '').replace('.SS', '')\
-                                       .replace('.XSHE', '').replace('.XSHG', '')
-                        search_query = f"{clean_ticker} 股票 公司 财报 新闻"
-                        logger.info(f"🇨🇳 [统一新闻工具] A股Google新闻搜索关键词: {search_query}")
-                    else:
-                        # 港股使用代码搜索
-                        search_query = f"{ticker} 港股"
-                        logger.info(f"🇭🇰 [统一新闻工具] 港股Google新闻搜索关键词: {search_query}")
-
-                    from tradingagents.dataflows.interface import get_google_news
-                    news_data = get_google_news(search_query, curr_date)
-                    result_data.append(f"## Google新闻\n{news_data}")
-                    logger.info(f"🇨🇳🇭🇰 [统一新闻工具] 成功获取Google新闻")
-                except Exception as google_e:
-                    logger.error(f"❌ [统一新闻工具] Google新闻获取失败: {google_e}")
-                    result_data.append(f"## Google新闻\n获取失败: {google_e}")
 
             else:
                 # 美股：使用Finnhub新闻
