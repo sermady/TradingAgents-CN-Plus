@@ -3,7 +3,6 @@
  */
 
 import request, { ApiClient } from './request'
-import type { ApiResponse } from './request'
 
 export interface UsageRecord {
   id?: string
@@ -38,7 +37,7 @@ export function getUsageRecords(params?: {
   start_date?: string
   end_date?: string
   limit?: number
-}): Promise<ApiResponse<{ records: UsageRecord[]; total: number }>> {
+}) {
   return ApiClient.get<{ records: UsageRecord[]; total: number }>(
     '/api/usage/records',
     params
@@ -52,7 +51,7 @@ export function getUsageStatistics(params?: {
   days?: number
   provider?: string
   model_name?: string
-}): Promise<ApiResponse<UsageStatistics>> {
+}) {
   return ApiClient.get<UsageStatistics>(
     '/api/usage/statistics',
     params

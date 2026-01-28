@@ -225,10 +225,10 @@
         
         <el-tabs v-model="activeModule" type="border-card">
           <el-tab-pane
-            v-for="(content, moduleName) in report.reports"
+            v-for="(content, moduleName) in (report as any).reports"
             :key="moduleName"
-            :label="getModuleDisplayName(moduleName)"
-            :name="moduleName"
+            :label="getModuleDisplayName(moduleName as string)"
+            :name="moduleName as string"
           >
             <div class="module-content">
               <div v-if="typeof content === 'string'" class="markdown-content">
@@ -307,7 +307,7 @@ const llmConfigs = ref<LLMConfig[]>([]) // 存储所有模型配置
 // 获取模型配置列表
 const fetchLLMConfigs = async () => {
   try {
-    const response = await configApi.getSystemConfig()
+    const response = await configApi.getSystemConfig() as any
     if (response.success && response.data?.llm_configs) {
       llmConfigs.value = response.data.llm_configs
     }
@@ -339,13 +339,13 @@ const fetchReportDetail = async () => {
       report.value = result.data
 
       // 设置默认激活的模块
-      const reports = result.data.reports || {}
+      const reports = (result.data as any).reports || {}
       const moduleNames = Object.keys(reports)
       if (moduleNames.length > 0) {
         activeModule.value = moduleNames[0]
       }
     } else {
-      throw new Error(result.message || '获取报告详情失败')
+      throw new Error((result as any).message || '获取报告详情失败')
     }
   } catch (error) {
     console.error('获取报告详情失败:', error)
@@ -509,7 +509,7 @@ const applyToTrading = async () => {
 
   try {
     // 获取账户信息
-    const accountRes = await paperApi.getAccount()
+    const accountRes = await paperApi.getAccount() as any
     if (!accountRes.success || !accountRes.data) {
       ElMessage.error('获取账户信息失败')
       return
@@ -519,12 +519,12 @@ const applyToTrading = async () => {
     const positions = accountRes.data.positions
 
     // 查找当前持仓
-    const currentPosition = positions.find(p => p.code === report.value.stock_symbol)
+    const currentPosition = positions.find((p: any) => p.code === (report.value as any).stock_symbol)
 
     // 获取当前实时价格
     let currentPrice = 10 // 默认价格
     try {
-      const quoteRes = await stocksApi.getQuote(report.value.stock_symbol)
+      const quoteRes = await stocksApi.getQuote((report.value as any).stock_symbol) as any
       if (quoteRes.success && quoteRes.data && quoteRes.data.price) {
         currentPrice = quoteRes.data.price
       }
@@ -699,11 +699,11 @@ const applyToTrading = async () => {
 
     // 执行交易
     const orderRes = await paperApi.placeOrder({
-      code: report.value.stock_symbol,
+      code: (report.value as any).stock_symbol,
       side: recommendation.action,
       quantity: tradeForm.quantity,
-      analysis_id: report.value.analysis_id || report.value.id
-    })
+      analysis_id: (report.value as any).analysis_id || (report.value as any).id
+    }) as any
 
     if (orderRes.success) {
       ElMessage.success(`${actionText}订单已提交成功！`)

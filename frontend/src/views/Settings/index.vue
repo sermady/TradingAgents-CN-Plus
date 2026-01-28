@@ -599,7 +599,7 @@ const saveGeneralSettings = async () => {
       preferences: {
         language: generalSettings.value.language
       }
-    })
+    } as any)
 
     if (success) {
       ElMessage.success('通用设置已保存')
@@ -622,7 +622,7 @@ const saveAppearanceSettings = async () => {
         ui_theme: appearanceSettings.value.theme,
         sidebar_width: appearanceSettings.value.sidebarWidth
       }
-    })
+    } as any)
 
     if (success) {
       ElMessage.success('外观设置已保存')
@@ -652,7 +652,7 @@ const saveAnalysisSettings = async () => {
         auto_refresh: analysisSettings.value.autoRefresh,
         refresh_interval: analysisSettings.value.refreshInterval
       }
-    })
+    } as any)
 
     if (success) {
       ElMessage.success('分析偏好已保存')
@@ -673,7 +673,7 @@ const saveNotificationSettings = async () => {
         system_maintenance_notification: notificationSettings.value.systemMaintenance,
         notifications_enabled: notificationSettings.value.desktop || notificationSettings.value.analysisComplete || notificationSettings.value.systemMaintenance
       }
-    })
+    } as any)
 
     if (success) {
       ElMessage.success('通知设置已保存')
@@ -751,7 +751,8 @@ const handleChangePassword = async () => {
       try {
         const success = await authStore.changePassword(
           changePasswordForm.value.oldPassword,
-          changePasswordForm.value.newPassword
+          changePasswordForm.value.newPassword,
+          changePasswordForm.value.confirmPassword
         )
 
         if (success) {

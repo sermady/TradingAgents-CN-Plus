@@ -124,6 +124,7 @@ const rules: FormRules = {
   ],
   name: [{ required: true, message: '请输入分类名称', trigger: 'blur' }],
   display_name: [{ required: true, message: '请输入显示名称', trigger: 'blur' }],
+  description: [{ required: true, message: '请输入分类描述', trigger: 'blur' }],
   sort_order: [{ required: true, message: '请输入排序顺序', trigger: 'blur' }]
 }
 
@@ -132,7 +133,7 @@ watch(
   () => props.category,
   (category) => {
     if (category) {
-      formData.value = { ...category }
+      formData.value = { ...category, description: category.description || '' }
     } else {
       formData.value = { ...defaultFormData }
     }
@@ -146,7 +147,7 @@ watch(
   (visible) => {
     if (visible) {
       if (props.category) {
-        formData.value = { ...props.category }
+        formData.value = { ...props.category, description: props.category.description || '' }
       } else {
         formData.value = { ...defaultFormData }
       }

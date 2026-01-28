@@ -548,7 +548,7 @@ const handleBatchSync = async () => {
       sync_financial: form.syncTypes.includes('financial'),
       data_source: form.dataSource,
       days: form.days
-    })
+    }) as any
 
     if (res.success) {
       const data = res.data
@@ -570,7 +570,7 @@ const handleBatchSync = async () => {
       batchSyncDialogVisible.value = false
       await loadFavorites()
     } else {
-      ElMessage.error(res.message || '批量同步失败')
+      ElMessage.error((res as any).message || '批量同步失败')
     }
   } catch (error: any) {
     console.error('批量同步失败:', error)
@@ -607,7 +607,7 @@ const handleSingleSync = async () => {
       sync_financial: form.syncTypes.includes('financial'),
       data_source: form.dataSource,
       days: form.days
-    })
+    }) as any
 
     if (res.success) {
       const data = res.data
@@ -649,7 +649,7 @@ const handleSingleSync = async () => {
       singleSyncDialogVisible.value = false
       await loadFavorites()
     } else {
-      ElMessage.error(res.message || '同步失败')
+      ElMessage.error((res as any).message || '同步失败')
     }
   } catch (error: any) {
     console.error('同步失败:', error)

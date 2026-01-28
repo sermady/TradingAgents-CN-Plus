@@ -235,49 +235,49 @@
               <div class="account-section-title">🇨🇳 A股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">¥{{ formatMoney(paperAccount.cash?.CNY || paperAccount.cash) }}</div>
+                <div class="account-value">¥{{ formatMoney(getCurrencyValue(paperAccount, 'cash', 'CNY')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">¥{{ formatMoney(paperAccount.positions_value?.CNY || paperAccount.positions_value) }}</div>
+                <div class="account-value">¥{{ formatMoney(getCurrencyValue(paperAccount, 'positions_value', 'CNY')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">¥{{ formatMoney(paperAccount.equity?.CNY || paperAccount.equity) }}</div>
+                <div class="account-value primary">¥{{ formatMoney(getCurrencyValue(paperAccount, 'equity', 'CNY')) }}</div>
               </div>
             </div>
 
             <!-- 港股账户 -->
-            <div class="account-section" v-if="paperAccount.cash?.HKD !== undefined">
+            <div class="account-section" v-if="hasCurrency(paperAccount, 'cash', 'HKD')">
               <div class="account-section-title">🇭🇰 港股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">HK${{ formatMoney(paperAccount.cash.HKD) }}</div>
+                <div class="account-value">HK${{ formatMoney(getCurrencyValue(paperAccount, 'cash', 'HKD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">HK${{ formatMoney(paperAccount.positions_value?.HKD || 0) }}</div>
+                <div class="account-value">HK${{ formatMoney(getCurrencyValue(paperAccount, 'positions_value', 'HKD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">HK${{ formatMoney(paperAccount.equity?.HKD || 0) }}</div>
+                <div class="account-value primary">HK${{ formatMoney(getCurrencyValue(paperAccount, 'equity', 'HKD')) }}</div>
               </div>
             </div>
 
             <!-- 美股账户 -->
-            <div class="account-section" v-if="paperAccount.cash?.USD !== undefined">
+            <div class="account-section" v-if="hasCurrency(paperAccount, 'cash', 'USD')">
               <div class="account-section-title">🇺🇸 美股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">${{ formatMoney(paperAccount.cash.USD) }}</div>
+                <div class="account-value">${{ formatMoney(getCurrencyValue(paperAccount, 'cash', 'USD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">${{ formatMoney(paperAccount.positions_value?.USD || 0) }}</div>
+                <div class="account-value">${{ formatMoney(getCurrencyValue(paperAccount, 'positions_value', 'USD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">${{ formatMoney(paperAccount.equity?.USD || 0) }}</div>
+                <div class="account-value primary">${{ formatMoney(getCurrencyValue(paperAccount, 'equity', 'USD')) }}</div>
               </div>
             </div>
           </div>
@@ -487,7 +487,7 @@ const getPriceChangeClass = (changePercent: number) => {
 
 const loadFavoriteStocks = async () => {
   try {
-    const response = await favoritesApi.list()
+    const response = await favoritesApi.list() as any
     if (response.success && response.data) {
       favoriteStocks.value = response.data.map((item: any) => ({
         stock_code: item.stock_code,
@@ -527,12 +527,12 @@ const loadRecentAnalyses = async () => {
 const loadMarketNews = async () => {
   try {
     // 先尝试获取最近 24 小时的新闻
-    let response = await newsApi.getLatestNews(undefined, 10, 24)
+    let response = await newsApi.getLatestNews(undefined, 10, 24) as any
 
     // 如果最近 24 小时没有新闻，则获取最新的 10 条（不限时间）
     if (response.success && response.data && response.data.news.length === 0) {
       console.log('最近 24 小时没有新闻，获取最新的 10 条新闻（不限时间）')
-      response = await newsApi.getLatestNews(undefined, 10, 24 * 365) // 回溯 1 年
+      response = await newsApi.getLatestNews(undefined, 10, 24 * 365) as any // 回溯 1 年
     }
 
     if (response.success && response.data) {
@@ -554,10 +554,10 @@ const loadMarketNews = async () => {
 // 加载模拟交易账户信息
 const loadPaperAccount = async () => {
   try {
-    const response = await paperApi.getAccount()
-    // ApiClient interceptor 已经 unwrap 了 response.data，这里直接检查 response
-    if ((response as any)?.success && (response as any)?.data?.account) {
-      paperAccount.value = (response as any).data.account
+    const response = await paperApi.getAccount() as any
+    // ApiClient interceptor 已经 unwrap 了 response.data，这里直接使用返回的数据
+    if (response.account) {
+      paperAccount.value = response.account
     }
   } catch (error) {
     console.error('加载模拟交易账户失败:', error)
@@ -578,6 +578,27 @@ const formatMoney = (value: number) => {
   return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
+// 获取货币值（支持 CurrencyAmount | number 类型）
+const getCurrencyValue = (account: PaperAccountSummary, field: 'cash' | 'positions_value' | 'equity', currency: 'CNY' | 'HKD' | 'USD'): number => {
+  const value = account[field]
+  if (typeof value === 'number') {
+    return value
+  }
+  if (value && typeof value === 'object' && currency in value) {
+    return (value as any)[currency] || 0
+  }
+  return 0
+}
+
+// 检查是否存在指定货币
+const hasCurrency = (account: PaperAccountSummary, field: 'cash' | 'positions_value' | 'equity', currency: 'CNY' | 'HKD' | 'USD'): boolean => {
+  const value = account[field]
+  if (typeof value === 'object' && value !== null && currency in value) {
+    return (value as any)[currency] !== undefined
+  }
+  return false
+}
+
 // 获取盈亏样式类
 const getPnlClass = (pnl: number) => {
   if (pnl > 0) return 'price-up'
@@ -591,7 +612,7 @@ const syncMarketNews = async () => {
     ElMessage.info('正在同步市场新闻，请稍候...')
 
     // 调用同步API（后台任务）
-    const response = await newsApi.syncMarketNews(24, 50)
+    const response = await newsApi.syncMarketNews(24, 50) as any
 
     if (response.success) {
       ElMessage.success('新闻同步任务已启动，请稍后刷新查看')

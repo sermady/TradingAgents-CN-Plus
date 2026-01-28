@@ -226,7 +226,7 @@ const syncForm = reactive({
 // 获取同步状态
 const fetchSyncStatus = async () => {
   try {
-    const response = await getSyncStatus()
+    const response = await getSyncStatus() as any
     if (response.success) {
       syncStatus.value = response.data
     }
@@ -238,9 +238,9 @@ const fetchSyncStatus = async () => {
 // 获取数据源状态
 const fetchDataSources = async () => {
   try {
-    const response = await getDataSourcesStatus()
+    const response = await getDataSourcesStatus() as any
     if (response.success) {
-      availableSources.value = response.data.sort((a, b) => b.priority - a.priority) // 倒序：优先级高的在前
+      availableSources.value = response.data.sort((a: DataSourceStatus, b: DataSourceStatus) => b.priority - a.priority) // 倒序：优先级高的在前
     }
   } catch (err: any) {
     console.error('获取数据源状态失败:', err)
@@ -259,7 +259,7 @@ const startSync = async () => {
         : undefined
     }
     
-    const response = await runStockBasicsSync(params)
+    const response = await runStockBasicsSync(params) as any
     if (response.success) {
       const responseStatus = response.data.status
       console.log('🚀 同步任务启动成功，当前状态:', responseStatus)
@@ -280,7 +280,7 @@ const startSync = async () => {
         ElMessage.info(`同步状态: ${responseStatus}`)
       }
     } else {
-      ElMessage.error(`同步启动失败: ${response.message}`)
+      ElMessage.error(`同步启动失败: ${(response as any).message}`)
     }
   } catch (err: any) {
     console.error('启动同步失败:', err)
@@ -312,11 +312,11 @@ const clearCache = async () => {
     )
     
     clearingCache.value = true
-    const response = await clearSyncCache()
+    const response = await clearSyncCache() as any
     if (response.success) {
       ElMessage.success('缓存已清空')
     } else {
-      ElMessage.error(`清空缓存失败: ${response.message}`)
+      ElMessage.error(`清空缓存失败: ${(response as any).message}`)
     }
   } catch (err: any) {
     if (err !== 'cancel') {

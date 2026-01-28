@@ -148,9 +148,12 @@ const refreshTimer = ref<NodeJS.Timeout | null>(null)
 // 获取同步状态
 const fetchSyncStatus = async () => {
   try {
-    const response = await getSyncStatus()
+    const response = await getSyncStatus() as any
     if (response.success) {
       syncStatus.value = response.data
+    } else {
+      // 兼容直接返回 SyncStatus 的情况
+      syncStatus.value = response
     }
   } catch (err: any) {
     console.error('获取同步状态失败:', err)
@@ -160,11 +163,16 @@ const fetchSyncStatus = async () => {
 // 获取数据源状态
 const fetchDataSources = async () => {
   try {
-    const response = await getDataSourcesStatus()
+    const response = await getDataSourcesStatus() as any
     if (response.success) {
       dataSources.value = response.data
-        .sort((a, b) => b.priority - a.priority) // 倒序：优先级高的在前
+        .sort((a: any, b: any) => b.priority - a.priority) // 倒序：优先级高的在前
         .slice(0, 3) // 只显示前3个数据源
+    } else {
+      // 兼容直接返回 DataSourceStatus[] 的情况
+      dataSources.value = (response as DataSourceStatus[])
+        .sort((a: any, b: any) => b.priority - a.priority)
+        .slice(0, 3)
     }
   } catch (err: any) {
     console.error('获取数据源状态失败:', err)

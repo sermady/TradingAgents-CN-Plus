@@ -486,11 +486,11 @@ const performScreening = async () => {
     // 明确指定：不加任何技术指标相关条件
 
     const payload = {
-      market: 'CN',
+      market: 'CN' as 'CN',
       date: undefined,
-      adj: 'qfq',
+      adj: 'qfq' as const,
       conditions: { logic: 'AND', children },
-      order_by: [{ field: 'market_cap', direction: 'desc' }],
+      order_by: [{ field: 'market_cap', direction: 'desc' as const }],
       limit: 500,
       offset: 0,
     }
@@ -499,7 +499,7 @@ const performScreening = async () => {
     console.log('🔍 筛选请求 payload:', JSON.stringify(payload, null, 2))
     console.log('🔍 筛选条件 children:', children)
 
-    const res = await screeningApi.run(payload, { timeout: 120000 })
+    const res = await screeningApi.run(payload, { timeout: 120000 }) as any
     const data = (res as any)?.data || res // ApiClient封装会返回 {success,data} 格式
     const items = data?.items || []
 
@@ -508,7 +508,7 @@ const performScreening = async () => {
       symbol: it.symbol || it.code,  // 主字段
       code: it.symbol || it.code,    // 兼容字段
       name: it.name || it.symbol || it.code,  // 使用股票名称，如果没有则用代码
-      market: it.market || 'A股',
+      market: 'CN' as 'CN' | undefined,  // A股市场统一使用 'CN'
       industry: it.industry,
       area: it.area,
       board: it.board,  // 板块（主板、创业板、科创板等）
@@ -560,7 +560,8 @@ const generateMockResults = (): StockInfo[] => {
 
   return mockStocks.map(stock => ({
     ...stock,
-    market: filters.market
+    symbol: stock.code,
+    market: 'CN' as 'CN' | undefined
   }))
 }
 
@@ -708,7 +709,7 @@ const loadFieldConfig = async () => {
   fieldsLoading.value = true
   try {
     const response = await screeningApi.getFields()
-    fieldConfig.value = response.data || response
+    fieldConfig.value = (response as any).data || response
     console.log('字段配置加载成功:', fieldConfig.value)
   } catch (error) {
     console.error('加载字段配置失败:', error)
@@ -722,7 +723,7 @@ const loadFieldConfig = async () => {
 const loadIndustries = async () => {
   try {
     const response = await screeningApi.getIndustries()
-    const data = response.data || response
+    const data = (response as any).data || response
     industryOptions.value = data.industries || []
     console.log('行业列表加载成功:', industryOptions.value.length, '个行业')
   } catch (error) {
@@ -759,7 +760,7 @@ const loadFavorites = async () => {
 // 获取当前数据源
 const loadCurrentDataSource = async () => {
   try {
-    const response = await getCurrentDataSource()
+    const response = await getCurrentDataSource() as any
     if (response.success && response.data) {
       currentDataSource.value = response.data
     }

@@ -490,67 +490,67 @@ export const testApiConnection = async (): Promise<boolean> => {
 
 // 请求方法封装
 export class ApiClient {
-  // GET请求
+  // GET请求 - 直接返回解包后的数据 T
   static async get<T = any>(
     url: string,
     params?: any,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.get(url, { params, ...config })
+  ): Promise<T> {
+    // 响应拦截器返回 ApiResponse<T>，这里解包返回 data
+    const response = await request.get(url, { params, ...config }) as ApiResponse<T>
+    return response.data
   }
 
-  // POST请求
+  // POST请求 - 直接返回解包后的数据 T
   static async post<T = any>(
     url: string,
     data?: any,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.post(url, data, config)
+  ): Promise<T> {
+    const response = await request.post(url, data, config) as ApiResponse<T>
+    return response.data
   }
 
-  // PUT请求
+  // PUT请求 - 直接返回解包后的数据 T
   static async put<T = any>(
     url: string,
     data?: any,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.put(url, data, config)
+  ): Promise<T> {
+    const response = await request.put(url, data, config) as ApiResponse<T>
+    return response.data
   }
 
-  // DELETE请求
+  // DELETE请求 - 直接返回解包后的数据 T
   static async delete<T = any>(
     url: string,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.delete(url, config)
+  ): Promise<T> {
+    const response = await request.delete(url, config) as ApiResponse<T>
+    return response.data
   }
 
-  // PATCH请求
+  // PATCH请求 - 直接返回解包后的数据 T
   static async patch<T = any>(
     url: string,
     data?: any,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.patch(url, data, config)
+  ): Promise<T> {
+    const response = await request.patch(url, data, config) as ApiResponse<T>
+    return response.data
   }
 
-  // 上传文件
+  // 上传文件 - 直接返回解包后的数据 T
   static async upload<T = any>(
     url: string,
     file: File,
     onProgress?: (progress: number) => void,
     config?: RequestConfig
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const formData = new FormData()
     formData.append('file', file)
 
-    // 响应拦截器已经返回 response.data，所以这里直接返回
-    return await request.post(url, formData, {
+    const response = await request.post(url, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
@@ -561,7 +561,8 @@ export class ApiClient {
         }
       },
       ...config
-    })
+    }) as ApiResponse<T>
+    return response.data
   }
 
   // 下载文件
@@ -570,12 +571,13 @@ export class ApiClient {
     filename?: string,
     config?: RequestConfig
   ): Promise<void> {
-    // 对于 blob 响应，响应拦截器返回的就是 blob 数据
-    const blobData = await request.get(url, {
+    // 对于 blob 响应，直接获取数据
+    const response = await request.get(url, {
       responseType: 'blob',
       ...config
     })
 
+    const blobData = response as unknown as BlobPart
     const blob = new Blob([blobData])
     const downloadUrl = window.URL.createObjectURL(blob)
     const link = document.createElement('a')

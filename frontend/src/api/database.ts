@@ -79,19 +79,19 @@ export interface ConnectionTestResult {
 // 数据库管理API
 export const databaseApi = {
   // 获取数据库状态
-  async getStatus(): Promise<DatabaseStatus> {
+  async getStatus() {
     const response = await ApiClient.get<DatabaseStatus>('/api/system/database/status')
-    return response.data
+    return response
   },
 
   // 获取数据库统计
-  async getStats(): Promise<DatabaseStats> {
+  async getStats() {
     const response = await ApiClient.get<DatabaseStats>('/api/system/database/stats')
-    return response.data
+    return response
   },
 
   // 测试数据库连接
-  testConnections(): Promise<{ success: boolean; message: string; data: ConnectionTestResult }> {
+  testConnections() {
     return ApiClient.post('/api/system/database/test')
   },
 
@@ -99,17 +99,17 @@ export const databaseApi = {
   createBackup(data: {
     name: string
     collections?: string[]
-  }): Promise<{ success: boolean; message: string; data: BackupInfo }> {
+  }) {
     return ApiClient.post('/api/system/database/backup', data)
   },
 
   // 获取备份列表
-  getBackups(): Promise<{ success: boolean; data: BackupInfo[] }> {
+  getBackups() {
     return ApiClient.get('/api/system/database/backups')
   },
 
   // 删除备份
-  deleteBackup(backupId: string): Promise<{ success: boolean; message: string }> {
+  deleteBackup(backupId: string) {
     return ApiClient.delete(`/api/system/database/backups/${backupId}`)
   },
 
@@ -121,11 +121,11 @@ export const databaseApi = {
       format?: string
       overwrite?: boolean
     }
-  ): Promise<{ success: boolean; message: string; data: any }> {
+  ) {
     const formData = new FormData()
     formData.append('file', file)
 
-    // 🔥 使用 URL 参数传递 collection, format, overwrite
+    // 使用 URL 参数传递 collection, format, overwrite
     // FastAPI 的 File 参数和其他参数混用时，其他参数需要通过 Query 传递
     const params = new URLSearchParams({
       collection: options.collection,
@@ -133,7 +133,7 @@ export const databaseApi = {
       overwrite: String(options.overwrite || false)
     })
 
-    console.log('📤 导入数据请求:', {
+    console.log('导入数据请求:', {
       filename: file.name,
       size: file.size,
       collection: options.collection,
@@ -160,41 +160,17 @@ export const databaseApi = {
   },
 
   // 清理旧数据
-  cleanupOldData(days: number = 30): Promise<{
-    success: boolean
-    message: string
-    data: {
-      deleted_count: number
-      cleaned_collections: string[]
-      cutoff_date: string
-    }
-  }> {
+  cleanupOldData(days: number = 30) {
     return ApiClient.post(`/api/system/database/cleanup?days=${days}`)
   },
 
   // 清理过期分析结果
-  cleanupAnalysisResults(days: number = 30): Promise<{
-    success: boolean
-    message: string
-    data: {
-      deleted_count: number
-      cleaned_collections: string[]
-      cutoff_date: string
-    }
-  }> {
+  cleanupAnalysisResults(days: number = 30) {
     return ApiClient.post(`/api/system/database/cleanup/analysis?days=${days}`)
   },
 
   // 清理操作日志
-  cleanupOperationLogs(days: number = 90): Promise<{
-    success: boolean
-    message: string
-    data: {
-      deleted_count: number
-      cleaned_collections: string[]
-      cutoff_date: string
-    }
-  }> {
+  cleanupOperationLogs(days: number = 90) {
     return ApiClient.post(`/api/system/database/cleanup/logs?days=${days}`)
   }
 }

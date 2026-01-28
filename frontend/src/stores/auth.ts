@@ -8,17 +8,17 @@ export interface AuthState {
   isAuthenticated: boolean
   token: string | null
   refreshToken: string | null
-  
+
   // 用户信息
   user: User | null
-  
+
   // 权限信息
   permissions: string[]
   roles: string[]
-  
+
   // 登录状态
   loginLoading: boolean
-  
+
   // 重定向路径
   redirectPath: string
 }
@@ -33,7 +33,7 @@ export const useAuthStore = defineStore('auth', {
       if (!token || typeof token !== 'string') return false
       // 检查是否是mock token（开发时可能设置的测试token）
       if (token === 'mock-token' || token.startsWith('mock-')) {
-        console.warn('⚠️ 检测到mock token，将被清除:', token)
+        console.warn('检测到mock token，将被清除:', token)
         return false
       }
       // JWT token应该有3个部分，用.分隔
@@ -45,18 +45,22 @@ export const useAuthStore = defineStore('auth', {
 
     // 如果token无效，清除相关数据
     if (!validToken || !validRefreshToken) {
-      console.log('🧹 清除无效的认证信息')
+      console.log('清除无效的认证信息')
       localStorage.removeItem('auth-token')
       localStorage.removeItem('refresh-token')
       localStorage.removeItem('user-info')
     }
+
+    // 从 localStorage 获取用户信息
+    const storedUser = useStorage('user-info', null)
+    const userValue = storedUser.value as unknown as User | null
 
     return {
       isAuthenticated: !!validToken,
       token: validToken,
       refreshToken: validRefreshToken,
 
-      user: validToken ? (useStorage('user-info', null).value || null) : null,
+      user: validToken ? (userValue || null) : null,
 
       permissions: [],
       roles: [],
@@ -190,31 +194,28 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.loginLoading = true
 
+        // ApiClient now returns unwrapped data directly
         const response = await authApi.login(loginForm)
 
-        if (response.success) {
-          const { access_token, refresh_token, user } = response.data
+        // response is LoginResponse { access_token, refresh_token, token_type, expires_in, user }
+        const { access_token, refresh_token, user } = response
 
-          // 设置认证信息
-          this.setAuthInfo(access_token, refresh_token, user)
+        // 设置认证信息
+        this.setAuthInfo(access_token, refresh_token, user)
 
-          // 开源版admin用户拥有所有权限
-          this.permissions = ['*']
-          this.roles = ['admin']
+        // 开源版admin用户拥有所有权限
+        this.permissions = ['*']
+        this.roles = ['admin']
 
-          // 同步用户偏好设置到 appStore
-          this.syncUserPreferencesToAppStore()
+        // 同步用户偏好设置到 appStore
+        this.syncUserPreferencesToAppStore()
 
-          // 启动 token 自动刷新定时器
-          const { setupTokenRefreshTimer } = await import('@/utils/auth')
-          setupTokenRefreshTimer()
+        // 启动 token 自动刷新定时器
+        const { setupTokenRefreshTimer } = await import('@/utils/auth')
+        setupTokenRefreshTimer()
 
-          // 不在这里显示成功消息，由调用方显示
-          return true
-        } else {
-          // 不在这里显示错误消息，由调用方显示
-          return false
-        }
+        // 不在这里显示成功消息，由调用方显示
+        return true
       } catch (error: any) {
         console.error('登录失败:', error)
         // 不在这里显示错误消息，由调用方显示
@@ -227,15 +228,10 @@ export const useAuthStore = defineStore('auth', {
     // 注册
     async register(registerForm: RegisterForm) {
       try {
-        const response = await authApi.register(registerForm)
-        
-        if (response.success) {
-          ElMessage.success('注册成功，请登录')
-          return true
-        } else {
-          ElMessage.error(response.message || '注册失败')
-          return false
-        }
+        // ApiClient now returns unwrapped data
+        await authApi.register(registerForm)
+        ElMessage.success('注册成功，请登录')
+        return true
       } catch (error: any) {
         console.error('注册失败:', error)
         ElMessage.error(error.message || '注册失败，请重试')
@@ -282,18 +278,15 @@ export const useAuthStore = defineStore('auth', {
           throw new Error('Refresh token格式无效')
         }
 
+        // ApiClient now returns unwrapped data
         const response = await authApi.refreshToken(this.refreshToken)
         console.log('📨 刷新响应:', response)
 
-        if (response.success) {
-          const { access_token, refresh_token } = response.data
-          console.log('✅ Token刷新成功')
-          this.setAuthInfo(access_token, refresh_token)
-          return true
-        } else {
-          console.error('❌ Token刷新失败:', response.message)
-          throw new Error(response.message || 'Token刷新失败')
-        }
+        // response is RefreshTokenResponse { access_token, refresh_token, expires_in }
+        const { access_token, refresh_token } = response
+        console.log('✅ Token刷新成功')
+        this.setAuthInfo(access_token, refresh_token)
+        return true
       } catch (error: any) {
         console.error('❌ Token刷新异常:', error)
 
@@ -316,20 +309,14 @@ export const useAuthStore = defineStore('auth', {
     async fetchUserInfo() {
       try {
         console.log('📡 正在获取用户信息...')
-        const response = await authApi.getUserInfo()
+        // ApiClient now returns unwrapped data directly
+        this.user = await authApi.getUserInfo()
+        console.log('✅ 用户信息获取成功:', this.user?.username)
 
-        if (response.success) {
-          this.user = response.data
-          console.log('✅ 用户信息获取成功:', this.user?.username)
+        // 同步用户偏好设置到 appStore
+        this.syncUserPreferencesToAppStore()
 
-          // 同步用户偏好设置到 appStore
-          this.syncUserPreferencesToAppStore()
-
-          return true
-        } else {
-          console.warn('⚠️ 获取用户信息失败:', response.message)
-          throw new Error(response.message || '获取用户信息失败')
-        }
+        return true
       } catch (error) {
         console.error('❌ 获取用户信息失败:', error)
         // 重新抛出错误，让上层处理
@@ -347,20 +334,15 @@ export const useAuthStore = defineStore('auth', {
     // 更新用户信息
     async updateUserInfo(userInfo: Partial<User>) {
       try {
-        const response = await authApi.updateUserInfo(userInfo)
+        // ApiClient now returns unwrapped data directly
+        const updatedUser = await authApi.updateUserInfo(userInfo)
+        this.user = { ...this.user!, ...updatedUser }
 
-        if (response.success) {
-          this.user = { ...this.user!, ...response.data }
+        // 同步用户偏好设置到 appStore
+        this.syncUserPreferencesToAppStore()
 
-          // 同步用户偏好设置到 appStore
-          this.syncUserPreferencesToAppStore()
-
-          ElMessage.success('用户信息更新成功')
-          return true
-        } else {
-          ElMessage.error(response.message || '更新失败')
-          return false
-        }
+        ElMessage.success('用户信息更新成功')
+        return true
       } catch (error: any) {
         console.error('更新用户信息失败:', error)
         ElMessage.error(error.message || '更新失败，请重试')
@@ -409,19 +391,14 @@ export const useAuthStore = defineStore('auth', {
     // 修改密码
     async changePassword(oldPassword: string, newPassword: string, confirmPassword: string) {
       try {
-        const response = await authApi.changePassword({
+        // ApiClient now returns unwrapped data
+        await authApi.changePassword({
           old_password: oldPassword,
           new_password: newPassword,
           confirm_password: confirmPassword
         })
-
-        if (response.success) {
-          ElMessage.success('密码修改成功')
-          return true
-        } else {
-          ElMessage.error(response.message || '密码修改失败')
-          return false
-        }
+        ElMessage.success('密码修改成功')
+        return true
       } catch (error: any) {
         console.error('修改密码失败:', error)
         ElMessage.error(error.message || '修改密码失败，请重试')

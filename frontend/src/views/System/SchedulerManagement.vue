@@ -710,8 +710,8 @@ const loadJobs = async () => {
   try {
     const [jobsRes, statsRes] = await Promise.all([getJobs(), getSchedulerStats()])
     // ApiClient.get 返回 ApiResponse<T>，其中 data 字段就是我们需要的数据
-    jobs.value = Array.isArray(jobsRes.data) ? jobsRes.data : []
-    stats.value = statsRes.data || null
+    jobs.value = Array.isArray((jobsRes as any).data) ? (jobsRes as any).data : []
+    stats.value = (statsRes as any).data || null
   } catch (error: any) {
     ElMessage.error(error.message || '加载任务列表失败')
     jobs.value = []
@@ -751,7 +751,7 @@ const showJobDetail = async (job: Job) => {
   try {
     const res = await getJobDetail(job.id)
     // request.get 已经返回了 response.data
-    currentJob.value = res.data || null
+    currentJob.value = (res as any).data || null
     detailDialogVisible.value = true
   } catch (error: any) {
     ElMessage.error(error.message || '获取任务详情失败')
@@ -846,9 +846,9 @@ const loadHistory = async () => {
       : await getJobExecutions(params)
 
     // 直接使用执行记录，不需要转换格式
-    const executions = Array.isArray(res.data?.items) ? res.data.items : []
+    const executions = Array.isArray((res as any).data?.items) ? (res as any).data.items : []
     historyList.value = executions
-    historyTotal.value = res.data?.total || 0
+    historyTotal.value = (res as any).data?.total || 0
   } catch (error: any) {
     ElMessage.error(error.message || '加载执行历史失败')
     historyList.value = []
@@ -931,8 +931,8 @@ const loadExecutions = async () => {
       ? await getSingleJobExecutions(currentHistoryJobId.value, params)
       : await getJobExecutions(params)
 
-    executionList.value = Array.isArray(res.data?.items) ? res.data.items : []
-    executionTotal.value = res.data?.total || 0
+    executionList.value = Array.isArray((res as any).data?.items) ? (res as any).data.items : []
+    executionTotal.value = (res as any).data?.total || 0
   } catch (error: any) {
     ElMessage.error(error.message || '加载执行历史失败')
     executionList.value = []

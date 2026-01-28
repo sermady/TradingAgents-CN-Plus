@@ -151,7 +151,7 @@
         <el-table :data="cacheDetails" style="width: 100%">
           <el-table-column prop="type" label="类型" width="120">
             <template #default="{ row }">
-              <el-tag :type="getCacheTypeTag(row.type)">{{ row.type }}</el-tag>
+              <el-tag :type="getCacheTypeTag(row.type) as 'primary' | 'success' | 'warning' | 'info' | 'danger'">{{ row.type }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="symbol" label="股票代码" width="120" />
@@ -282,7 +282,7 @@ const refreshStats = async () => {
   try {
     const response = await cacheApi.getCacheStats()
     // 从 ApiResponse 中提取 data 字段
-    cacheStats.value = response.data || response
+    cacheStats.value = (response as any).data || response
     ElMessage.success('缓存统计已刷新')
   } catch (error: any) {
     console.error('刷新缓存统计失败:', error)
@@ -353,7 +353,7 @@ const loadCacheDetails = async () => {
   try {
     const response = await cacheApi.getCacheDetails(currentPage.value, pageSize.value)
     // 从 ApiResponse 中提取 data 字段
-    const data = response.data || response
+    const data = (response as any).data || response
     cacheDetails.value = data.items || []
     totalItems.value = data.total || 0
   } catch (error: any) {

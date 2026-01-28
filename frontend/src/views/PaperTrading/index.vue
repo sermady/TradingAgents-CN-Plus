@@ -355,7 +355,7 @@ function detectMarket() {
 async function fetchAccount() {
   try {
     loading.value.account = true
-    const res = await paperApi.getAccount()
+    const res = await paperApi.getAccount() as any
     if (res.success) {
       account.value = res.data.account
       // 可选：也可从account接口带回的positions中填充
@@ -371,7 +371,7 @@ async function fetchAccount() {
 async function fetchPositions() {
   try {
     loading.value.positions = true
-    const res = await paperApi.getPositions()
+    const res = await paperApi.getPositions() as any
     if (res.success) {
       positions.value = res.data.items || []
       // 批量获取股票名称
@@ -387,7 +387,7 @@ async function fetchPositions() {
 async function fetchOrders() {
   try {
     loading.value.orders = true
-    const res = await paperApi.getOrders(50)
+    const res = await paperApi.getOrders(50) as any
     if (res.success) {
       orders.value = res.data.items || []
       // 批量获取股票名称
@@ -411,7 +411,7 @@ async function fetchStockNames(items: any[]) {
   await Promise.all(
     codes.map(async (code) => {
       try {
-        const res = await stocksApi.getQuote(code)
+        const res = await stocksApi.getQuote(code) as any
         if (res.success && res.data && res.data.name) {
           // 更新所有包含该代码的项目
           items.forEach(item => {
@@ -435,7 +435,7 @@ async function submitOrder() {
   try {
     const payload: any = { side: order.value.side as 'buy' | 'sell', code: order.value.code, quantity: Number(order.value.qty) }
     if ((order.value as any).analysis_id) payload.analysis_id = (order.value as any).analysis_id
-    const res = await paperApi.placeOrder(payload)
+    const res = await paperApi.placeOrder(payload) as any
     if (res.success) {
       ElMessage.success('下单成功')
       orderDialog.value = false
@@ -451,7 +451,7 @@ async function submitOrder() {
 async function confirmReset() {
   try {
     await ElMessageBox.confirm('将清空所有订单与持仓，并重置账户为初始现金，确认重置？', '重置账户', { type: 'warning' })
-    const res = await paperApi.resetAccount()
+    const res = await paperApi.resetAccount() as any
     if (res.success) {
       ElMessage.success('账户已重置')
       await refreshAll()
@@ -528,7 +528,7 @@ async function sellPosition(position: any) {
       quantity: position.quantity
     }
 
-    const res = await paperApi.placeOrder(payload)
+    const res = await paperApi.placeOrder(payload) as any
     if (res.success) {
       ElMessage.success('卖出成功')
       await refreshAll()

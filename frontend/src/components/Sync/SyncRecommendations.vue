@@ -177,12 +177,12 @@ const fetchRecommendations = async () => {
   try {
     loading.value = true
     error.value = ''
-    
-    const response = await getSyncRecommendations()
+
+    const response = await getSyncRecommendations() as any
     if (response.success) {
       recommendations.value = response.data
     } else {
-      error.value = response.message || '获取建议失败'
+      error.value = (response as any).message || '获取建议失败'
     }
   } catch (err: any) {
     console.error('获取同步建议失败:', err)

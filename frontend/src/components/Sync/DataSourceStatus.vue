@@ -126,13 +126,13 @@ const fetchDataSourcesStatus = async () => {
     console.log('🔍 [DataSourceStatus] API连接测试成功，继续获取数据源状态')
 
     console.log('🔍 [DataSourceStatus] API连接正常，调用 getDataSourcesStatus')
-    const response = await getDataSourcesStatus()
+    const response = await getDataSourcesStatus() as any
     console.log('🔍 [DataSourceStatus] API响应:', response)
 
     if (response.success) {
       console.log('🔍 [DataSourceStatus] API调用成功，数据源数量:', response.data?.length || 0)
       console.log('🔍 [DataSourceStatus] 数据源详情:', response.data)
-      dataSources.value = response.data.sort((a, b) => b.priority - a.priority) // 倒序：优先级高的在前
+      dataSources.value = response.data.sort((a: DataSourceStatus, b: DataSourceStatus) => b.priority - a.priority) // 倒序：优先级高的在前
       console.log('🔍 [DataSourceStatus] 排序后的数据源:', dataSources.value)
     } else {
       console.error('🔍 [DataSourceStatus] API调用失败')
@@ -181,10 +181,10 @@ const testSingleSource = async (sourceName: string) => {
     ElMessage.info(`正在测试 ${sourceName.toUpperCase()}，请稍候...`)
 
     // 传递数据源名称，只测试该数据源
-    const response = await testDataSources(sourceName)
+    const response = await testDataSources(sourceName) as any
     if (response.success) {
       const results = response.data.test_results
-      const sourceResult = results.find(r => r.name === sourceName)
+      const sourceResult = results.find((r: DataSourceTestResult) => r.name === sourceName)
       if (sourceResult) {
         testResults.value[sourceName] = sourceResult
         if (sourceResult.available) {
@@ -194,7 +194,7 @@ const testSingleSource = async (sourceName: string) => {
         }
       }
     } else {
-      ElMessage.error(`测试失败: ${response.message}`)
+      ElMessage.error(`测试失败: ${(response as any).message}`)
     }
   } catch (err: any) {
     console.error('测试数据源失败:', err)

@@ -215,7 +215,7 @@
                 <!-- 厂家头部 -->
                 <div class="provider-header">
                   <div class="provider-info">
-                    <el-tag :type="getProviderTagType(group.provider)" size="large" class="provider-tag">
+                    <el-tag :type="getProviderTagType(group.provider) as any" size="large" class="provider-tag">
                       <el-icon><OfficeBuilding /></el-icon>
                       {{ group.display_name }}
                     </el-tag>
@@ -297,7 +297,7 @@
                       <div class="capability-cell">
                         <div v-if="row.capability_level" class="capability-row-item">
                           <span class="label">等级:</span>
-                          <el-tag :type="getCapabilityLevelType(row.capability_level)" size="small">
+                          <el-tag :type="getCapabilityLevelType(row.capability_level) as any" size="small">
                             {{ getCapabilityLevelText(row.capability_level) }}
                           </el-tag>
                         </div>
@@ -1616,7 +1616,6 @@ const addModelToProvider = (providerRow: any) => {
   currentLLMConfig.value = {
     provider: providerRow.provider,
     model_name: '',
-    display_name: '',
     description: '',
     enabled: true,
     max_tokens: 4000,
@@ -1999,7 +1998,7 @@ const testDatabase = async (config: DatabaseConfig) => {
     const result = await configApi.testDatabaseConfig(config.name)
 
     if (result.success) {
-      ElMessage.success(`数据库连接测试成功 (${result.response_time?.toFixed(2)}s)`)
+      ElMessage.success(`数据库连接测试成功`)
     } else {
       ElMessage.error(`数据库连接测试失败: ${result.message}`)
     }

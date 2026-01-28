@@ -573,13 +573,13 @@ watch(
         // 确保显示名称正确加载
         model_display_name: config.model_display_name || '',
         // 🆕 确保模型能力字段正确加载
-        capability_level: config.capability_level ?? defaultFormData.capability_level,
-        suitable_roles: config.suitable_roles || defaultFormData.suitable_roles,
-        features: config.features || defaultFormData.features,
-        recommended_depths: config.recommended_depths || defaultFormData.recommended_depths,
-        performance_metrics: config.performance_metrics || defaultFormData.performance_metrics
+        capability_level: (config as any).capability_level ?? defaultFormData.capability_level,
+        suitable_roles: (config as any).suitable_roles || defaultFormData.suitable_roles,
+        features: (config as any).features || defaultFormData.features,
+        recommended_depths: (config as any).recommended_depths || defaultFormData.recommended_depths,
+        performance_metrics: (config as any).performance_metrics as Required<typeof defaultFormData.performance_metrics> || defaultFormData.performance_metrics
       }
-      modelOptions.value = getModelOptions(config.provider)
+      modelOptions.value = getModelOptions((config as any).provider)
 
       // 如果有 model_name，尝试在下拉列表中选中它
       if (config.model_name) {
@@ -619,13 +619,13 @@ watch(
           // 确保显示名称正确加载
           model_display_name: props.config.model_display_name || '',
           // 🆕 确保模型能力字段正确加载
-          capability_level: props.config.capability_level ?? defaultFormData.capability_level,
-          suitable_roles: props.config.suitable_roles || defaultFormData.suitable_roles,
-          features: props.config.features || defaultFormData.features,
-          recommended_depths: props.config.recommended_depths || defaultFormData.recommended_depths,
-          performance_metrics: props.config.performance_metrics || defaultFormData.performance_metrics
+          capability_level: (props.config as any).capability_level ?? defaultFormData.capability_level,
+          suitable_roles: (props.config as any).suitable_roles || defaultFormData.suitable_roles,
+          features: (props.config as any).features || defaultFormData.features,
+          recommended_depths: (props.config as any).recommended_depths || defaultFormData.recommended_depths,
+          performance_metrics: (props.config as any).performance_metrics as Required<typeof defaultFormData.performance_metrics> || defaultFormData.performance_metrics
         }
-        modelOptions.value = getModelOptions(props.config.provider)
+        modelOptions.value = getModelOptions((props.config as any).provider)
 
         // 如果有 model_name，尝试在下拉列表中选中它
         if (props.config.model_name) {

@@ -32,7 +32,7 @@
             <el-timeline-item
               v-for="(item, index) in historyList"
               :key="index"
-              :timestamp="formatTime(item.finished_at || item.started_at)"
+              :timestamp="formatTime((item.finished_at || item.started_at) as string)"
               :type="getTimelineType(item.status)"
               :icon="getTimelineIcon(item.status)"
               placement="top"
@@ -149,7 +149,7 @@ const fetchHistory = async (page = 1) => {
     const response = await getSyncHistory({
       page,
       page_size: pageSize.value
-    })
+    }) as any
 
     if (response.success) {
       const { records, total, has_more } = response.data
@@ -169,7 +169,7 @@ const fetchHistory = async (page = 1) => {
         console.log('📝 暂无同步历史记录')
       }
     } else {
-      throw new Error(response.message || '获取历史记录失败')
+      throw new Error((response as any).message || '获取历史记录失败')
     }
   } catch (err: any) {
     console.error('获取同步历史失败:', err)
@@ -225,8 +225,8 @@ const getStatusText = (status: string) => {
 }
 
 // 获取时间线类型
-const getTimelineType = (status: string) => {
-  const typeMap: Record<string, string> = {
+const getTimelineType = (status: string): 'success' | 'warning' | 'danger' | 'primary' | 'info' => {
+  const typeMap: Record<string, 'success' | 'warning' | 'danger' | 'primary' | 'info'> = {
     success: 'success',
     success_with_errors: 'warning',
     failed: 'danger',

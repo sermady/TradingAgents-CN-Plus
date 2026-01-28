@@ -88,7 +88,7 @@
         
         <el-table-column prop="type" label="报告类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="getTypeColor(row.type)">
+            <el-tag :type="getTypeColor(row.type) as 'primary' | 'success' | 'warning' | 'info' | 'danger'">
               {{ getTypeText(row.type) }}
             </el-tag>
           </template>
@@ -104,7 +104,7 @@
         
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
+            <el-tag :type="getStatusType(row.status) as 'primary' | 'success' | 'warning' | 'info' | 'danger'">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>

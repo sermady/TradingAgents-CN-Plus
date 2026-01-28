@@ -2,7 +2,7 @@ import { ApiClient } from './request'
 
 export interface ScreeningOrderBy { field: string; direction: 'asc' | 'desc' }
 export interface ScreeningRunReq {
-  market?: 'CN'
+  market: 'CN'
   date?: string | null
   adj?: 'qfq' | 'hfq' | 'none'
   conditions: any
@@ -12,10 +12,16 @@ export interface ScreeningRunReq {
 }
 
 export interface ScreeningRunItem {
+  market: string
   code: string
+  name?: string
+  industry?: string
   close?: number
   pct_chg?: number
   amount?: number
+  total_mv?: number
+  pe?: number
+  pb?: number
   ma20?: number
   rsi14?: number
   kdj_k?: number
@@ -24,6 +30,7 @@ export interface ScreeningRunItem {
   dif?: number
   dea?: number
   macd_hist?: number
+  symbol?: string
 }
 
 export interface ScreeningRunResp { total: number; items: ScreeningRunItem[] }

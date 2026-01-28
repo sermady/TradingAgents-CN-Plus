@@ -3,6 +3,13 @@
  */
 import { ApiClient } from './request'
 
+// API响应格式
+interface ApiResponse<T = any> {
+  success: boolean
+  message: string
+  data: T
+}
+
 // 数据源状态接口
 export interface DataSourceStatus {
   name: string
@@ -33,15 +40,6 @@ export interface SyncRequest {
   force?: boolean
   preferred_sources?: string[]
 }
-
-// API响应格式
-export interface ApiResponse<T = any> {
-  success: boolean
-  message: string
-  data: T
-}
-
-// 基础测试结果接口
 export interface BaseTestResult {
   success: boolean
   message: string
@@ -76,28 +74,28 @@ export interface SyncRecommendations {
 /**
  * 获取数据源状态
  */
-export const getDataSourcesStatus = (): Promise<ApiResponse<DataSourceStatus[]>> => {
-  return ApiClient.get('/api/sync/multi-source/sources/status')
+export const getDataSourcesStatus = () => {
+  return ApiClient.get<DataSourceStatus[]>('/api/sync/multi-source/sources/status')
 }
 
 /**
  * 获取当前正在使用的数据源
  */
-export const getCurrentDataSource = (): Promise<ApiResponse<{
-  name: string
-  priority: number
-  description: string
-  token_source?: 'database' | 'env'
-  token_source_display?: string
-}>> => {
-  return ApiClient.get('/api/sync/multi-source/sources/current')
+export const getCurrentDataSource = () => {
+  return ApiClient.get<{
+    name: string
+    priority: number
+    description: string
+    token_source?: 'database' | 'env'
+    token_source_display?: string
+  }>('/api/sync/multi-source/sources/current')
 }
 
 /**
  * 获取同步状态
  */
-export const getSyncStatus = (): Promise<ApiResponse<SyncStatus>> => {
-  return ApiClient.get('/api/sync/multi-source/status')
+export const getSyncStatus = () => {
+  return ApiClient.get<SyncStatus>('/api/sync/multi-source/status')
 }
 
 /**
@@ -106,7 +104,7 @@ export const getSyncStatus = (): Promise<ApiResponse<SyncStatus>> => {
 export const runStockBasicsSync = (params?: {
   force?: boolean
   preferred_sources?: string
-}): Promise<ApiResponse<SyncStatus>> => {
+}) => {
   const queryParams = new URLSearchParams()
   if (params?.force) {
     queryParams.append('force', 'true')
@@ -117,7 +115,7 @@ export const runStockBasicsSync = (params?: {
 
   const url = `/api/sync/multi-source/stock_basics/run${queryParams.toString() ? '?' + queryParams.toString() : ''}`
   return ApiClient.post(url, undefined, {
-    timeout: 600000 // 🔥 同步操作需要更长时间，设置为10分钟（BaoStock需要逐个获取估值数据）
+    timeout: 600000 // 同步操作需要更长时间，设置为10分钟（BaoStock需要逐个获取估值数据）
   })
 }
 
@@ -125,7 +123,7 @@ export const runStockBasicsSync = (params?: {
  * 测试数据源连接
  * @param sourceName - 可选，指定要测试的数据源名称。如果不指定，则测试所有数据源
  */
-export const testDataSources = (sourceName?: string): Promise<ApiResponse<{ test_results: DataSourceTestResult[] }>> => {
+export const testDataSources = (sourceName?: string) => {
   const params = sourceName ? { source_name: sourceName } : {}
   return ApiClient.post('/api/sync/multi-source/test-sources', params, {
     timeout: 15000 // 单个数据源测试超时15秒，多个数据源最多30秒
@@ -135,8 +133,8 @@ export const testDataSources = (sourceName?: string): Promise<ApiResponse<{ test
 /**
  * 获取同步建议
  */
-export const getSyncRecommendations = (): Promise<ApiResponse<SyncRecommendations>> => {
-  return ApiClient.get('/api/sync/multi-source/recommendations')
+export const getSyncRecommendations = () => {
+  return ApiClient.get<SyncRecommendations>('/api/sync/multi-source/recommendations')
 }
 
 /**
@@ -146,13 +144,7 @@ export const getSyncHistory = (params?: {
   page?: number
   page_size?: number
   status?: string
-}): Promise<ApiResponse<{
-  records: SyncStatus[]
-  total: number
-  page: number
-  page_size: number
-  has_more: boolean
-}>> => {
+}) => {
   const queryParams = new URLSearchParams()
   if (params?.page) {
     queryParams.append('page', params.page.toString())
@@ -171,15 +163,15 @@ export const getSyncHistory = (params?: {
 /**
  * 清空同步缓存
  */
-export const clearSyncCache = (): Promise<ApiResponse<{ cleared: boolean }>> => {
+export const clearSyncCache = () => {
   return ApiClient.delete('/api/sync/multi-source/cache')
 }
 
 // 传统单一数据源同步API（保持兼容性）
-export const runSingleSourceSync = (): Promise<ApiResponse<any>> => {
+export const runSingleSourceSync = () => {
   return ApiClient.post('/api/sync/stock_basics/run')
 }
 
-export const getSingleSourceSyncStatus = (): Promise<ApiResponse<any>> => {
+export const getSingleSourceSyncStatus = () => {
   return ApiClient.get('/api/sync/stock_basics/status')
 }

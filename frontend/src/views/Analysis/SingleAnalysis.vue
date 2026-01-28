@@ -1049,7 +1049,7 @@ const submitAnalysis = async () => {
       parameters: {
         market_type: analysisForm.market,
         analysis_date: analysisDate.toISOString().split('T')[0],
-        use_realtime: analysisForm.useRealtime && isToday.value,  // 仅今天时有效
+        // use_realtime 字段已移除，实时行情通过其他方式获取
         research_depth: getDepthDescription(analysisForm.researchDepth),
         selected_analysts: convertAnalystNamesToIds(analysisForm.selectedAnalysts),
         include_sentiment: analysisForm.includeSentiment,
@@ -1670,7 +1670,7 @@ const goSimOrder = async () => {
     }
 
     // 获取账户信息
-    const accountRes = await paperApi.getAccount()
+    const accountRes = await paperApi.getAccount() as any
     if (!accountRes.success || !accountRes.data) {
       ElMessage.error('获取账户信息失败')
       return
@@ -1685,7 +1685,7 @@ const goSimOrder = async () => {
     // 获取当前实时价格
     let currentPrice = 10 // 默认价格
     try {
-      const quoteRes = await stocksApi.getQuote(code)
+      const quoteRes = await stocksApi.getQuote(code) as any
       if (quoteRes.success && quoteRes.data && quoteRes.data.price) {
         currentPrice = quoteRes.data.price
       }
@@ -1841,16 +1841,16 @@ const goSimOrder = async () => {
       side: recommendation.action,
       quantity: tradeForm.quantity,
       analysis_id: analysisId ? String(analysisId) : undefined
-    })
+    }) as any
 
-    if (orderRes.success) {
+    if (orderRes.data?.order) {
       ElMessage.success(`${actionText}订单已提交成功！`)
       // 可选：跳转到模拟交易页面
       setTimeout(() => {
         router.push({ name: 'PaperTradingHome' })
       }, 1500)
     } else {
-      ElMessage.error(orderRes.message || '下单失败')
+      ElMessage.error((orderRes as any).message || '下单失败')
     }
 
   } catch (error: any) {

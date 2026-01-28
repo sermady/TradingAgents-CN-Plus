@@ -107,7 +107,7 @@ export interface StockInfo {
   code?: string   // 兼容字段（已废弃）
   full_symbol?: string  // 完整代码（如 000001.SZ）
   name: string
-  market: string
+  market?: 'CN' | undefined  // 市场类型（CN=A股）
   industry?: string
   area?: string
   board?: string         // 板块（主板、创业板、科创板等）

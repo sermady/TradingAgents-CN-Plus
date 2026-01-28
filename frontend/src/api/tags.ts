@@ -1,5 +1,4 @@
 import { ApiClient } from './request'
-import type { ApiResponse } from './request'
 
 export interface TagItem {
   id: string
@@ -23,16 +22,16 @@ export interface UpdateTagDto {
 }
 
 export const tagsApi = {
-  async list(): Promise<ApiResponse<TagItem[]>> {
+  async list(): Promise<TagItem[]> {
     return await ApiClient.get<TagItem[]>('/api/tags/')
   },
-  async create(payload: CreateTagDto): Promise<ApiResponse<TagItem>> {
+  async create(payload: CreateTagDto): Promise<TagItem> {
     return await ApiClient.post<TagItem>('/api/tags/', payload)
   },
-  async update(id: string, payload: UpdateTagDto): Promise<ApiResponse<{ id: string }>> {
+  async update(id: string, payload: UpdateTagDto): Promise<{ id: string }> {
     return await ApiClient.put<{ id: string }>(`/api/tags/${id}`, payload)
   },
-  async remove(id: string): Promise<ApiResponse<{ id: string }>> {
+  async remove(id: string): Promise<{ id: string }> {
     return await ApiClient.delete<{ id: string }>(`/api/tags/${id}`)
   }
 }

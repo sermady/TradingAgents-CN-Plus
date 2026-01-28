@@ -198,7 +198,7 @@ const getCurrencySymbol = (currency: string) => {
 // 加载统计数据
 const loadStatistics = async () => {
   try {
-    const res = await getUsageStatistics({ days: selectedDays.value })
+    const res = await getUsageStatistics({ days: selectedDays.value }) as any
     if (res.success) {
       statistics.value = res.data
       await nextTick()
@@ -216,7 +216,7 @@ const loadRecords = async () => {
     loading.value = true
     const res = await getUsageRecords({
       limit: pageSize.value
-    })
+    }) as any
     if (res.success) {
       records.value = res.data.records
       totalRecords.value = res.data.total

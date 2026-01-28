@@ -535,7 +535,7 @@ async function handleSync() {
       sync_basic: syncForm.syncTypes.includes('basic'),
       data_source: syncForm.dataSource,
       days: syncForm.days
-    })
+    }) as any
 
     if (res.success) {
       const data = res.data
@@ -1129,7 +1129,7 @@ function formatReportName(key: string | number): string {
 function renderMarkdown(content: string): string {
   if (!content) return '<p>暂无内容</p>'
   try {
-    return marked(content)
+    return marked(content) as string
   } catch (e) {
     console.error('Markdown渲染失败:', e)
     return `<pre>${content}</pre>`
