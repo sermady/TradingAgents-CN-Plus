@@ -236,8 +236,8 @@ class Settings(BaseSettings):
     )  # 每日凌晨3点
     AKSHARE_QUOTES_SYNC_ENABLED: bool = Field(default=True, description="启用行情同步")
     AKSHARE_QUOTES_SYNC_CRON: str = Field(
-        default="*/30 9-15 * * 1-5", description="行情同步CRON表达式"
-    )  # 交易时间每30分钟（避免频率限制）
+        default="30 9 * * 1-5,0 15 * * 1-5", description="行情同步CRON表达式"
+    )  # 开盘9:30和收盘15:00
     AKSHARE_HISTORICAL_SYNC_ENABLED: bool = Field(
         default=True, description="启用历史数据同步"
     )
