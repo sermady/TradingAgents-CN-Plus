@@ -72,10 +72,11 @@ async def reload_config(current_user: dict = Depends(get_current_user)):
             }
     except Exception as e:
         logger.error(f"配置重载失败: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"配置重载失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "message": f"配置重载失败: {str(e)}",
+            "data": None
+        }
 
 
 # ===== 方案A：敏感字段响应脱敏 & 请求清洗 =====
@@ -169,7 +170,7 @@ class SetDefaultRequest(BaseModel):
     name: str
 
 
-@router.get("/system", response_model=SystemConfigResponse)
+@router.get("/system", response_model=dict)
 async def get_system_config(
     current_user: User = Depends(get_current_user)
 ):
@@ -177,35 +178,42 @@ async def get_system_config(
     try:
         config = await config_service.get_system_config()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="系统配置不存在"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": "系统配置不存在"
+            }
 
-        return SystemConfigResponse(
-            config_name=config.config_name,
-            config_type=config.config_type,
-            llm_configs=_sanitize_llm_configs(config.llm_configs),
-            default_llm=config.default_llm,
-            data_source_configs=_sanitize_datasource_configs(config.data_source_configs),
-            default_data_source=config.default_data_source,
-            database_configs=_sanitize_database_configs(config.database_configs),
-            system_settings=_sanitize_kv(config.system_settings),
-            created_at=config.created_at,
-            updated_at=config.updated_at,
-            version=config.version,
-            is_active=config.is_active
-        )
+        return {
+            "success": True,
+            "data": SystemConfigResponse(
+                config_name=config.config_name,
+                config_type=config.config_type,
+                llm_configs=_sanitize_llm_configs(config.llm_configs),
+                default_llm=config.default_llm,
+                data_source_configs=_sanitize_datasource_configs(config.data_source_configs),
+                default_data_source=config.default_data_source,
+                database_configs=_sanitize_database_configs(config.database_configs),
+                system_settings=_sanitize_kv(config.system_settings),
+                created_at=config.created_at,
+                updated_at=config.updated_at,
+                version=config.version,
+                is_active=config.is_active
+            ).model_dump(by_alias=False),
+            "message": "获取系统配置成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取系统配置失败: {str(e)}"
-        )
+        logger.error(f"获取系统配置失败: {e}")
+        return {
+            "success": False,
+            "data": None,
+            "message": f"获取系统配置失败: {str(e)}"
+        }
 
 
 # ========== 大模型厂家管理 ==========
 
-@router.get("/llm/providers", response_model=List[LLMProviderResponse])
+@router.get("/llm/providers", response_model=dict)
 async def get_llm_providers(
     current_user: User = Depends(get_current_user)
 ):
@@ -268,12 +276,18 @@ async def get_llm_providers(
                 )
             )
 
-        return result
+        return {
+            "success": True,
+            "data": result,
+            "message": "获取厂家列表成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取厂家列表失败: {str(e)}"
-        )
+        logger.error(f"获取厂家列表失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取厂家列表失败: {str(e)}"
+        }
 
 
 @router.post("/llm/providers", response_model=dict)
@@ -307,10 +321,11 @@ async def add_llm_provider(
             "data": {"id": str(provider_id)}
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加厂家失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"添加厂家失败: {str(e)}"
+        }
 
 
 @router.put("/llm/providers/{provider_id}", response_model=dict)
@@ -364,17 +379,17 @@ async def update_llm_provider(
                 "data": {}
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="厂家不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "厂家不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新厂家失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"更新厂家失败: {str(e)}"
+        }
 
 
 @router.delete("/llm/providers/{provider_id}", response_model=dict)
@@ -405,17 +420,17 @@ async def delete_llm_provider(
                 "data": {}
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="厂家不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "厂家不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除厂家失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"删除厂家失败: {str(e)}"
+        }
 
 
 @router.patch("/llm/providers/{provider_id}/toggle", response_model=dict)
@@ -448,17 +463,17 @@ async def toggle_llm_provider(
                 "data": {}
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="厂家不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "厂家不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"切换厂家状态失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"切换厂家状态失败: {str(e)}"
+        }
 
 
 @router.post("/llm/providers/{provider_id}/fetch-models", response_model=dict)
@@ -470,16 +485,15 @@ async def fetch_provider_models(
     try:
         result = await config_service.fetch_provider_models(provider_id)
         return result
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"获取模型列表失败: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型列表失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"获取模型列表失败: {str(e)}"
+        }
 
 
 @router.post("/llm/providers/migrate-env", response_model=dict)
@@ -514,10 +528,11 @@ async def migrate_env_to_providers(
             }
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"环境变量迁移失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"环境变量迁移失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/llm/providers/init-aggregators", response_model=dict)
@@ -553,10 +568,11 @@ async def init_aggregator_providers(
             }
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"初始化聚合渠道失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"初始化聚合渠道失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/llm/providers/{provider_id}/test", response_model=dict)
@@ -572,10 +588,11 @@ async def test_provider_api(
         return result
     except Exception as e:
         logger.error(f"测试厂家API失败: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"测试厂家API失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"测试厂家API失败: {str(e)}"
+        }
 
 
 # ========== 大模型配置管理 ==========
@@ -670,23 +687,27 @@ async def add_llm_config(
                 )
             except Exception:
                 pass
-            return {"message": "大模型配置更新成功", "model_name": llm_config.model_name}
+            return {
+                "success": True,
+                "data": {"model_name": llm_config.model_name},
+                "message": "大模型配置更新成功"
+            }
         else:
             logger.error(f"❌ 大模型配置保存失败")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="大模型配置更新失败"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "大模型配置更新失败"
+            }
     except Exception as e:
         logger.error(f"❌ 添加大模型配置异常: {e}")
         import traceback
         logger.error(f"📋 异常堆栈: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加大模型配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"添加大模型配置失败: {str(e)}"
+        }
 
 
 @router.post("/datasource", response_model=dict)
@@ -723,10 +744,11 @@ async def add_data_source_config(
                 _req['api_key'] = ''
             # 如果是新输入的密钥，必须验证有效性
             elif not is_valid_api_key(api_key):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="API Key 无效：长度必须大于 10 个字符，且不能是占位符"
-                )
+                return {
+                "success": False,
+                "data": None,
+                "message": f"API Key 无效：长度必须大于 10 个字符，且不能是占位符"
+            }
             # 有效的完整密钥，保留
 
         # 处理 API Secret
@@ -739,10 +761,11 @@ async def add_data_source_config(
                 _req['api_secret'] = ''
             # 如果是新输入的密钥，必须验证有效性
             elif not is_valid_api_key(api_secret):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="API Secret 无效：长度必须大于 10 个字符，且不能是占位符"
-                )
+                return {
+                "success": False,
+                "data": None,
+                "message": f"API Secret 无效：长度必须大于 10 个字符，且不能是占位符"
+            }
 
         ds_config = DataSourceConfig(**_req)
         config.data_source_configs.append(ds_config)
@@ -777,19 +800,22 @@ async def add_data_source_config(
                 )
             except Exception:
                 pass
-            return {"message": "数据源配置添加成功", "name": ds_config.name}
+            return {
+                "success": True,
+                "data": {"name": ds_config.name},
+                "message": "数据源配置添加成功"
+            }
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="数据源配置添加失败"
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加数据源配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"添加数据源配置失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/database", response_model=dict)
@@ -829,22 +855,25 @@ async def add_database_config(
                 )
             except Exception:
                 pass
-            return {"message": "数据库配置添加成功", "name": db_config.name}
+            return {
+                "success": True,
+                "data": {"name": db_config.name},
+                "message": "数据库配置添加成功"
+            }
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="数据库配置添加失败"
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加数据库配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"添加数据库配置失败: {str(e)}"+str(e)
+            }
 
 
-@router.post("/test", response_model=ConfigTestResponse)
+@router.post("/test", response_model=dict)
 async def test_config(
     request: ConfigTestRequest,
     current_user: User = Depends(get_current_user)
@@ -861,22 +890,26 @@ async def test_config(
             db_config = DatabaseConfig(**request.config_data)
             result = await config_service.test_database_config(db_config)
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="不支持的配置类型"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": "不支持的配置类型"
+            }
 
-        return ConfigTestResponse(**result)
-    except HTTPException:
-        raise
+        return {
+            "success": result.get("success", False),
+            "data": result,
+            "message": result.get("message", "测试完成")
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"测试配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"测试配置失败: {str(e)}"
+        }
 
 
-@router.post("/database/{db_name}/test", response_model=ConfigTestResponse)
+@router.post("/database/{db_name}/test", response_model=dict)
 async def test_saved_database_config(
     db_name: str,
     current_user: dict = Depends(get_current_user)
@@ -914,7 +947,11 @@ async def test_saved_database_config(
         # 使用完整配置进行测试
         result = await config_service.test_database_config(db_config)
 
-        return ConfigTestResponse(**result)
+        return {
+            "success": result.get("success", False),
+            "data": result,
+            "message": result.get("message", "测试完成")
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -925,7 +962,7 @@ async def test_saved_database_config(
         )
 
 
-@router.get("/llm", response_model=List[LLMConfig])
+@router.get("/llm", response_model=dict)
 async def get_llm_configs(
     current_user: User = Depends(get_current_user)
 ):
@@ -936,7 +973,11 @@ async def get_llm_configs(
 
         if not config:
             logger.warning("⚠️ 系统配置为空，返回空列表")
-            return []
+            return {
+                "success": True,
+                "data": [],
+                "message": "获取大模型配置成功"
+            }
 
         logger.info(f"📊 系统配置存在，大模型配置数量: {len(config.llm_configs)}")
 
@@ -958,16 +999,21 @@ async def get_llm_configs(
 
         logger.info(f"✅ 过滤后的大模型配置数量: {len(filtered_configs)} (原始: {len(config.llm_configs)})")
 
-        return _sanitize_llm_configs(filtered_configs)
+        return {
+            "success": True,
+            "data": _sanitize_llm_configs(filtered_configs),
+            "message": "获取大模型配置成功"
+        }
     except Exception as e:
         logger.error(f"❌ 获取大模型配置失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取大模型配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取大模型配置失败: {str(e)}"
+        }
 
 
-@router.delete("/llm/{provider}/{model_name}")
+@router.delete("/llm/{provider}/{model_name}", response_model=dict)
 async def delete_llm_config(
     provider: str,
     model_name: str,
@@ -1001,24 +1047,28 @@ async def delete_llm_config(
                 )
             except Exception:
                 pass
-            return {"message": "大模型配置删除成功"}
+            return {
+                "success": True,
+                "data": {"provider": provider, "model_name": model_name},
+                "message": "大模型配置删除成功"
+            }
         else:
             logger.warning(f"⚠️ 未找到大模型配置 - {provider}/{model_name}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="大模型配置不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "大模型配置不存在"
+            }
     except Exception as e:
         logger.error(f"❌ 删除大模型配置异常 - {provider}/{model_name}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除大模型配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"删除大模型配置失败: {str(e)}"
+        }
 
 
-@router.post("/llm/set-default")
+@router.post("/llm/set-default", response_model=dict)
 async def set_default_llm(
     request: SetDefaultRequest,
     current_user: User = Depends(get_current_user)
@@ -1039,22 +1089,26 @@ async def set_default_llm(
                 )
             except Exception:
                 pass
-            return {"message": "默认大模型设置成功", "default_llm": request.name}
+            return {
+                "success": True,
+                "data": {"default_llm": request.name},
+                "message": "默认大模型设置成功"
+            }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="指定的大模型不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "指定的大模型不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"设置默认大模型失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"设置默认大模型失败: {str(e)}"
+        }
 
 
-@router.get("/datasource", response_model=List[DataSourceConfig])
+@router.get("/datasource", response_model=dict)
 async def get_data_source_configs(
     current_user: User = Depends(get_current_user)
 ):
@@ -1062,13 +1116,23 @@ async def get_data_source_configs(
     try:
         config = await config_service.get_system_config()
         if not config:
-            return []
-        return _sanitize_datasource_configs(config.data_source_configs)
+            return {
+                "success": True,
+                "data": [],
+                "message": "获取数据源配置成功"
+            }
+        return {
+            "success": True,
+            "data": _sanitize_datasource_configs(config.data_source_configs),
+            "message": "获取数据源配置成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据源配置失败: {str(e)}"
-        )
+        logger.error(f"获取数据源配置失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取数据源配置失败: {str(e)}"
+        }
 
 
 @router.put("/datasource/{name}", response_model=dict)
@@ -1129,17 +1193,19 @@ async def update_data_source_config(
                             else:
                                 # 不同，说明用户修改了但修改得不完整
                                 logger.error(f"❌ [API Key 验证] 截断值不匹配，用户可能修改了不完整的密钥")
-                                raise HTTPException(
-                                    status_code=status.HTTP_400_BAD_REQUEST,
-                                    detail=f"API Key 格式错误：检测到截断标记但与数据库中的值不匹配，请输入完整的 API Key"
-                                )
+                                return {
+                "success": False,
+                "data": None,
+                "message": f"API Key 格式错误：检测到截断标记但与数据库中的值不匹配，请输入完整的 API Key"
+            }
                         else:
                             # 数据库中没有原值，但前端发送了截断值，这是不合理的
                             logger.error(f"❌ [API Key 验证] 数据库中没有原值，但收到了截断值")
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"API Key 格式错误：请输入完整的 API Key"
-                            )
+                            return {
+                "success": False,
+                "data": None,
+                "message": f"API Key 格式错误：请输入完整的 API Key"
+            }
                     # 如果是占位符，则不更新（保留原值）
                     elif should_skip_api_key_update(api_key):
                         logger.info(f"⏭️  [API Key 验证] 跳过更新（占位符），保留原值")
@@ -1150,10 +1216,11 @@ async def update_data_source_config(
                         logger.error(f"   - 长度检查: {len(api_key)} > 10? {len(api_key) > 10}")
                         logger.error(f"   - 占位符前缀检查: startswith('your_')? {api_key.startswith('your_')}, startswith('your-')? {api_key.startswith('your-')}")
                         logger.error(f"   - 占位符后缀检查: endswith('_here')? {api_key.endswith('_here')}, endswith('-here')? {api_key.endswith('-here')}")
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"API Key 无效：长度必须大于 10 个字符，且不能是占位符（当前长度: {len(api_key)}）"
-                        )
+                        return {
+                "success": False,
+                "data": None,
+                "message": f"API Key 无效：长度必须大于 10 个字符，且不能是占位符（当前长度: {len(api_key)}）"
+            }
                     else:
                         logger.info(f"✅ [API Key 验证] 验证通过，将更新密钥 (长度: {len(api_key)})")
                     # 有效的完整密钥，保留（表示更新）
@@ -1185,17 +1252,19 @@ async def update_data_source_config(
                             else:
                                 # 不同，说明用户修改了但修改得不完整
                                 logger.error(f"❌ [API Secret 验证] 截断值不匹配，用户可能修改了不完整的密钥")
-                                raise HTTPException(
-                                    status_code=status.HTTP_400_BAD_REQUEST,
-                                    detail=f"API Secret 格式错误：检测到截断标记但与数据库中的值不匹配，请输入完整的 API Secret"
-                                )
+                                return {
+                "success": False,
+                "data": None,
+                "message": f"API Secret 格式错误：检测到截断标记但与数据库中的值不匹配，请输入完整的 API Secret"
+            }
                         else:
                             # 数据库中没有原值，但前端发送了截断值，这是不合理的
                             logger.error(f"❌ [API Secret 验证] 数据库中没有原值，但收到了截断值")
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"API Secret 格式错误：请输入完整的 API Secret"
-                            )
+                            return {
+                "success": False,
+                "data": None,
+                "message": f"API Secret 格式错误：请输入完整的 API Secret"
+            }
                     # 如果是占位符，则不更新（保留原值）
                     elif should_skip_api_key_update(api_secret):
                         logger.info(f"⏭️  [API Secret 验证] 跳过更新（占位符），保留原值")
@@ -1204,10 +1273,11 @@ async def update_data_source_config(
                     elif not is_valid_api_key(api_secret):
                         logger.error(f"❌ [API Secret 验证] 验证失败: '{api_secret}' (长度: {len(api_secret)})")
                         logger.error(f"   - 长度检查: {len(api_secret)} > 10? {len(api_secret) > 10}")
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"API Secret 无效：长度必须大于 10 个字符，且不能是占位符（当前长度: {len(api_secret)}）"
-                        )
+                        return {
+                "success": False,
+                "data": None,
+                "message": f"API Secret 无效：长度必须大于 10 个字符，且不能是占位符（当前长度: {len(api_secret)}）"
+            }
                     else:
                         logger.info(f"✅ [API Secret 验证] 验证通过，将更新密钥 (长度: {len(api_secret)})")
 
@@ -1272,13 +1342,12 @@ async def update_data_source_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="数据源配置不存在"
         )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新数据源配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"更新数据源配置失败: {str(e)}"+str(e)
+            }
 
 
 @router.delete("/datasource/{name}", response_model=dict)
@@ -1326,30 +1395,35 @@ async def delete_data_source_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="数据源配置不存在"
         )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除数据源配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"删除数据源配置失败: {str(e)}"+str(e)
+            }
 
 
 # ==================== 市场分类管理 ====================
 
-@router.get("/market-categories", response_model=List[MarketCategory])
+@router.get("/market-categories", response_model=dict)
 async def get_market_categories(
     current_user: User = Depends(get_current_user)
 ):
     """获取所有市场分类"""
     try:
         categories = await config_service.get_market_categories()
-        return categories
+        return {
+            "success": True,
+            "data": categories,
+            "message": "获取市场分类成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取市场分类失败: {str(e)}"
-        )
+        logger.error(f"获取市场分类失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取市场分类失败: {str(e)}"
+        }
 
 
 @router.post("/market-categories", response_model=dict)
@@ -1377,17 +1451,17 @@ async def add_market_category(
                 pass
             return {"message": "市场分类添加成功", "id": category.id}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="市场分类ID已存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"市场分类ID已存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加市场分类失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"添加市场分类失败: {str(e)}"+str(e)
+            }
 
 
 @router.put("/market-categories/{category_id}", response_model=dict)
@@ -1415,17 +1489,17 @@ async def update_market_category(
                 pass
             return {"message": "市场分类更新成功"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="市场分类不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "市场分类不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新市场分类失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"更新市场分类失败: {str(e)}"
+        }
 
 
 @router.delete("/market-categories/{category_id}", response_model=dict)
@@ -1452,34 +1526,40 @@ async def delete_market_category(
                 pass
             return {"message": "市场分类删除成功"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="无法删除分类，可能还有数据源使用此分类"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"无法删除分类，可能还有数据源使用此分类"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除市场分类失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"删除市场分类失败: {str(e)}"+str(e)
+            }
 
 
 # ==================== 数据源分组管理 ====================
 
-@router.get("/datasource-groupings", response_model=List[DataSourceGrouping])
+@router.get("/datasource-groupings", response_model=dict)
 async def get_datasource_groupings(
     current_user: User = Depends(get_current_user)
 ):
     """获取所有数据源分组关系"""
     try:
         groupings = await config_service.get_datasource_groupings()
-        return groupings
+        return {
+            "success": True,
+            "data": groupings,
+            "message": "获取数据源分组关系成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据源分组关系失败: {str(e)}"
-        )
+        logger.error(f"获取数据源分组关系失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取数据源分组关系失败: {str(e)}"
+        }
 
 
 @router.post("/datasource-groupings", response_model=dict)
@@ -1507,17 +1587,17 @@ async def add_datasource_to_category(
                 pass
             return {"message": "数据源添加到分类成功"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="数据源已在该分类中"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"数据源已在该分类中"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"添加数据源到分类失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"添加数据源到分类失败: {str(e)}"+str(e)
+            }
 
 
 @router.delete("/datasource-groupings/{data_source_name}/{category_id}", response_model=dict)
@@ -1545,17 +1625,17 @@ async def remove_datasource_from_category(
                 pass
             return {"message": "数据源从分类中移除成功"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="数据源分组关系不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "数据源分组关系不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"从分类中移除数据源失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"从分类中移除数据源失败: {str(e)}"
+        }
 
 
 @router.put("/datasource-groupings/{data_source_name}/{category_id}", response_model=dict)
@@ -1584,17 +1664,17 @@ async def update_datasource_grouping(
                 pass
             return {"message": "数据源分组关系更新成功"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="数据源分组关系不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "数据源分组关系不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新数据源分组关系失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"更新数据源分组关系失败: {str(e)}"
+        }
 
 
 @router.put("/market-categories/{category_id}/datasource-order", response_model=dict)
@@ -1626,16 +1706,15 @@ async def update_category_datasource_order(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="数据源排序更新失败"
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新数据源排序失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"更新数据源排序失败: {str(e)}"+str(e)
+            }
 
 
-@router.post("/datasource/set-default")
+@router.post("/datasource/set-default", response_model=dict)
 async def set_default_data_source(
     request: SetDefaultRequest,
     current_user: User = Depends(get_current_user)
@@ -1656,34 +1735,44 @@ async def set_default_data_source(
                 )
             except Exception:
                 pass
-            return {"message": "默认数据源设置成功", "default_data_source": request.name}
+            return {
+                "success": True,
+                "data": {"default_data_source": request.name},
+                "message": "默认数据源设置成功"
+            }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="指定的数据源不存在"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "指定的数据源不存在"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"设置默认数据源失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"设置默认数据源失败: {str(e)}"
+        }
 
 
-@router.get("/settings", response_model=Dict[str, Any])
+@router.get("/settings", response_model=dict)
 async def get_system_settings(
     current_user: User = Depends(get_current_user)
 ):
     """获取系统设置"""
     try:
         effective = await config_provider.get_effective_system_settings()
-        return _sanitize_kv(effective)
+        return {
+            "success": True,
+            "data": _sanitize_kv(effective),
+            "message": "获取系统设置成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取系统设置失败: {str(e)}"
-        )
+        logger.error(f"获取系统设置失败: {e}")
+        return {
+            "success": False,
+            "data": {},
+            "message": f"获取系统设置失败: {str(e)}"
+        }
 
 
 @router.get("/settings/meta", response_model=dict)
@@ -1700,10 +1789,11 @@ async def get_system_settings_meta(
         ]
         return {"success": True, "data": {"items": items}, "message": ""}
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取系统设置元数据失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"获取系统设置元数据失败: {str(e)}"+str(e)
+            }
 
 
 @router.put("/settings", response_model=dict)
@@ -1743,14 +1833,17 @@ async def update_system_settings(
                 config_provider.invalidate()
             except Exception:
                 pass
-            return {"message": "系统设置更新成功"}
+            return {
+                "success": True,
+                "data": None,
+                "message": "系统设置更新成功"
+            }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="系统设置更新失败"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": "系统设置更新失败"
+            }
     except Exception as e:
         # 审计失败记录（忽略日志异常）
         try:
@@ -1765,10 +1858,11 @@ async def update_system_settings(
             )
         except Exception:
             pass
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新系统设置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"更新系统设置失败: {str(e)}"
+        }
 
 
 @router.post("/export", response_model=dict)
@@ -1796,10 +1890,11 @@ async def export_config(
             "exported_at": now_tz().isoformat()
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"导出配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"导出配置失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/import", response_model=dict)
@@ -1829,13 +1924,12 @@ async def import_config(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="配置导入失败"
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"导入配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"导入配置失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/migrate-legacy", response_model=dict)
@@ -1864,13 +1958,12 @@ async def migrate_legacy_config(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="传统配置迁移失败"
             )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"迁移传统配置失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"迁移传统配置失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/default/llm", response_model=dict)
@@ -1898,17 +1991,17 @@ async def set_default_llm(
                 pass
             return {"message": f"默认大模型已设置为: {request.name}"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="设置默认大模型失败，请检查模型名称是否正确"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"设置默认大模型失败，请检查模型名称是否正确"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"设置默认大模型失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"设置默认大模型失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/default/datasource", response_model=dict)
@@ -1936,52 +2029,64 @@ async def set_default_data_source(
                 pass
             return {"message": f"默认数据源已设置为: {request.name}"}
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="设置默认数据源失败，请检查数据源名称是否正确"
-            )
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"设置默认数据源失败，请检查数据源名称是否正确"
+            }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"设置默认数据源失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"设置默认数据源失败: {str(e)}"+str(e)
+            }
 
 
-@router.get("/models", response_model=List[Dict[str, Any]])
+@router.get("/models", response_model=dict)
 async def get_available_models(
     current_user: User = Depends(get_current_user)
 ):
     """获取可用的模型列表"""
     try:
         models = await config_service.get_available_models()
-        return models
+        return {
+            "success": True,
+            "data": models,
+            "message": "获取模型列表成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型列表失败: {str(e)}"
-        )
+        logger.error(f"获取模型列表失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取模型列表失败: {str(e)}"
+        }
 
 
 # ========== 模型目录管理 ==========
 
-@router.get("/model-catalog", response_model=List[Dict[str, Any]])
+@router.get("/model-catalog", response_model=dict)
 async def get_model_catalog(
     current_user: User = Depends(get_current_user)
 ):
     """获取所有模型目录"""
     try:
         catalogs = await config_service.get_model_catalog()
-        return [catalog.model_dump(by_alias=False) for catalog in catalogs]
+        return {
+            "success": True,
+            "data": [catalog.model_dump(by_alias=False) for catalog in catalogs],
+            "message": "获取模型目录成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型目录失败: {str(e)}"
-        )
+        logger.error(f"获取模型目录失败: {e}")
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取模型目录失败: {str(e)}"
+        }
 
 
-@router.get("/model-catalog/{provider}", response_model=Dict[str, Any])
+@router.get("/model-catalog/{provider}", response_model=dict)
 async def get_provider_model_catalog(
     provider: str,
     current_user: User = Depends(get_current_user)
@@ -1990,18 +2095,23 @@ async def get_provider_model_catalog(
     try:
         catalog = await config_service.get_provider_models(provider)
         if not catalog:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"未找到厂家 {provider} 的模型目录"
-            )
-        return catalog.model_dump(by_alias=False)
-    except HTTPException:
-        raise
+            return {
+                "success": False,
+                "data": None,
+                "message": f"未找到厂家 {provider} 的模型目录"
+            }
+        return {
+            "success": True,
+            "data": catalog.model_dump(by_alias=False),
+            "message": "获取模型目录成功"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型目录失败: {str(e)}"
-        )
+        logger.error(f"获取模型目录失败: {e}")
+        return {
+            "success": False,
+            "data": None,
+            "message": f"获取模型目录失败: {str(e)}"
+        }
 
 
 class ModelCatalogRequest(BaseModel):
@@ -2036,10 +2146,11 @@ async def save_model_catalog(
         logger.info(f"💾 保存结果: {success}")
 
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="保存模型目录失败"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": "保存模型目录失败"
+            }
 
         # 记录操作日志
         await log_operation(
@@ -2050,15 +2161,14 @@ async def save_model_catalog(
             details={"provider": request.provider, "provider_name": request.provider_name, "models_count": len(request.models)}
         )
 
-        return {"success": True, "message": "模型目录保存成功"}
-    except HTTPException:
-        raise
+        return {"success": True, "data": None, "message": "模型目录保存成功"}
     except Exception as e:
         logger.error(f"❌ 保存模型目录失败: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"保存模型目录失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"保存模型目录失败: {str(e)}"
+        }
 
 
 @router.delete("/model-catalog/{provider}", response_model=dict)
@@ -2085,13 +2195,12 @@ async def delete_model_catalog(
         )
 
         return {"success": True, "message": "模型目录删除成功"}
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除模型目录失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"删除模型目录失败: {str(e)}"+str(e)
+            }
 
 
 @router.post("/model-catalog/init", response_model=dict)
@@ -2108,18 +2217,17 @@ async def init_model_catalog(
             )
 
         return {"success": True, "message": "模型目录初始化成功"}
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"初始化模型目录失败: {str(e)}"
-        )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"初始化模型目录失败: {str(e)}"+str(e)
+            }
 
 
 # ===== 数据库配置管理端点 =====
 
-@router.get("/database", response_model=List[DatabaseConfig])
+@router.get("/database", response_model=dict)
 async def get_database_configs(
     current_user: dict = Depends(get_current_user)
 ):
@@ -2128,16 +2236,21 @@ async def get_database_configs(
         logger.info("🔄 获取数据库配置列表...")
         configs = await config_service.get_database_configs()
         logger.info(f"✅ 获取到 {len(configs)} 个数据库配置")
-        return configs
+        return {
+            "success": True,
+            "data": configs,
+            "message": "获取数据库配置成功"
+        }
     except Exception as e:
         logger.error(f"❌ 获取数据库配置失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据库配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": [],
+            "message": f"获取数据库配置失败: {str(e)}"
+        }
 
 
-@router.get("/database/{db_name}", response_model=DatabaseConfig)
+@router.get("/database/{db_name}", response_model=dict)
 async def get_database_config(
     db_name: str,
     current_user: dict = Depends(get_current_user)
@@ -2148,20 +2261,24 @@ async def get_database_config(
         config = await config_service.get_database_config(db_name)
 
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"数据库配置 '{db_name}' 不存在"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"数据库配置 '{db_name}' 不存在"
+            }
 
-        return config
-    except HTTPException:
-        raise
+        return {
+            "success": True,
+            "data": config,
+            "message": "获取数据库配置成功"
+        }
     except Exception as e:
         logger.error(f"❌ 获取数据库配置失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取数据库配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"获取数据库配置失败: {str(e)}"
+        }
 
 
 @router.post("/database", response_model=dict)
@@ -2180,10 +2297,11 @@ async def add_database_config(
         success = await config_service.add_database_config(db_config)
 
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="添加数据库配置失败，可能已存在同名配置"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"添加数据库配置失败，可能已存在同名配置"
+            }
 
         # 记录操作日志
         await log_operation(
@@ -2218,10 +2336,11 @@ async def update_database_config(
 
         # 检查名称是否匹配
         if db_name != request.name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="URL中的名称与请求体中的名称不匹配"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"URL中的名称与请求体中的名称不匹配"
+            }
 
         # 转换为 DatabaseConfig 对象
         db_config = DatabaseConfig(**request.model_dump())
@@ -2269,10 +2388,11 @@ async def delete_database_config(
         success = await config_service.delete_database_config(db_name)
 
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"数据库配置 '{db_name}' 不存在"
-            )
+            return {
+                "success": False,
+                "data": None,
+                "message": f"数据库配置 '{db_name}' 不存在"
+            }
 
         # 记录操作日志
         await log_operation(
@@ -2283,13 +2403,12 @@ async def delete_database_config(
             details={"name": db_name}
         )
 
-        return {"success": True, "message": "数据库配置删除成功"}
+        return {"success": True, "data": None, "message": "数据库配置删除成功"}
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"❌ 删除数据库配置失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除数据库配置失败: {str(e)}"
-        )
+        return {
+            "success": False,
+            "data": None,
+            "message": f"删除数据库配置失败: {str(e)}"
+        }

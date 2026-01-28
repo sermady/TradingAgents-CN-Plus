@@ -626,8 +626,11 @@ class ConfigService:
 
             # 打印所有现有配置
             for i, llm in enumerate(config.llm_configs):
+                provider_match = str(llm.provider).lower() == provider.lower()
+                model_match = llm.model_name == model_name
                 print(
-                    f"   {i + 1}. provider: {llm.provider.value}, model_name: {llm.model_name}"
+                    f"   {i + 1}. provider: {llm.provider} (匹配: {provider_match}), "
+                    f"model_name: {llm.model_name} (匹配: {model_match})"
                 )
 
             # 查找并删除指定的LLM配置
@@ -638,7 +641,7 @@ class ConfigService:
                 llm
                 for llm in config.llm_configs
                 if not (
-                    str(llm.provider.value).lower() == provider.lower()
+                    str(llm.provider).lower() == provider.lower()
                     and llm.model_name == model_name
                 )
             ]
@@ -659,8 +662,8 @@ class ConfigService:
         except Exception as e:
             print(f"❌ 删除LLM配置失败: {e}")
             import traceback
-
-            traceback.print_exc()
+            print("完整堆栈跟踪:")
+            print(traceback.format_exc())
             return False
 
     async def set_default_llm(self, model_name: str) -> bool:
