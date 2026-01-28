@@ -27,16 +27,20 @@ logger = get_logger('agents')
 def create_msg_delete():
     def delete_messages(state):
         """Clear messages and add placeholder for Anthropic compatibility"""
-        messages = state["messages"]
-        
-        # Remove all messages
-        removal_operations = [RemoveMessage(id=m.id) for m in messages]
-        
+        messages = state.get("messages", [])
+
+        # Remove all messages with valid IDs
+        # 在并行模式下，某些消息可能已被其他分支删除，需要过滤无效ID
+        removal_operations = []
+        for m in messages:
+            if hasattr(m, 'id') and m.id:
+                removal_operations.append(RemoveMessage(id=m.id))
+
         # Add a minimal placeholder message
         placeholder = HumanMessage(content="Continue")
-        
+
         return {"messages": removal_operations + [placeholder]}
-    
+
     return delete_messages
 
 
@@ -812,9 +816,15 @@ class Toolkit:
             if str(ticker) != str(original_ticker):
                 logger.warning(f"🔍 [股票代码追踪] 警告：股票代码发生了变化！原始: '{original_ticker}' -> 当前: '{ticker}'")
 
-            # 设置默认日期
+            # 设置默认日期 - 优先使用 Toolkit._config 中的 trade_date
             if not curr_date:
-                curr_date = datetime.now().strftime('%Y-%m-%d')
+                # 尝试从 Toolkit 配置获取分析日期
+                curr_date = Toolkit._config.get('trade_date')
+                if curr_date:
+                    logger.info(f"📅 [统一基本面工具] 使用 Toolkit._config 中的分析日期: {curr_date}")
+                else:
+                    curr_date = datetime.now().strftime('%Y-%m-%d')
+                    logger.warning(f"⚠️ [统一基本面工具] 未提供分析日期，使用系统时间: {curr_date}")
         
             # 基本面分析优化：不需要大量历史数据，只需要当前价格和财务数据
             # 根据数据深度级别设置不同的分析模块数量，而非历史数据范围
