@@ -287,9 +287,9 @@ async def get_industries(user: dict = Depends(get_current_user)):
         db = get_mongo_db()
         collection = db["stock_basic_info"]
 
-        # 🔥 获取数据源优先级配置（使用统一配置管理器的异步方法）
+        # 🔥 获取数据源优先级配置
         config = get_config_manager()
-        data_source_configs = await config.get_data_source_configs_async()
+        data_source_configs = config.get_data_source_configs()
 
         # 提取启用的数据源，按优先级排序（已排序）
         enabled_sources = [
