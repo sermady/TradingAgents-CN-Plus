@@ -97,9 +97,9 @@ class FinancialDataSyncService:
         if self.db is None:
             await self.initialize()
         
-        # 默认参数
+        # 默认参数 (BaoStock 不支持完整财务报表，只提供财务指标)
         if data_sources is None:
-            data_sources = ["tushare", "akshare", "baostock"]
+            data_sources = ["tushare", "akshare"]
         if report_types is None:
             report_types = ["quarterly", "annual"]  # 同时同步季报和年报
         
@@ -291,7 +291,8 @@ class FinancialDataSyncService:
             await self.initialize()
         
         if data_sources is None:
-            data_sources = ["tushare", "akshare", "baostock"]
+            # BaoStock 不支持完整财务报表，排除
+            data_sources = ["tushare", "akshare"]
         
         results = {}
         
