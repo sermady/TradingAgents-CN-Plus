@@ -93,7 +93,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
     try {
       console.log('[FavoritesStore] 从服务器获取数据')
       const res = await favoritesApi.list()
-      favorites.value = ((res as any)?.data || []) as FavoriteItem[]
+      favorites.value = res as FavoriteItem[]
       lastFetchTime.value = Date.now()
       return favorites.value
     } catch (error: any) {
@@ -120,7 +120,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
     try {
       console.log('[FavoritesStore] 从服务器获取标签')
       const res = await tagsApi.list()
-      const list = (res as any)?.data
+      const list = res as any[]
 
       if (Array.isArray(list)) {
         userTags.value = list.map((t: any) => t.name)
@@ -150,10 +150,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
    */
   const addFavorite = async (payload: any) => {
     try {
-      const res = await favoritesApi.add(payload)
-      if ((res as any)?.success === false) {
-        throw new Error((res as any)?.message || '添加失败')
-      }
+      await favoritesApi.add(payload)
 
       // 添加成功后，立即刷新缓存
       await fetchFavorites(true)
@@ -171,10 +168,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
    */
   const updateFavorite = async (code: string, payload: any) => {
     try {
-      const res = await favoritesApi.update(code, payload)
-      if ((res as any)?.success === false) {
-        throw new Error((res as any)?.message || '更新失败')
-      }
+      await favoritesApi.update(code, payload)
 
       // 更新成功后，立即刷新缓存
       await fetchFavorites(true)
@@ -192,10 +186,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
    */
   const removeFavorite = async (code: string) => {
     try {
-      const res = await favoritesApi.remove(code)
-      if ((res as any)?.success === false) {
-        throw new Error((res as any)?.message || '移除失败')
-      }
+      await favoritesApi.remove(code)
 
       // 删除成功后，立即刷新缓存
       await fetchFavorites(true)
@@ -218,16 +209,10 @@ export const useFavoritesStore = defineStore('favorites', () => {
     }
 
     try {
-      const res = await favoritesApi.syncRealtime(dataSource)
-      const data = (res as any)?.data
-
-      if ((res as any)?.success) {
-        ElMessage.success(data?.message || `同步完成: 成功 ${data?.success_count} 只`)
-        // 同步成功后，立即刷新缓存
-        await fetchFavorites(true)
-      } else {
-        ElMessage.error((res as any)?.message || '同步失败')
-      }
+      const data = await favoritesApi.syncRealtime(dataSource)
+      ElMessage.success(data.message || `同步完成: 成功 ${data.success_count} 只`)
+      // 同步成功后，立即刷新缓存
+      await fetchFavorites(true)
     } catch (error: any) {
       console.error('[FavoritesStore] 同步实时行情失败:', error)
       ElMessage.error(error.message || '同步失败，请稍后重试')
