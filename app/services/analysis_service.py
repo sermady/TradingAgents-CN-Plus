@@ -240,9 +240,13 @@ class AnalysisService:
             from datetime import timezone
 
             start_time = datetime.now(timezone.utc)
-            analysis_date = task.parameters.analysis_date or datetime.now().strftime(
-                "%Y-%m-%d"
-            )
+            if task.parameters.analysis_date:
+                if isinstance(task.parameters.analysis_date, datetime):
+                    analysis_date = task.parameters.analysis_date.strftime("%Y-%m-%d")
+                else:
+                    analysis_date = str(task.parameters.analysis_date)
+            else:
+                analysis_date = datetime.now().strftime("%Y-%m-%d")
 
             # 创建进度回调函数
             def progress_callback(message: str):
@@ -384,9 +388,13 @@ class AnalysisService:
             from datetime import timezone
 
             start_time = datetime.now(timezone.utc)
-            analysis_date = task.parameters.analysis_date or datetime.now().strftime(
-                "%Y-%m-%d"
-            )
+            if task.parameters.analysis_date:
+                if isinstance(task.parameters.analysis_date, datetime):
+                    analysis_date = task.parameters.analysis_date.strftime("%Y-%m-%d")
+                else:
+                    analysis_date = str(task.parameters.analysis_date)
+            else:
+                analysis_date = datetime.now().strftime("%Y-%m-%d")
 
             # 调用现有的分析方法（同步调用）
             _, decision = trading_graph.propagate(task.symbol, analysis_date)
