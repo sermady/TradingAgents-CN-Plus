@@ -885,6 +885,12 @@ def data_coordinator_node(state: AgentState):
     company = state.get("company_of_interest", "")
     trade_date = state.get("trade_date", "")
 
+    # 将分析日期设置到 Toolkit._config，确保工具函数能获取到
+    if trade_date:
+        from tradingagents.agents.utils.agent_utils import Toolkit
+        Toolkit.update_config({'trade_date': trade_date})
+        logger.info(f"📅 [Data Coordinator] 已设置分析日期到 Toolkit: {trade_date}")
+
     if not company:
         logger.error("❌ [Data Coordinator] 股票代码为空")
         return {

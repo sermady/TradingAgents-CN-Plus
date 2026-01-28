@@ -2541,13 +2541,49 @@ class OptimizedChinaDataProvider:
     def _parse_financial_data_with_stock_info(
         self, financial_data: dict, stock_info: dict, price_value: float
     ) -> dict:
-        """解析Tushare财务数据（优先使用stock_info中的PE/PB）"""
+        """解析Tushare财务数据（优先使用实时股价计算PE/PB）"""
         try:
-            # 从 stock_info 获取 PE/PB（从 daily_basic 获取）
+            # 🔥 使用传入的实时价格
+            current_price = price_value if price_value and price_value > 0 else 0
+            if current_price > 0:
+                logger.debug(f"✅ 使用实时价格计算PE/PB: {current_price}元")
+            else:
+                logger.debug(f"⚠️ 未提供有效实时价格，将使用stock_info中的PE/PB")
+
+            # 从 stock_info 获取 PE/PB（从 daily_basic 获取，作为备用）
             stock_info_pe = stock_info.get("pe") if stock_info else None
             stock_info_pb = stock_info.get("pb") if stock_info else None
             stock_info_total_mv = stock_info.get("total_mv") if stock_info else None
             stock_info_circ_mv = stock_info.get("circ_mv") if stock_info else None
+
+            # 从 financial_data 获取 EPS 和 BPS（用于实时PE/PB计算）
+            eps = None
+            bps = None
+
+            # 尝试获取 TTM EPS
+            eps_ttm = financial_data.get("eps_ttm") or financial_data.get("basic_eps_ttm")
+            if eps_ttm and str(eps_ttm) != "nan" and eps_ttm != "--":
+                try:
+                    eps = float(eps_ttm)
+                except (ValueError, TypeError):
+                    pass
+
+            # 如果没有 TTM EPS，尝试获取单期 EPS
+            if eps is None:
+                eps_single = financial_data.get("eps") or financial_data.get("basic_eps") or financial_data.get("基本每股收益")
+                if eps_single and str(eps_single) != "nan" and eps_single != "--":
+                    try:
+                        eps = float(eps_single)
+                    except (ValueError, TypeError):
+                        pass
+
+            # 尝试获取 BPS（每股净资产）
+            bps_value = financial_data.get("bps") or financial_data.get("book_value_per_share") or financial_data.get("每股净资产_最新股数")
+            if bps_value and str(bps_value) != "nan" and bps_value != "--":
+                try:
+                    bps = float(bps_value)
+                except (ValueError, TypeError):
+                    pass
 
             # 从 financial_data 获取其他财务指标（扁平化结构）
             roe = financial_data.get("roe") or financial_data.get("roe_waa")
@@ -2599,13 +2635,22 @@ class OptimizedChinaDataProvider:
             # 构建 metrics
             metrics = {}
 
-            # 🔥 优先使用 stock_info 中的 PE/PB
-            if stock_info_pe is not None and stock_info_pe > 0:
+            # 🔥 优先使用实时价格计算 PE/PB（如果有 EPS/BPS）
+            if current_price > 0 and eps and eps > 0:
+                calculated_pe = current_price / eps
+                metrics["pe"] = f"{calculated_pe:.1f}倍"
+                logger.debug(f"✅ [实时PE] 股价{current_price} / EPS{eps:.4f} = {metrics['pe']}")
+            elif stock_info_pe is not None and stock_info_pe > 0:
                 metrics["pe"] = f"{stock_info_pe:.1f}倍"
             else:
                 metrics["pe"] = "N/A"
 
-            if stock_info_pb is not None and stock_info_pb > 0:
+            # 使用实时价格计算 PB（如果有 BPS）
+            if current_price > 0 and bps and bps > 0:
+                calculated_pb = current_price / bps
+                metrics["pb"] = f"{calculated_pb:.2f}倍"
+                logger.debug(f"✅ [实时PB] 股价{current_price} / BPS{bps:.4f} = {metrics['pb']}")
+            elif stock_info_pb is not None and stock_info_pb > 0:
                 metrics["pb"] = f"{stock_info_pb:.2f}倍"
             else:
                 metrics["pb"] = "N/A"
@@ -2718,7 +2763,7 @@ class OptimizedChinaDataProvider:
             )
 
             logger.info(
-                f"✅ [_parse_financial_data_with_stock_info] PE={metrics.get('pe')}, PB={metrics.get('pb')}, ROE={metrics.get('roe')}"
+                f"✅ [_parse_financial_data_with_stock_info] 股价={current_price}元, PE={metrics.get('pe')}, PB={metrics.get('pb')}, ROE={metrics.get('roe')}"
             )
             return metrics
 
