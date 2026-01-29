@@ -176,7 +176,9 @@ class BaoStockProvider(BaseStockDataProvider):
             logger.error(f"❌ BaoStock获取股票列表失败: {e}")
             return []
 
-    async def get_stock_basic_info(self, symbol: str = None) -> Optional[Dict[str, Any]]:
+    async def get_stock_basic_info(
+        self, symbol: str = None
+    ) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息
 
@@ -376,16 +378,19 @@ class BaoStockProvider(BaseStockDataProvider):
                 return None
 
             # 标准化数据
-            # 注意: BaoStock 的 volume 单位是"股"，需要明确标注
+            # 🔥 成交量和成交额已在 _get_latest_kline_data 中转换，直接使用
+            volume_in_lots = quotes_data.get("volume", 0)
+            amount_in_yuan = quotes_data.get("amount", 0)
+
             return {
                 "code": code,
                 "name": quotes_data.get("name", f"股票{code}"),
                 "price": quotes_data.get("close", 0),
                 "change": quotes_data.get("change", 0),
                 "change_percent": quotes_data.get("change_percent", 0),
-                "volume": quotes_data.get("volume", 0),
-                "volume_unit": "shares",  # 明确标注: BaoStock volume 单位是"股"
-                "amount": quotes_data.get("amount", 0),
+                "volume": volume_in_lots,  # 单位：手（_get_latest_kline_data 已转换）
+                "volume_unit": "lots",  # 明确标注单位为手
+                "amount": amount_in_yuan,  # 单位：元（_get_latest_kline_data 已转换）
                 "open": quotes_data.get("open", 0),
                 "high": quotes_data.get("high", 0),
                 "low": quotes_data.get("low", 0),
@@ -439,6 +444,12 @@ class BaoStockProvider(BaseStockDataProvider):
 
                     # 取最新一条数据
                     latest_row = data_list[-1]
+                    # 🔥 成交量单位转换：BaoStock 返回的是"股"，转换为"手"（1手=100股）
+                    volume_in_shares = self._safe_int(latest_row[7])
+                    volume_in_lots = volume_in_shares / 100 if volume_in_shares else 0
+                    # 🔥 成交额单位：BaoStock 返回的是"元"，直接使用
+                    amount_in_yuan = self._safe_float(latest_row[8])
+
                     return {
                         "name": f"股票{code}",
                         "open": self._safe_float(latest_row[2]),
@@ -446,8 +457,8 @@ class BaoStockProvider(BaseStockDataProvider):
                         "low": self._safe_float(latest_row[4]),
                         "close": self._safe_float(latest_row[5]),
                         "preclose": self._safe_float(latest_row[6]),
-                        "volume": self._safe_int(latest_row[7]),
-                        "amount": self._safe_float(latest_row[8]),
+                        "volume": volume_in_lots,  # 单位：手（已转换）
+                        "amount": amount_in_yuan,  # 单位：元（已转换）
                         "change_percent": self._safe_float(latest_row[9]),
                         "change": self._safe_float(latest_row[5])
                         - self._safe_float(latest_row[6]),

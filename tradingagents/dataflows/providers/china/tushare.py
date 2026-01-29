@@ -653,6 +653,10 @@ class TushareProvider(BaseStockDataProvider):
                 if float(row["price"]) > 0:
                     trade_date = row["date"]
 
+                    # 🔥 成交量单位转换：Sina实时接口返回的是"股"，转换为"手"（1手=100股）
+                    volume_in_shares = float(row["volume"])
+                    volume_in_lots = volume_in_shares / 100 if volume_in_shares else 0
+
                     return {
                         "ts_code": self._normalize_ts_code(symbol),
                         "symbol": symbol,
@@ -670,7 +674,8 @@ class TushareProvider(BaseStockDataProvider):
                         * 100
                         if float(row["pre_close"]) > 0
                         else 0,
-                        "volume": float(row["volume"]),  # 已经是股
+                        "volume": volume_in_lots,  # 单位：手（已转换）
+                        "volume_unit": "lots",  # 明确标注单位为手
                         "amount": float(row["amount"]),  # 已经是元
                         "source": "sina_realtime",
                     }
@@ -1786,9 +1791,10 @@ class TushareProvider(BaseStockDataProvider):
             "change": self._convert_to_float(raw_data.get("change")),
             "pct_chg": self._convert_to_float(raw_data.get("pct_chg")),
             # 成交数据
-            # 🔥 成交量单位转换：Tushare 返回的是手，需要转换为股
-            # 🔧 统一处理 volume/vol 字段
-            "volume": self._convert_to_float(raw_volume) * 100 if raw_volume else None,
+            # 🔥 成交量单位：直接使用原始单位"手"（Tushare返回的是手）
+            # 🔧 统一处理 volume/vol 字段，保持原始单位
+            "volume": self._convert_to_float(raw_volume) if raw_volume else None,
+            "volume_unit": "lots",  # 明确标注单位为手
             # 🔥 成交额单位转换：Tushare daily 接口返回的是千元，需要转换为元
             "amount": self._convert_to_float(raw_data.get("amount")) * 1000
             if raw_data.get("amount")
@@ -2527,8 +2533,9 @@ def get_realtime_quote(symbol: str) -> Optional[Dict[str, Any]]:
             "high": safe_float(row.get("high")),
             "low": safe_float(row.get("low")),
             "pre_close": safe_float(row.get("pre_close")),
-            # Tushare daily 返回的成交量单位是手，转换为股
-            "volume": safe_float(row.get("vol")) * 100,
+            # Tushare daily 返回的成交量单位是手，直接使用原始单位
+            "volume": safe_float(row.get("vol")),
+            "volume_unit": "lots",  # 明确标注单位为手
             # Tushare daily 返回的成交额单位是千元，转换为元
             "amount": safe_float(row.get("amount")) * 1000,
             "trade_date": str(row.get("trade_date", "")),

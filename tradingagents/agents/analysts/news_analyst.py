@@ -51,20 +51,6 @@ def create_news_analyst(llm, toolkit=None):
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
 
-        # 根据数据质量等级给出不同的分析指导
-        data_quality_level = (
-            "high"
-            if data_quality_score >= 0.8
-            else "medium"
-            if data_quality_score >= 0.5
-            else "low"
-        )
-        quality_guidance = {
-            "high": "数据质量良好，可以进行深入分析。",
-            "medium": "数据质量一般，分析时请留意可能存在的信息偏差。",
-            "low": "数据质量较差，新闻数据可能不完整或延迟，请谨慎分析。",
-        }.get(data_quality_level, "")
-
         # 舆情数据质量提示
         sentiment_section = ""
         if sentiment_data and "❌" not in sentiment_data:
@@ -78,11 +64,9 @@ def create_news_analyst(llm, toolkit=None):
         system_message = f"""你是一位专业的财经新闻分析师。
 请基于以下**最新新闻数据**对 {company_name} ({ticker}) 进行详细的新闻面分析。
 
-=== 数据质量信息 ===
-- 数据质量评分: {data_quality_score:.0%} ({data_quality_level})
+=== 数据信息 ===
 - 新闻来源: {news_source}
-- 分析日期: {current_date}
-- 质量指导: {quality_guidance}
+- 数据日期: {current_date}（历史数据）
 
 === 新闻数据 ===
 {news_data}
@@ -90,13 +74,11 @@ def create_news_analyst(llm, toolkit=None):
 
 **分析要求（必须严格遵守）：**
 1. **数据来源**：必须严格基于上述提供的新闻数据进行分析，绝对禁止编造新闻。
-2. **数据质量意识**：请注意数据质量评分和质量指导，新闻数据可能存在不完整或延迟。
-   - 质量等级说明: {quality_guidance}
-3. **事件总结**：总结近期的关键新闻事件（财报、并购、政策、产品等）。
-4. **影响评估**：评估这些新闻对股价的潜在影响（利好/利空/中性）。
-5. **时效性**：关注新闻发布的时间，优先分析最新消息。
-6. **舆情分析**：结合舆情数据（如有），分析市场情绪和投资者关注度。
-7. **投资建议**：基于消息面给出短期交易建议。
+2. **事件总结**：总结近期的关键新闻事件（财报、并购、政策、产品等）。
+3. **影响评估**：评估这些新闻对股价的潜在影响（利好/利空/中性）。
+4. **时效性**：关注新闻发布的时间，优先分析最新消息。
+5. **舆情分析**：结合舆情数据（如有），分析市场情绪和投资者关注度。
+6. **投资建议**：基于消息面给出短期交易建议。
 
 **输出格式要求：**
 请使用Markdown格式，包含以下章节：
@@ -106,10 +88,7 @@ def create_news_analyst(llm, toolkit=None):
 ## 三、市场情绪与舆情分析
 ## 四、短期交易建议
 
-⚠️ **重要**：
-- 所有分析必须基于提供的数据。如果数据缺失，请明确说明。
-- 如果新闻数据较少，请说明数据覆盖的局限性。
-- 数据质量评分低于50%时，请在投资建议中提醒用户谨慎参考。
+⚠️ **重要**：所有分析必须基于提供的数据。如果数据缺失或较少，请明确说明。
 """
 
         messages = [

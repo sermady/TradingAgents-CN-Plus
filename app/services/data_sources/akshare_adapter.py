@@ -92,13 +92,13 @@ class AKShareAdapter(DataSourceAdapter):
 
     def _convert_volume(self, volume_value) -> Optional[float]:
         """
-        成交量单位转换：AKShare 返回的是手，需要转换为股
+        成交量单位处理：直接使用原始单位"手"（AKShare返回的是手）
 
         Args:
             volume_value: 成交量原始值
 
         Returns:
-            转换后的成交量（股），如果输入无效则返回 None
+            成交量（手），如果输入无效则返回 None
         """
         if volume_value is None:
             return None
@@ -106,8 +106,8 @@ class AKShareAdapter(DataSourceAdapter):
             vol = float(volume_value)
             if vol <= 0:
                 return None
-            # AKShare 返回的成交量单位是手，转换为股
-            return vol * 100
+            # AKShare 返回的成交量单位是手，直接使用原始单位
+            return vol
         except (ValueError, TypeError):
             return None
 
@@ -524,11 +524,15 @@ class AKShareAdapter(DataSourceAdapter):
         )
         return None
 
-    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+    def get_daily_quotes(
+        self, trade_date: str
+    ) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
         """获取指定日期的全市场行情快照
         AKShare 获取指定日期全市场数据效率极低，暂不支持
         """
-        logger.warning("AKShare does not efficiently support full-market daily quotes backfill")
+        logger.warning(
+            "AKShare does not efficiently support full-market daily quotes backfill"
+        )
         return None
 
     def get_kline(

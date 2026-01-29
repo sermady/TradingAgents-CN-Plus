@@ -2711,8 +2711,13 @@ class DataSourceManager:
                     logger.info(f"✅ [数据来源: Tushare-股票信息] 成功获取: {symbol}")
                     return result
                 else:
+                    # 🔥 FIX: 添加详细日志以便诊断问题
                     logger.warning(
-                        f"⚠️ [数据来源: Tushare失败] 返回无效信息，尝试降级: {symbol}"
+                        f"⚠️ [数据来源: Tushare失败] 返回无效信息，尝试降级: {symbol}\n"
+                        f"    诊断信息: name={result.get('name')!r}, "
+                        f"industry={result.get('industry')!r}, "
+                        f"area={result.get('area')!r}, "
+                        f"raw_result={raw_result}"
                     )
                     return self._try_fallback_stock_info(symbol)
             else:
@@ -2756,8 +2761,13 @@ class DataSourceManager:
                         )
                         return result
                     else:
+                        # 🔥 FIX: 添加详细日志以便诊断问题
                         logger.warning(
-                            f"⚠️ [数据来源: {self.current_source.value}失败] 返回无效信息，尝试降级: {symbol}"
+                            f"⚠️ [数据来源: {self.current_source.value}失败] 返回无效信息，尝试降级: {symbol}\n"
+                            f"    诊断信息: name={result.get('name')!r}, "
+                            f"industry={result.get('industry')!r}, "
+                            f"area={result.get('area')!r}, "
+                            f"raw_result={raw_result}"
                         )
                         return self._try_fallback_stock_info(symbol)
                 else:
@@ -2934,44 +2944,65 @@ class DataSourceManager:
                     f"⚠️ [AKShare] stock_individual_info_em 调用失败: {api_e}"
                 )
                 # 🔥 FIX: 尝试备选方案 - 使用 stock_zh_a_spot_em 获取全市场数据然后筛选
-                try:
-                    logger.info(f"🔄 [AKShare备用方案] 尝试从全市场数据获取: {symbol}")
-                    spot_df = ak.stock_zh_a_spot_em()
-                    if spot_df is not None and not spot_df.empty:
-                        # 在 spot 数据中查找该股票
-                        code_col = (
-                            "代码"
-                            if "代码" in spot_df.columns
-                            else "symbol"
-                            if "symbol" in spot_df.columns
-                            else None
-                        )
-                        if code_col:
-                            stock_row = spot_df[spot_df[code_col] == symbol]
-                            if not stock_row.empty:
-                                name_col = (
-                                    "名称"
-                                    if "名称" in stock_row.columns
-                                    else "name"
-                                    if "name" in stock_row.columns
-                                    else None
-                                )
-                                if name_col:
-                                    stock_name = stock_row.iloc[0][name_col]
-                                    logger.info(
-                                        f"✅ [AKShare备用方案] {symbol} -> {stock_name}"
+                # 🔥 FIX: 添加重试机制以处理网络错误
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        logger.info(f"🔄 [AKShare备用方案] 尝试从全市场数据获取: {symbol} (尝试 {attempt + 1}/{max_retries})")
+                        spot_df = ak.stock_zh_a_spot_em()
+                        if spot_df is not None and not spot_df.empty:
+                            # 在 spot 数据中查找该股票
+                            code_col = (
+                                "代码"
+                                if "代码" in spot_df.columns
+                                else "symbol"
+                                if "symbol" in spot_df.columns
+                                else None
+                            )
+                            if code_col:
+                                stock_row = spot_df[spot_df[code_col] == symbol]
+                                if not stock_row.empty:
+                                    name_col = (
+                                        "名称"
+                                        if "名称" in stock_row.columns
+                                        else "name"
+                                        if "name" in stock_row.columns
+                                        else None
                                     )
-                                    return {
-                                        "symbol": symbol,
-                                        "name": stock_name,
-                                        "source": "akshare",
-                                        "area": "未知",
-                                        "industry": "未知",
-                                        "market": "未知",
-                                        "list_date": "未知",
-                                    }
-                except Exception as backup_e:
-                    logger.warning(f"⚠️ [AKShare备用方案] 也失败: {backup_e}")
+                                    if name_col:
+                                        stock_name = stock_row.iloc[0][name_col]
+                                        logger.info(
+                                            f"✅ [AKShare备用方案] {symbol} -> {stock_name}"
+                                        )
+                                        return {
+                                            "symbol": symbol,
+                                            "name": stock_name,
+                                            "source": "akshare",
+                                            "area": "未知",
+                                            "industry": "未知",
+                                            "market": "未知",
+                                            "list_date": "未知",
+                                        }
+                        # 如果没找到数据，跳出重试循环
+                        break
+                    except Exception as backup_e:
+                        error_str = str(backup_e)
+                        is_network_error = any(
+                            x in error_str.lower()
+                            for x in ["remote", "connection", "aborted", "reset", "closed", "without response"]
+                        )
+                        if is_network_error and attempt < max_retries - 1:
+                            wait_time = min(1.0 * (2 ** attempt), 10.0)
+                            logger.warning(
+                                f"⚠️ [AKShare备用方案] 网络错误，等待 {wait_time:.1f} 秒后重试 "
+                                f"({attempt + 1}/{max_retries}): {error_str[:100]}"
+                            )
+                            import time
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            logger.warning(f"⚠️ [AKShare备用方案] 失败: {backup_e}")
+                            break
 
                 # 如果所有方法都失败，返回默认信息
                 return {

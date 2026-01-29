@@ -190,7 +190,7 @@ class AKShareProvider(BaseStockDataProvider):
                         try:
                             return original_get(url, **kwargs)
                         except Exception as e:
-                            # 检查是否是SSL错误
+                            # 检查是否是SSL错误或网络错误
                             error_str = str(e)
                             is_ssl_error = (
                                 "SSL" in error_str
@@ -198,13 +198,38 @@ class AKShareProvider(BaseStockDataProvider):
                                 or "UNEXPECTED_EOF_WHILE_READING" in error_str
                             )
 
-                            if is_ssl_error and attempt < max_retries - 1:
-                                # SSL错误，等待后重试
-                                wait_time = 0.5 * (attempt + 1)  # 递增等待时间
+                            # 🔥 FIX: 添加对 RemoteDisconnected 和其他网络错误的检测
+                            is_network_error = any(
+                                x in error_str.lower()
+                                for x in [
+                                    "remote",
+                                    "connection",
+                                    "aborted",
+                                    "reset",
+                                    "closed",
+                                    "without response",
+                                    "timeout",
+                                    "timed out",
+                                    "refused",
+                                ]
+                            )
+
+                            if (
+                                is_ssl_error or is_network_error
+                            ) and attempt < max_retries - 1:
+                                # SSL错误或网络错误，使用指数退避等待后重试
+                                wait_time = min(
+                                    1.0 * (2**attempt), 10.0
+                                )  # 指数退避，最大10秒
+                                error_type = "SSL" if is_ssl_error else "网络"
+                                logger.warning(
+                                    f"⚠️ [{error_type}错误] {error_str[:100]}，等待 {wait_time:.1f} 秒后重试 "
+                                    f"({attempt + 1}/{max_retries})"
+                                )
                                 time.sleep(wait_time)
                                 continue
                             else:
-                                # 非SSL错误或已达到最大重试次数，直接抛出
+                                # 非SSL/网络错误或已达到最大重试次数，直接抛出
                                 raise
 
                 # 应用patch
@@ -916,9 +941,8 @@ class AKShareProvider(BaseStockDataProvider):
             now_cn = datetime.now(cn_tz)
             trade_date = now_cn.strftime("%Y-%m-%d")  # 格式：2025-11-05
 
-            # 🔥 成交量单位转换：手 → 股（1手 = 100股）
+            # 🔥 成交量单位：直接使用原始单位"手"（AKShare返回的是手）
             volume_in_lots = int(data_dict.get("总手", 0))  # 单位：手
-            volume_in_shares = volume_in_lots * 100  # 单位：股
 
             quotes = {
                 "code": code,
@@ -936,8 +960,8 @@ class AKShareProvider(BaseStockDataProvider):
                 "pct_chg": float(
                     data_dict.get("涨幅", 0)
                 ),  # 🔥 pct_chg 字段（兼容旧数据）
-                "volume": volume_in_shares,  # 🔥 单位：股（已转换）
-                "volume_unit": "shares",  # 明确标注: AKShare volume 单位是"股"（已从手转换）
+                "volume": volume_in_lots,  # 🔥 单位：手（直接使用原始单位）
+                "volume_unit": "lots",  # 明确标注单位为手
                 "amount": float(data_dict.get("金额", 0)),  # 单位：元
                 "open": float(
                     data_dict.get("今开", 0)
@@ -1249,10 +1273,8 @@ class AKShareProvider(BaseStockDataProvider):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-            # 🔥 修复：AKShare A股历史数据成交量单位是手，统一转换为股
-            # stock_zh_a_hist 接口返回的成交量单位是手，而系统统一使用股
-            if "volume" in df.columns:
-                df["volume"] = df["volume"] * 100
+            # 🔥 成交量单位：保持原始单位"手"（AKShare历史数据返回的是手）
+            # 不再转换为股，直接使用原始单位
 
             return df
 

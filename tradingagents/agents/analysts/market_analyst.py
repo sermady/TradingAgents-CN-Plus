@@ -52,50 +52,26 @@ def create_market_analyst(llm, toolkit=None):
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
 
-        # 构建数据质量问题提示
-        quality_warning = ""
+        # 记录数据质量问题到日志（不在提示词中显示）
         if market_issues:
-            quality_warning = "\n**数据质量警告：**\n"
-            for issue in market_issues[:3]:  # 最多显示3个问题
-                severity = issue.get("severity", "info")
-                message = issue.get("message", "")
-                if severity in ["error", "critical"]:
-                    quality_warning += f"- ⚠️ {message}\n"
-                elif severity == "warning":
-                    quality_warning += f"- ℹ️ {message}\n"
+            for issue in market_issues[:3]:
+                logger.warning(
+                    f"[Market Analyst] Data issue for {ticker}: {issue.get('message', '')}"
+                )
 
-        # 根据数据质量等级给出不同的分析指导
-        data_quality_level = (
-            "high"
-            if data_quality_score >= 0.8
-            else "medium"
-            if data_quality_score >= 0.5
-            else "low"
-        )
-        quality_guidance = {
-            "high": "数据质量良好，可以进行深入分析。",
-            "medium": "数据质量一般，分析时请留意可能存在的数据偏差。",
-            "low": "数据质量较差，请谨慎分析，重点关注数据可靠性问题。",
-        }.get(data_quality_level, "")
-
-        # 获取 metadata 信息（成交量单位等）
+        # 获取 metadata 信息（如有）
         data_metadata = state.get("data_metadata", {})
-        volume_unit_info = data_metadata.get("volume_unit_info")
 
         # 构建 metadata 提示
-        metadata_info = ""
-        if volume_unit_info:
-            metadata_info += f"\n- **成交量单位处理**: {volume_unit_info}"
+        metadata_info = "\n- **成交量单位**: 手 (1手=100股)"
 
         system_message = f"""你是一位专业的股票技术分析师。
 请基于以下**真实市场数据**对 {company_name} ({ticker}) 进行详细的技术分析。
 
-=== 数据质量信息 ===
-- 数据质量评分: {data_quality_score:.0%} ({data_quality_level})
+=== 数据信息 ===
 - 数据来源: {market_source}
-- 分析日期: {current_date}
-- 质量指导: {quality_guidance}
-{quality_warning}{metadata_info}
+- 数据日期: {current_date}（历史数据）
+{metadata_info}
 
 === 市场数据 ===
 {market_data}
@@ -103,27 +79,21 @@ def create_market_analyst(llm, toolkit=None):
 
 **分析要求（必须严格遵守）：**
 1. **数据来源**：必须严格基于上述提供的市场数据进行分析，绝对禁止编造数据。
-2. **数据质量意识**：请注意数据质量评分和任何数据质量警告，在分析中适当考虑数据可靠性。
-   - 质量等级说明: {quality_guidance}
-3. **技术指标**：分析移动平均线（MA）、MACD、RSI、布林带等指标（如果数据中包含）。
-4. **价格趋势**：分析短期和中期价格走势。
-5. **成交量**：分析量价配合情况（注意A股成交量已统一转换为"股"）。
-6. **数据异常处理**：如果某些指标看起来异常（如成交量数据异常），请在报告中指出。
-7. **投资建议**：给出明确的买入/持有/卖出建议。
+2. **技术指标**：分析移动平均线（MA）、MACD、RSI、布林带等指标（如果数据中包含）。
+3. **价格趋势**：分析短期和中期价格走势。
+4. **成交量**：分析量价配合情况（成交量单位为"手"，1手=100股）。
+5. **数据异常处理**：如果某些指标看起来异常（如成交量数据异常），请在报告中指出。
+6. **投资建议**：给出明确的买入/持有/卖出建议。
 
 **输出格式要求：**
 请使用Markdown格式，包含以下章节：
 # **{company_name}（{ticker}）技术分析报告**
 ## 一、股票基本信息
-## 二、数据质量评估
-## 三、技术指标分析
-## 四、价格趋势分析
-## 五、投资建议
+## 二、技术指标分析
+## 三、价格趋势分析
+## 四、投资建议
 
-⚠️ **重要**：
-- 所有分析必须基于提供的数据。如果数据缺失，请明确说明。
-- 如果发现数据异常（如成交量单位问题），请在报告中指出。
-- 数据质量评分低于50%时，请在投资建议中提醒用户谨慎参考。
+⚠️ **重要**：所有分析必须基于提供的数据。如果数据缺失或异常，请明确说明。
 """
 
         messages = [

@@ -17,6 +17,7 @@ def create_china_market_analyst(llm):
     Returns:
         china_market_analyst_node: 中国市场分析师节点函数
     """
+
     @log_analyst_module("china_market")
     def china_market_analyst_node(state):
         current_date = state["trade_date"]
@@ -44,43 +45,29 @@ def create_china_market_analyst(llm):
                 "请检查网络连接或稍后重试。"
             )
 
-        logger.info(f"[China Market Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {market_source})")
+        logger.info(
+            f"[China Market Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {market_source})"
+        )
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
 
-        # 构建数据质量问题提示
-        quality_warning = ""
+        # 记录数据质量问题到日志（不在提示词中显示）
         all_issues = market_issues + financial_issues
         if all_issues:
-            quality_warning = "\n**数据质量警告：**\n"
-            for issue in all_issues[:3]:  # 最多显示3个问题
-                severity = issue.get("severity", "info")
-                message = issue.get("message", "")
-                if severity in ["error", "critical"]:
-                    quality_warning += f"- ⚠️ {message}\n"
-                elif severity == "warning":
-                    quality_warning += f"- ℹ️ {message}\n"
+            for issue in all_issues[:3]:
+                logger.warning(
+                    f"[China Market Analyst] Data issue for {ticker}: {issue.get('message', '')}"
+                )
 
-        # 根据数据质量等级给出不同的分析指导
-        data_quality_level = "high" if data_quality_score >= 0.8 else "medium" if data_quality_score >= 0.5 else "low"
-        quality_guidance = {
-            "high": "数据质量良好，可以进行深入分析。",
-            "medium": "数据质量一般，分析时请留意可能存在的数据偏差。",
-            "low": "数据质量较差，请谨慎分析，重点关注数据可靠性问题。"
-        }.get(data_quality_level, "")
-
-        # 获取 metadata 信息（PS修正、成交量单位等）
+        # 获取 metadata 信息（PS修正等）
         data_metadata = state.get("data_metadata", {})
         corrected_ps = data_metadata.get("corrected_ps")
-        volume_unit_info = data_metadata.get("volume_unit_info")
 
         # 构建 metadata 提示
-        metadata_info = ""
+        metadata_info = "\n- **成交量单位**: 手 (1手=100股)"
         if corrected_ps:
             metadata_info += f"\n- **PS比率修正**: 数据源报告的PS可能有误，正确值约为 {corrected_ps:.2f}"
-        if volume_unit_info:
-            metadata_info += f"\n- **成交量单位**: {volume_unit_info}"
 
         # 基本面数据部分
         fundamentals_section = ""
@@ -95,13 +82,11 @@ def create_china_market_analyst(llm):
         system_message = f"""你是一位专业的中国股市分析师，专注于A股市场分析。
 请基于以下**真实市场数据**对 {company_name} ({ticker}) 进行详细的中国市场分析。
 
-=== 数据质量信息 ===
-- 数据质量评分: {data_quality_score:.0%} ({data_quality_level})
+=== 数据信息 ===
 - 市场数据来源: {market_source}
 - 基本面数据来源: {financial_source}
-- 分析日期: {current_date}
-- 质量指导: {quality_guidance}
-{quality_warning}{metadata_info}
+- 数据日期: {current_date}（历史数据）
+{metadata_info}
 
 === 市场数据 ===
 {market_data}
@@ -109,9 +94,7 @@ def create_china_market_analyst(llm):
 
 **A股特色分析要求（必须严格遵守）：**
 1. **数据来源**：必须严格基于上述提供的市场数据进行分析，绝对禁止编造数据。
-2. **数据质量意识**：请注意数据质量评分和任何数据质量警告，在分析中适当考虑数据可靠性。
-   - 质量等级说明: {quality_guidance}
-3. **特别关注PS修正**: 如果提示中有PS修正值，请在估值分析中使用修正值。
+2. **特别关注PS修正**: 如果提示中有PS修正值，请在估值分析中使用修正值。
 
 **A股市场特色分析要点：**
 1. **涨跌停制度分析**：
@@ -125,7 +108,7 @@ def create_china_market_analyst(llm):
    - 换手率 7-10%：高度活跃，需关注
    - 换手率 > 10%：异常活跃，可能有重大消息
    - 换手率 > 20%：极度活跃，高风险高机会
-   - 注意：成交量已统一转换为"股"
+   - 注意：成交量单位为"手"（1手=100股）
 
 3. **量比分析**（如果数据包含）：
    - 量比 > 1.5：放量，资金关注
@@ -139,7 +122,7 @@ def create_china_market_analyst(llm):
 5. **技术面分析**：
    - 分析移动平均线（MA）、MACD、RSI、布林带等指标
    - 评估价格趋势和支撑/阻力位
-   - 分析量价配合情况（成交量单位已统一为"股"）
+   - 分析量价配合情况（成交量单位为"手"）
 
 6. **基本面分析**：
    - 分析PE、PB、PS、ROE等估值指标
@@ -150,7 +133,7 @@ def create_china_market_analyst(llm):
 **输出格式要求：**
 请使用Markdown格式，包含以下章节：
 # **{company_name}（{ticker}）A股市场分析报告**
-## 一、股票基本信息与数据质量评估
+## 一、股票基本信息
 ## 二、A股市场特色指标分析（涨跌停、换手率、量比）
 ## 三、技术面分析
 ## 四、基本面与估值分析
@@ -158,10 +141,9 @@ def create_china_market_analyst(llm):
 ## 六、投资建议与风险提示
 
 ⚠️ **重要**：
-- 所有分析必须基于提供的数据。如果数据缺失，请明确说明。
+- 所有分析必须基于提供的数据。如果数据缺失或异常，请明确说明。
 - 特别关注A股特色指标（涨跌停、换手率等）的分析。
 - 如发现PS比率问题，请在报告中指出并说明修正后的合理值。
-- 数据质量评分低于50%时，请在投资建议中提醒用户谨慎参考。
 """
 
         messages = [
@@ -239,7 +221,7 @@ def create_china_stock_screener(llm):
 ## 五、风险提示
 
 请基于当前市场环境和政策背景，提供专业的股票筛选建议。
-当前分析日期：{current_date}。
+当前数据日期：{current_date}（历史数据）。
 """
 
         messages = [

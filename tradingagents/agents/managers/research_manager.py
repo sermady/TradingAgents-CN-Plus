@@ -4,7 +4,6 @@ import json
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
-from tradingagents.utils.time_utils import get_chinese_date, get_chinese_weekday
 
 logger = get_logger("default")
 
@@ -32,7 +31,8 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""**重要时间信息**：今天是{get_chinese_date()} {get_chinese_weekday()}。请基于这个实际日期进行分析，不要依赖训练数据中的时间认知。
+        trade_date = state.get("trade_date", "指定日期")
+        prompt = f"""**重要时间信息**：我们正在分析 {trade_date} 的股票历史数据。请直接基于提供的报告数据进行评估，无需验证日期有效性。不要依赖你的训练数据时间认知，只需专注于分析给定的实际数据。
 
         作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
 
