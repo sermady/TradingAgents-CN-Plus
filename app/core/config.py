@@ -200,6 +200,27 @@ class Settings(BaseSettings):
         default=0.8, ge=0.1, le=1.0, description="速率限制安全边际"
     )
 
+    # 实时行情配置
+    REALTIME_QUOTE_ENABLED: bool = Field(default=True, description="启用实时行情获取")
+    REALTIME_QUOTE_TUSHARE_ENABLED: bool = Field(
+        default=True, description="启用Tushare作为实时行情备选数据源"
+    )
+    REALTIME_QUOTE_MAX_RETRIES: int = Field(
+        default=3, ge=1, le=10, description="实时行情获取最大重试次数"
+    )
+    REALTIME_QUOTE_RETRY_DELAY: float = Field(
+        default=1.0, ge=0.1, le=10.0, description="实时行情重试间隔（秒）"
+    )
+    REALTIME_QUOTE_RETRY_BACKOFF: float = Field(
+        default=2.0, ge=1.0, le=5.0, description="重试延迟退避倍数"
+    )
+    REALTIME_QUOTE_AKSHARE_PRIORITY: int = Field(
+        default=1, ge=1, le=2, description="AKShare实时行情优先级 (1=优先, 2=备选)"
+    )
+    REALTIME_QUOTE_TUSHARE_PRIORITY: int = Field(
+        default=2, ge=1, le=2, description="Tushare实时行情优先级 (1=优先, 2=备选)"
+    )
+
     # Tushare统一数据同步配置
     TUSHARE_UNIFIED_ENABLED: bool = Field(default=True)
     TUSHARE_BASIC_INFO_SYNC_ENABLED: bool = Field(default=True)

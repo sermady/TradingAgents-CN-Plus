@@ -1442,10 +1442,14 @@ class DataSourceManager:
         """
         获取实时行情数据 - 只使用外部API，不使用MongoDB缓存
 
-        优先级:
-        1. AKShare (新浪/东方财富) - 秒级实时数据
-        2. Tushare - 使用 pro_bar 或 rt_k 接口
-        3. 所有外部API失败时返回 None
+        支持配置：
+        - REALTIME_QUOTE_ENABLED: 是否启用实时行情
+        - REALTIME_QUOTE_TUSHARE_ENABLED: 是否启用Tushare作为备选
+        - REALTIME_QUOTE_MAX_RETRIES: 最大重试次数
+        - REALTIME_QUOTE_RETRY_DELAY: 重试间隔（秒）
+        - REALTIME_QUOTE_RETRY_BACKOFF: 重试延迟退避倍数
+        - REALTIME_QUOTE_AKSHARE_PRIORITY: AKShare优先级
+        - REALTIME_QUOTE_TUSHARE_PRIORITY: Tushare优先级
 
         Args:
             symbol: 股票代码
@@ -1453,33 +1457,44 @@ class DataSourceManager:
         Returns:
             Dict: 实时行情数据，包含price, change, change_pct, volume等
         """
-        logger.info(f"📊 [实时行情] 获取实时行情: {symbol}")
+        # 读取配置
+        config = self._get_realtime_quote_config()
+
+        if not config["enabled"]:
+            logger.info(f"📊 [实时行情] 实时行情获取已禁用，跳过: {symbol}")
+            return None
+
+        logger.info(
+            f"📊 [实时行情] 获取实时行情: {symbol} (重试次数: {config['max_retries']})"
+        )
 
         try:
-            # 🔥 优先级1: AKShare (新浪/东方财富，秒级实时)
-            quote = None
-            try:
-                quote = self._get_akshare_realtime_quote(symbol)
-                if quote:
-                    logger.info(f"✅ [实时行情-AKShare] 成功获取 {symbol} 实时行情")
-                    # 更新价格缓存
-                    self._update_price_cache(symbol, quote.get("price"))
-                    return quote
-            except Exception as e:
-                logger.warning(f"⚠️ [实时行情-AKShare] 获取失败: {e}")
+            # 根据优先级排序数据源
+            sources = []
+            if config["akshare_priority"] == 1:
+                sources.append(("akshare", self._get_akshare_realtime_quote_with_retry))
+            if config["tushare_enabled"] and config["tushare_priority"] == 1:
+                sources.append(("tushare", self._get_tushare_realtime_quote_with_retry))
+            if config["akshare_priority"] == 2:
+                sources.append(("akshare", self._get_akshare_realtime_quote_with_retry))
+            if config["tushare_enabled"] and config["tushare_priority"] == 2:
+                sources.append(("tushare", self._get_tushare_realtime_quote_with_retry))
 
-            # 🔥 优先级2: Tushare (使用实时接口)
-            try:
-                quote = self._get_tushare_realtime_quote(symbol)
-                if quote:
-                    logger.info(f"✅ [实时行情-Tushare] 成功获取 {symbol} 实时行情")
-                    # 更新价格缓存
-                    self._update_price_cache(symbol, quote.get("price"))
-                    return quote
-            except Exception as e:
-                logger.warning(f"⚠️ [实时行情-Tushare] 获取失败: {e}")
+            # 依次尝试各个数据源
+            for source_name, source_func in sources:
+                try:
+                    quote = source_func(symbol, config)
+                    if quote:
+                        logger.info(
+                            f"✅ [实时行情-{source_name.upper()}] 成功获取 {symbol} 实时行情"
+                        )
+                        self._update_price_cache(symbol, quote.get("price"))
+                        return quote
+                except Exception as e:
+                    logger.warning(f"⚠️ [实时行情-{source_name.upper()}] 获取失败: {e}")
+                    continue
 
-            # ❌ 不再使用 MongoDB 作为备选 - 实时行情必须来自外部API
+            # 所有数据源都失败
             logger.warning(
                 f"⚠️ [实时行情] 无法获取 {symbol} 的实时行情（所有外部API失败）"
             )
@@ -1488,6 +1503,67 @@ class DataSourceManager:
         except Exception as e:
             logger.error(f"❌ 获取实时行情失败: {e}", exc_info=True)
             return None
+
+    def _get_realtime_quote_config(self) -> Dict:
+        """获取实时行情配置"""
+        return {
+            "enabled": os.getenv("REALTIME_QUOTE_ENABLED", "true").lower() == "true",
+            "tushare_enabled": os.getenv(
+                "REALTIME_QUOTE_TUSHARE_ENABLED", "true"
+            ).lower()
+            == "true",
+            "max_retries": int(os.getenv("REALTIME_QUOTE_MAX_RETRIES", "3")),
+            "retry_delay": float(os.getenv("REALTIME_QUOTE_RETRY_DELAY", "1.0")),
+            "retry_backoff": float(os.getenv("REALTIME_QUOTE_RETRY_BACKOFF", "2.0")),
+            "akshare_priority": int(os.getenv("REALTIME_QUOTE_AKSHARE_PRIORITY", "1")),
+            "tushare_priority": int(os.getenv("REALTIME_QUOTE_TUSHARE_PRIORITY", "2")),
+        }
+
+    def _get_akshare_realtime_quote_with_retry(
+        self, symbol: str, config: Dict
+    ) -> Optional[Dict]:
+        """带重试的AKShare实时行情获取"""
+        max_retries = config["max_retries"]
+        retry_delay = config["retry_delay"]
+        backoff = config["retry_backoff"]
+
+        for attempt in range(max_retries):
+            try:
+                quote = self._get_akshare_realtime_quote(symbol)
+                if quote:
+                    return quote
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ [AKShare-重试{attempt + 1}/{max_retries}] {symbol}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= backoff
+
+        return None
+
+    def _get_tushare_realtime_quote_with_retry(
+        self, symbol: str, config: Dict
+    ) -> Optional[Dict]:
+        """带重试的Tushare实时行情获取"""
+        max_retries = config["max_retries"]
+        retry_delay = config["retry_delay"]
+        backoff = config["retry_backoff"]
+
+        for attempt in range(max_retries):
+            try:
+                quote = self._get_tushare_realtime_quote(symbol)
+                if quote:
+                    return quote
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ [Tushare-重试{attempt + 1}/{max_retries}] {symbol}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= backoff
+
+        return None
 
     def _update_price_cache(self, symbol: str, price: float):
         """更新价格缓存"""
