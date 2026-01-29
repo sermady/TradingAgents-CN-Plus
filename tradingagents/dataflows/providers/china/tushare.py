@@ -436,7 +436,9 @@ class TushareProvider(BaseStockDataProvider):
 
     # ==================== 基础数据接口 ====================
 
-    def get_stock_list_sync(self, market: str = None) -> Optional[pd.DataFrame]:
+    def get_stock_list_sync(
+        self, market: Optional[str] = None
+    ) -> Optional[pd.DataFrame]:
         """获取股票列表（同步版本）"""
         if not self.is_available():
             return None
@@ -457,7 +459,7 @@ class TushareProvider(BaseStockDataProvider):
             return None
 
     async def get_stock_list(
-        self, market: str = None
+        self, market: Optional[str] = None
     ) -> Optional[List[Dict[str, Any]]]:
         """获取股票列表（异步版本）"""
         if not self.is_available():
@@ -499,7 +501,7 @@ class TushareProvider(BaseStockDataProvider):
             return None
 
     async def get_stock_basic_info(
-        self, symbol: str = None
+        self, symbol: Optional[str] = None
     ) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
         """获取股票基础信息（包含 PE/PB 等财务指标）"""
         if not self.is_available():
