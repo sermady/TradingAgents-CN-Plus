@@ -2355,7 +2355,7 @@ class DataSourceManager:
             )
             return f"❌ AKShare获取{symbol}数据失败: {e}"
 
-    def _get_baostock_data(
+    async def _get_baostock_data_async(
         self,
         symbol: str,
         start_date: str,
@@ -2363,33 +2363,19 @@ class DataSourceManager:
         period: str = "daily",
         realtime_quote: Dict[str, Any] = None,
     ) -> str:
-        """使用BaoStock获取多周期数据 - 包含技术指标计算"""
+        """使用BaoStock获取多周期数据 - 异步版本"""
         # 使用BaoStock的统一接口
         from .providers.china.baostock import get_baostock_provider
 
         provider = get_baostock_provider()
 
-        # 使用异步方法获取历史数据
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        except RuntimeError:
-            # 在线程池中没有事件循环，创建新的
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        data = loop.run_until_complete(
-            provider.get_historical_data(symbol, start_date, end_date, period)
-        )
+        # 🔥 FIX: 直接调用异步方法，不创建新的事件循环
+        data = await provider.get_historical_data(symbol, start_date, end_date, period)
 
         if data is not None and not data.empty:
             # 🔧 修复：使用统一的格式化方法，包含技术指标计算
             # 获取股票基本信息
-            stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+            stock_info = await provider.get_stock_basic_info(symbol)
             stock_name = (
                 stock_info.get("name", f"股票{symbol}")
                 if stock_info
@@ -2405,6 +2391,44 @@ class DataSourceManager:
             return result
         else:
             return f"❌ 未能获取{symbol}的股票数据"
+
+    def _get_baostock_data(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_quote: Dict[str, Any] = None,
+    ) -> str:
+        """使用BaoStock获取多周期数据 - 同步包装器"""
+        import asyncio
+
+        try:
+            # 🔥 FIX: 获取当前事件循环，如果已经在异步环境中，使用 create_task
+            loop = asyncio.get_running_loop()
+            # 如果在异步环境中，直接调用异步版本
+            # 注意：这里不应该被直接调用，应该使用 _get_baostock_data_async
+            logger.warning("⚠️ [_get_baostock_data] 在异步环境中被调用，使用线程池")
+
+            # 使用线程池执行
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    lambda: asyncio.run(
+                        self._get_baostock_data_async(
+                            symbol, start_date, end_date, period, realtime_quote
+                        )
+                    )
+                )
+                return future.result()
+        except RuntimeError:
+            # 不在异步环境中，直接运行
+            return asyncio.run(
+                self._get_baostock_data_async(
+                    symbol, start_date, end_date, period, realtime_quote
+                )
+            )
 
     # TDX 数据获取方法已移除
     # def _get_tdx_data(self, symbol: str, start_date: str, end_date: str, period: str = "daily") -> str:
@@ -2479,6 +2503,55 @@ class DataSourceManager:
                         f"❌ [备用数据源-{source.value}] 获取失败: {symbol}, 错误: {e}"
                     )
                     continue
+
+        # 🔥 FIX: 所有在线数据源都失败，尝试使用 MongoDB 缓存作为兜底（即使数据可能过期）
+        logger.warning(f"⚠️ [所有在线数据源失败] 尝试使用 MongoDB 缓存兜底: {symbol}")
+        try:
+            from tradingagents.dataflows.cache.mongodb_cache_adapter import (
+                get_mongodb_cache_adapter,
+            )
+
+            adapter = get_mongodb_cache_adapter()
+            # 不限制日期范围，获取任何可用的历史数据
+            df = adapter.get_historical_data(
+                symbol, start_date=None, end_date=None, period=period
+            )
+
+            if df is not None and not df.empty:
+                # 检查数据时效性
+                if "date" in df.columns or "trade_date" in df.columns:
+                    date_col = "date" if "date" in df.columns else "trade_date"
+                    latest_date = df[date_col].max()
+                    from datetime import datetime
+
+                    if isinstance(latest_date, str):
+                        latest_date = datetime.strptime(latest_date, "%Y-%m-%d")
+                    days_old = (datetime.now() - latest_date).days
+
+                    logger.warning(
+                        f"⚠️ [MongoDB兜底] 使用可能过期的数据: {symbol}, "
+                        f"最新数据日期: {latest_date.strftime('%Y-%m-%d')}, "
+                        f"已过期: {days_old} 天"
+                    )
+
+                    # 获取股票名称
+                    stock_name = f"股票{symbol}"
+                    if "name" in df.columns and not df["name"].empty:
+                        stock_name = df["name"].iloc[0]
+
+                    # 调用统一的格式化方法
+                    result = self._format_stock_data_response(
+                        df, symbol, stock_name, start_date, end_date, realtime_quote
+                    )
+
+                    logger.info(
+                        f"✅ [MongoDB兜底] 成功获取过期数据: {symbol} ({len(df)}条记录)"
+                    )
+                    return result, "mongodb_fallback"
+            else:
+                logger.error(f"❌ [MongoDB兜底] 也没有缓存数据: {symbol}")
+        except Exception as e:
+            logger.error(f"❌ [MongoDB兜底] 获取缓存数据失败: {symbol}, 错误: {e}")
 
         logger.error(f"❌ [所有数据源失败] 无法获取{period}数据: {symbol}")
         return f"❌ 所有数据源都无法获取{symbol}的{period}数据", None
