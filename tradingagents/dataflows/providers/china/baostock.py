@@ -43,6 +43,10 @@ class BaoStockProvider(BaseStockDataProvider):
 
     async def connect(self) -> bool:
         """连接到BaoStock数据源"""
+        # 🔥 如果已经连接，直接返回成功（避免重复测试登录）
+        if self.connected and self.bs is not None:
+            logger.info("✅ BaoStock已连接，跳过重复连接测试")
+            return True
         return await self.test_connection()
 
     async def test_connection(self) -> bool:
