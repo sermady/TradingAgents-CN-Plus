@@ -2936,6 +2936,18 @@ class DataSourceManager:
                 logger.debug(
                     f"📊 [AKShare] stock_individual_info_em 返回类型: {type(stock_info)}"
                 )
+            except ValueError as ve:
+                # 🔥 FIX: 捕获 pandas DataFrame 构造错误
+                error_msg = str(ve)
+                if "scalar values" in error_msg or "index" in error_msg:
+                    logger.warning(
+                        f"⚠️ [AKShare] stock_individual_info_em 返回数据格式异常 "
+                        f"(可能是API返回空数据): {ve}"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ [AKShare] stock_individual_info_em 参数错误: {ve}"
+                    )
             except Exception as api_e:
                 logger.warning(
                     f"⚠️ [AKShare] stock_individual_info_em 调用失败: {api_e}"
@@ -3152,14 +3164,17 @@ class DataSourceManager:
 
             if stock_data is not None and not stock_data.empty:
                 row = stock_data.iloc[0]
+                # 🔥 FIX: 使用 `or` 操作符处理空值情况
+                # dict.get() 只在 key 不存在时返回默认值
+                # 使用 `value or default` 可以在值为空字符串/None时也返回默认值
                 return {
                     "symbol": symbol,
-                    "name": row.get("name", f"股票{symbol}"),
-                    "area": row.get("area", "未知"),
-                    "industry": row.get("industry", "未知"),
-                    "list_date": row.get("list_date", "未知"),
-                    "exchange": row.get("exchange", "未知"),
-                    "market": row.get("market", "未知"),
+                    "name": row.get("name") or f"股票{symbol}",
+                    "area": row.get("area") or "未知",
+                    "industry": row.get("industry") or "未知",
+                    "list_date": row.get("list_date") or "未知",
+                    "exchange": row.get("exchange") or "未知",
+                    "market": row.get("market") or "未知",
                     "source": "tushare",
                 }
             else:
