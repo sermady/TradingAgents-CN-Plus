@@ -549,11 +549,65 @@ class TushareProvider(BaseStockDataProvider):
                     )
                     if fina_df is not None and not fina_df.empty:
                         basic_data["q_profit_yoy"] = fina_df.iloc[0]["q_profit_yoy"]
-                        self.logger.info(f"🔍 [Tushare] 获取到 {ts_code} q_profit_yoy: {basic_data['q_profit_yoy']}, pe_ttm: {basic_data.get('pe_ttm')}")
+                        self.logger.info(
+                            f"🔍 [Tushare] 获取到 {ts_code} q_profit_yoy: {basic_data['q_profit_yoy']}, pe_ttm: {basic_data.get('pe_ttm')}"
+                        )
                     else:
-                        self.logger.warning(f"⚠️ [Tushare] fina_indicator 返回空数据: {ts_code}")
+                        self.logger.warning(
+                            f"⚠️ [Tushare] fina_indicator 返回空数据: {ts_code}"
+                        )
                 except Exception as fina_e:
                     self.logger.warning(f"获取 fina_indicator 财务指标失败: {fina_e}")
+
+                # 获取股东增减持数据 (stk_holdertrade) - 5210积分可用
+                try:
+                    holder_trade_df = await asyncio.to_thread(
+                        self.api.stk_holdertrade,
+                        ts_code=ts_code,
+                        limit=10,  # 获取最近10条增减持记录
+                    )
+                    if holder_trade_df is not None and not holder_trade_df.empty:
+                        basic_data["holder_trade_records"] = holder_trade_df.to_dict(
+                            "records"
+                        )
+                        # 统计增减持情况
+                        net_buy = holder_trade_df["in_de"].sum()  # in_de: 增持或减持
+                        basic_data["holder_net_buy"] = float(net_buy)
+                        self.logger.debug(
+                            f"✅ {ts_code} 股东增减持数据获取成功: {len(holder_trade_df)} 条记录, "
+                            f"净增持: {net_buy}万股"
+                        )
+                    else:
+                        self.logger.debug(f"⚠️ {ts_code} 股东增减持数据为空")
+                except Exception as e:
+                    self.logger.debug(
+                        f"获取{ts_code}股东增减持数据失败: {e}"
+                    )  # 股东增减持数据不是必需的，保持debug级别
+
+                # 获取股东人数数据 (stk_holdernumber) - 5210积分可用
+                try:
+                    holder_num_df = await asyncio.to_thread(
+                        self.api.stk_holdernumber,
+                        ts_code=ts_code,
+                        limit=4,  # 获取最近4个季度数据
+                    )
+                    if holder_num_df is not None and not holder_num_df.empty:
+                        basic_data["holder_number_records"] = holder_num_df.to_dict(
+                            "records"
+                        )
+                        latest_holders = holder_num_df.iloc[0]
+                        holder_num = latest_holders.get("holder_num", 0)
+                        basic_data["holder_num"] = int(holder_num)
+                        self.logger.debug(
+                            f"✅ {ts_code} 股东人数数据获取成功: {len(holder_num_df)} 条记录, "
+                            f"最新股东人数: {holder_num}"
+                        )
+                    else:
+                        self.logger.debug(f"⚠️ {ts_code} 股东人数数据为空")
+                except Exception as e:
+                    self.logger.debug(
+                        f"获取{ts_code}股东人数数据失败: {e}"
+                    )  # 股东人数数据不是必需的，保持debug级别
 
                 return self.standardize_basic_info(basic_data)
             else:
@@ -1117,6 +1171,32 @@ class TushareProvider(BaseStockDataProvider):
                 self.logger.debug(
                     f"获取{ts_code}主营业务构成数据失败: {e}"
                 )  # 主营业务数据不是必需的，保持debug级别
+
+            # 6. 获取分红送股数据 (dividend) - 5210积分可用
+            try:
+                # dividend接口不需要period参数，使用end_date和limit
+                dividend_params = {"ts_code": ts_code, "limit": limit}
+                dividend_df = await asyncio.to_thread(
+                    self.api.dividend, **dividend_params
+                )
+                if dividend_df is not None and not dividend_df.empty:
+                    financial_data["dividend"] = dividend_df.to_dict("records")
+                    # 计算股息率
+                    latest_dividend = dividend_df.iloc[0]
+                    dividend_yield = latest_dividend.get("dividend_yield", 0)
+                    cash_div = latest_dividend.get("cash_div", 0)
+                    financial_data["latest_dividend_yield"] = dividend_yield
+                    financial_data["latest_cash_div"] = cash_div
+                    self.logger.debug(
+                        f"✅ {ts_code} 分红送股数据获取成功: {len(dividend_df)} 条记录, "
+                        f"最新股息率: {dividend_yield}%, 现金分红: {cash_div}元"
+                    )
+                else:
+                    self.logger.debug(f"⚠️ {ts_code} 分红送股数据为空")
+            except Exception as e:
+                self.logger.debug(
+                    f"获取{ts_code}分红送股数据失败: {e}"
+                )  # 分红数据不是必需的，保持debug级别
 
             if financial_data:
                 # 标准化财务数据
