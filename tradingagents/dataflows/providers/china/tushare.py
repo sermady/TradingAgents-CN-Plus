@@ -954,29 +954,69 @@ class TushareProvider(BaseStockDataProvider):
 
             # 使用 ts.pro_bar() 函数获取前复权数据
             # 注意：pro_bar 是 tushare 模块的函数，不是 api 对象的方法
-            df = await asyncio.to_thread(
-                ts.pro_bar,
-                ts_code=ts_code,
-                api=self.api,  # 传入 api 对象
-                start_date=start_str,
-                end_date=end_str,
-                freq=freq,
-                adj="qfq",  # 前复权（与同花顺一致）
-            )
+            # 🔥 FIX: 添加异常处理，如果 pro_bar 失败也尝试备用方案
+            df = None
+            try:
+                df = await asyncio.to_thread(
+                    ts.pro_bar,
+                    ts_code=ts_code,
+                    api=self.api,  # 传入 api 对象
+                    start_date=start_str,
+                    end_date=end_str,
+                    freq=freq,
+                    adj="qfq",  # 前复权（与同花顺一致）
+                )
+            except Exception as pro_bar_e:
+                self.logger.warning(
+                    f"⚠️ Tushare pro_bar 调用异常: {pro_bar_e} "
+                    f"symbol={symbol}, ts_code={ts_code}"
+                )
 
             if df is None or df.empty:
-                self.logger.warning(
-                    f"⚠️ Tushare API 返回空数据: symbol={symbol}, ts_code={ts_code}, "
-                    f"period={period}, start={start_str}, end={end_str}"
-                )
-                self.logger.warning(
-                    f"💡 可能原因: "
-                    f"1) 该股票在此期间无交易数据 "
-                    f"2) 日期范围不正确 "
-                    f"3) 股票代码格式错误 "
-                    f"4) Tushare API 限制或积分不足"
-                )
-                return None
+                if df is None:
+                    self.logger.warning(
+                        f"⚠️ Tushare pro_bar 调用失败或返回 None: "
+                        f"symbol={symbol}, ts_code={ts_code}, "
+                        f"period={period}, start={start_str}, end={end_str}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ Tushare pro_bar 返回空数据: symbol={symbol}, ts_code={ts_code}, "
+                        f"period={period}, start={start_str}, end={end_str}"
+                    )
+
+                # 🔥 FIX: 尝试使用 api.daily 作为备用方案（5210积分可用）
+                try:
+                    self.logger.info(
+                        f"🔄 [备用方案] 尝试使用 api.daily 获取数据: {ts_code}"
+                    )
+                    df = await asyncio.to_thread(
+                        self.api.daily,
+                        ts_code=ts_code,
+                        start_date=start_str,
+                        end_date=end_str,
+                    )
+
+                    if df is not None and not df.empty:
+                        self.logger.info(
+                            f"✅ [备用方案成功] api.daily 返回 {len(df)} 条记录"
+                        )
+                        # 注意：api.daily 返回的是非复权数据
+                    else:
+                        self.logger.warning(f"⚠️ [备用方案失败] api.daily 也返回空数据")
+                        self.logger.warning(
+                            f"💡 可能原因: "
+                            f"1) 该股票在此期间无交易数据 "
+                            f"2) 日期范围不正确 (当前: {start_str} 至 {end_str}) "
+                            f"3) 股票代码格式错误 (当前: {ts_code}) "
+                            f"4) Tushare API 限制或积分不足"
+                        )
+                        return None
+                except Exception as daily_e:
+                    self.logger.warning(
+                        f"⚠️ [备用方案异常] api.daily 调用失败: {daily_e}"
+                    )
+                    return None
 
             # 数据标准化
             df = self._standardize_historical_data(df)
