@@ -103,6 +103,56 @@ python test_realtime_quote.py
 
 ---
 
+### 🟢 成交量单位统一为"手" (2026-01-29)
+
+**修改目标**: 将 Tushare/AKShare/BaoStock 的成交量单位统一为"手"(1手=100股)
+
+**背景问题**:
+- Tushare/AKShare 返回"手"，但代码转换为"股"
+- BaoStock 返回"股"，代码未转换
+- 导致 MongoDB 中混合格式，AI 分析时数值混乱
+
+**修改内容**:
+1. **Tushare** (`tushare.py:1789-1791, 2530-2531`): 移除 `* 100` 转换，保持"手"
+2. **AKShare** (`akshare.py:944-946, 1277-1280`): 移除 `* 100` 转换，保持"手"
+3. **BaoStock** (`baostock.py`): 
+   - 添加 `/ 100` 转换，从"股"转为"手"
+   - 成交额确认原始单位是"元"，移除错误转换
+4. **App 适配器**: tushare_adapter.py, akshare_adapter.py 同步修改
+
+**数据迁移步骤**:
+```bash
+# 1. 清除 MongoDB 中的旧 volume 数据
+python scripts/clear_volume_data.py
+
+# 2. 重新导入数据
+python scripts/import/import_a_stocks_unified.py --data-source tushare
+
+# 3. 验证单位
+python scripts/test_volume_unit.py
+```
+
+**成交额单位确认**:
+- Tushare: 原始"千元" → 转换为"元" (×1000) ✅
+- AKShare: 原始"元" → 直接使用 ✅  
+- BaoStock: 原始"元" → 直接使用 ✅
+
+---
+
+### 🟢 数据质量评分隐藏 (2026-01-29)
+
+**修改目标**: 从 AI 提示词中移除数据质量评分，减少干扰
+
+**修改内容**:
+- `market_analyst.py`, `fundamentals_analyst.py`, `news_analyst.py`, `china_market_analyst.py`
+- 从提示词中移除 "数据质量评分: 0%" 等内容
+- 保留数据来源和成交量单位等必要元数据
+- 数据质量问题仍记录到日志 (`logger.warning`)
+
+**原因**: 经常出现 0% 评分反而让 AI 质疑数据可靠性
+
+---
+
 ### 🔴 分析日期传递 Bug (已修复)
 
 **问题现象**: 分析师使用系统时间而非前端指定的分析日期（如 2024年 vs 2026-01-29）

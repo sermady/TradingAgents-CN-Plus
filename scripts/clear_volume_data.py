@@ -3,6 +3,11 @@
 """
 清除 MongoDB 中的成交量数据，为重新同步做准备
 用于将成交量单位从"股"转换为"手"后重新获取数据
+
+用法:
+    python scripts/clear_volume_data.py          # 交互式确认
+    python scripts/clear_volume_data.py --force  # 自动确认
+    python scripts/clear_volume_data.py -y       # 自动确认
 """
 
 import sys
@@ -10,6 +15,9 @@ import os
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# 检查命令行参数
+AUTO_CONFIRM = "--force" in sys.argv or "-y" in sys.argv
 
 from tradingagents.utils.logging_init import get_logger
 
@@ -133,7 +141,11 @@ if __name__ == "__main__":
     print("  - 目的: 将成交量单位从'股'转换为'手'后重新获取")
     print()
 
-    response = input("确认继续? (yes/no): ")
+    if AUTO_CONFIRM:
+        response = "yes"
+        print("自动确认模式 (--force/-y)")
+    else:
+        response = input("确认继续? (yes/no): ")
 
     if response.lower() == "yes":
         if clear_volume_data():

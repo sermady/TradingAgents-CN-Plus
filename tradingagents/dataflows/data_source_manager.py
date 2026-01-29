@@ -775,29 +775,26 @@ class DataSourceManager:
             data: 股票数据DataFrame
 
         Returns:
-            float: 成交量（股），如果获取失败返回0
+            float: 成交量（手），如果获取失败返回0
 
-        数据流程说明：
-        1. Tushare daily 接口返回 vol 字段，单位是"手"（1手=100股）
-        2. TushareAdapter.standardize_quotes 将 vol * 100 转换为"股"
-        3. MongoDB stock_daily_quotes 中存储的 volume 已经是"股"
-        4. 因此这里不需要再进行单位转换，直接返回即可
+        重要说明 - 2026-01-29 单位标准化：
+        1. 所有数据源（Tushare/AKShare/BaoStock）统一返回"手"单位
+        2. MongoDB 中存储的 volume 字段单位是"手"（1手=100股）
+        3. 显示时直接标注为"手"，无需转换
 
-        修复历史问题：
-        之前的代码错误地假设MongoDB中的volume单位是"万"，导致成交量被放大100倍
-        实际上TushareAdapter已经在获取数据时完成了"手→股"的转换
+        历史修复记录：
+        - 之前曾错误地转换为"股"，导致成交量显示异常（如192,770股 vs 192,770手）
+        - 已在数据层统一为"手"，此处保持单位一致性
         """
         try:
             if "volume" in data.columns:
                 volume_raw = data["volume"].iloc[-1]
-                # 🔧 FIX: MongoDB中的volume已经是"股"，不需要再乘以100
-                # TushareAdapter已经在standardize_quotes中完成了"手→股"的转换
+                # 🔧 FIX: 单位统一为"手"，直接返回原始值
                 return float(volume_raw) if volume_raw else 0
             elif "vol" in data.columns:
                 volume_raw = data["vol"].iloc[-1]
-                # 如果数据列名是vol而不是volume，可能是原始数据，需要转换
-                # 假设vol单位是"手"，转换为"股"
-                return float(volume_raw) * 100 if volume_raw else 0
+                # vol 字段同样已经是"手"单位
+                return float(volume_raw) if volume_raw else 0
             else:
                 return 0
         except Exception:
@@ -1271,7 +1268,7 @@ class DataSourceManager:
 
             # 防御性获取成交量数据
             volume_value = self._get_volume_safely(display_data)
-            result += f"   平均成交量: {volume_value:,.0f}股\n"
+            result += f"   平均成交量: {volume_value:,.0f}手\n"
 
             return result
 
@@ -2948,7 +2945,9 @@ class DataSourceManager:
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
-                        logger.info(f"🔄 [AKShare备用方案] 尝试从全市场数据获取: {symbol} (尝试 {attempt + 1}/{max_retries})")
+                        logger.info(
+                            f"🔄 [AKShare备用方案] 尝试从全市场数据获取: {symbol} (尝试 {attempt + 1}/{max_retries})"
+                        )
                         spot_df = ak.stock_zh_a_spot_em()
                         if spot_df is not None and not spot_df.empty:
                             # 在 spot 数据中查找该股票
@@ -2989,15 +2988,23 @@ class DataSourceManager:
                         error_str = str(backup_e)
                         is_network_error = any(
                             x in error_str.lower()
-                            for x in ["remote", "connection", "aborted", "reset", "closed", "without response"]
+                            for x in [
+                                "remote",
+                                "connection",
+                                "aborted",
+                                "reset",
+                                "closed",
+                                "without response",
+                            ]
                         )
                         if is_network_error and attempt < max_retries - 1:
-                            wait_time = min(1.0 * (2 ** attempt), 10.0)
+                            wait_time = min(1.0 * (2**attempt), 10.0)
                             logger.warning(
                                 f"⚠️ [AKShare备用方案] 网络错误，等待 {wait_time:.1f} 秒后重试 "
                                 f"({attempt + 1}/{max_retries}): {error_str[:100]}"
                             )
                             import time
+
                             time.sleep(wait_time)
                             continue
                         else:
