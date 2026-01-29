@@ -1034,7 +1034,7 @@ class AKShareProvider(BaseStockDataProvider):
             "codes": list(AKSHARE_QUOTES_CACHE.keys())[:20],
         }
 
-    def invalidate_akshare_cache(self, code: str = None) -> None:
+    def invalidate_akshare_cache(self, code: Optional[str] = None) -> None:
         """使AKShare缓存失效"""
         global AKSHARE_QUOTES_CACHE
         with AKSHARE_CACHE_LOCK:
@@ -1403,7 +1403,7 @@ class AKShareProvider(BaseStockDataProvider):
             }
 
     def get_stock_news_sync(
-        self, symbol: str = None, limit: int = 10
+        self, symbol: Optional[str] = None, limit: int = 10
     ) -> Optional[pd.DataFrame]:
         """
         获取股票新闻（同步版本，返回原始 DataFrame）
@@ -1486,7 +1486,7 @@ class AKShareProvider(BaseStockDataProvider):
             return None
 
     async def get_stock_news(
-        self, symbol: str = None, limit: int = 10
+        self, symbol: Optional[str] = None, limit: int = 10
     ) -> Optional[List[Dict[str, Any]]]:
         """
         获取股票新闻（异步版本，返回结构化列表）
