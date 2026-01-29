@@ -177,7 +177,7 @@ class BaoStockProvider(BaseStockDataProvider):
             return []
 
     async def get_stock_basic_info(
-        self, symbol: str = None
+        self, symbol: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         获取股票基础信息
