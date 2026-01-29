@@ -254,17 +254,6 @@ class TushareProvider(BaseStockDataProvider):
                             f"❌ [步骤4.2] .env Token 测试失败: API返回空数据。请检查Token是否正确: {env_token[:10]}***"
                         )
                         return False
-
-                    if test_data is not None and not test_data.empty:
-                        self.connected = True
-                        self.token_source = "env"
-                        self.logger.info(
-                            f"✅ [步骤4.2] Tushare连接成功 (Token来源: .env 环境变量)"
-                        )
-                        return True
-                    else:
-                        self.logger.error("❌ [步骤4.2] .env Token 测试失败")
-                        return False
                 except Exception as e:
                     self.logger.error(f"❌ [步骤4] .env Token 连接失败: {e}")
                     return False
@@ -284,6 +273,11 @@ class TushareProvider(BaseStockDataProvider):
         if not TUSHARE_AVAILABLE:
             self.logger.error("❌ Tushare库不可用")
             return False
+
+        # 🔥 如果已经连接，直接返回成功（防止重复连接触发限流）
+        if self.connected and self.api is not None:
+            self.logger.info("✅ Tushare已连接，跳过重复连接")
+            return True
 
         # 测试连接超时时间（秒）- 只是测试连通性，不需要很长时间
         test_timeout = 10
@@ -405,16 +399,6 @@ class TushareProvider(BaseStockDataProvider):
                         self.logger.error(
                             f"❌ [步骤4.2] .env Token 测试失败: API返回空数据"
                         )
-                        return False
-
-                    if test_data is not None and not test_data.empty:
-                        self.connected = True
-                        self.logger.info(
-                            f"✅ Tushare连接成功 (Token来源: .env 环境变量)"
-                        )
-                        return True
-                    else:
-                        self.logger.error("❌ .env Token 测试失败")
                         return False
                 except Exception as e:
                     self.logger.error(f"❌ .env Token 连接失败: {e}")
