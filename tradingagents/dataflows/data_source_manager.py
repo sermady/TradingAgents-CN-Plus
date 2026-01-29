@@ -1616,7 +1616,9 @@ class DataSourceManager:
 
                 # 备用：东方财富单股票接口（如果新浪失败）
                 # 🔥 优化：使用 stock_bid_ask_em 获取单只股票，而不是 stock_zh_a_spot_em 获取全市场
-                logger.info(f"🔄 [AKShare] 尝试获取 {symbol} 单股票实时行情 (第{attempt + 1}次)")
+                logger.info(
+                    f"🔄 [AKShare] 尝试获取 {symbol} 单股票实时行情 (第{attempt + 1}次)"
+                )
                 df = ak.stock_bid_ask_em(symbol=symbol)
 
                 if df is not None and not df.empty:
@@ -2019,6 +2021,21 @@ class DataSourceManager:
                 symbol, start_date, end_date, period, realtime_quote
             )
 
+    def _run_async_safe(self, coro):
+        """安全地运行异步协程，处理事件循环冲突"""
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+
     def _get_tushare_data(
         self,
         symbol: str,
@@ -2100,17 +2117,7 @@ class DataSourceManager:
             # 使用异步方法获取历史数据
             import asyncio
 
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-            except RuntimeError:
-                # 在线程池中没有事件循环，创建新的
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            data = loop.run_until_complete(
+            data = self._run_async_safe(
                 provider.get_historical_data(symbol, start_date, end_date)
             )
 
@@ -2118,10 +2125,8 @@ class DataSourceManager:
                 # 保存到缓存
                 self._save_to_cache(symbol, data, start_date, end_date)
 
-                # 获取股票基本信息（异步）
-                stock_info = loop.run_until_complete(
-                    provider.get_stock_basic_info(symbol)
-                )
+                # 获取股票基本信息
+                stock_info = self._run_async_safe(provider.get_stock_basic_info(symbol))
                 stock_name = (
                     stock_info.get("name", f"股票{symbol}")
                     if stock_info
@@ -2187,17 +2192,7 @@ class DataSourceManager:
             # 使用异步方法获取历史数据
             import asyncio
 
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-            except RuntimeError:
-                # 在线程池中没有事件循环，创建新的
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            data = loop.run_until_complete(
+            data = self._run_async_safe(
                 provider.get_historical_data(symbol, start_date, end_date, period)
             )
 
@@ -2206,9 +2201,7 @@ class DataSourceManager:
             if data is not None and not data.empty:
                 # 🔧 修复：使用统一的格式化方法，包含技术指标计算
                 # 获取股票基本信息
-                stock_info = loop.run_until_complete(
-                    provider.get_stock_basic_info(symbol)
-                )
+                stock_info = self._run_async_safe(provider.get_stock_basic_info(symbol))
                 stock_name = (
                     stock_info.get("name", f"股票{symbol}")
                     if stock_info
@@ -2822,6 +2815,54 @@ class DataSourceManager:
                 "symbol": symbol,
                 "name": f"股票{symbol}",
                 "source": "baostock",
+                "error": str(e),
+            }
+
+    def _get_tushare_stock_info(self, symbol: str) -> Dict:
+        """使用Tushare获取股票基本信息"""
+        try:
+            from .providers.china.tushare import TushareProvider
+
+            provider = TushareProvider()
+            if not provider.is_available():
+                logger.warning(f"⚠️ [股票信息] Tushare未连接")
+                return {"symbol": symbol, "name": f"股票{symbol}", "source": "tushare"}
+
+            if not provider.api:
+                logger.warning(f"⚠️ [股票信息] Tushare API未初始化")
+                return {"symbol": symbol, "name": f"股票{symbol}", "source": "tushare"}
+
+            if symbol.startswith("6"):
+                ts_code = f"sh.{symbol}"
+            else:
+                ts_code = f"sz.{symbol}"
+
+            stock_data = provider.api.stock_basic(
+                ts_code=ts_code,
+                fields="ts_code,symbol,name,area,industry,list_date,exchange,market",
+            )
+
+            if stock_data is not None and not stock_data.empty:
+                row = stock_data.iloc[0]
+                return {
+                    "symbol": symbol,
+                    "name": row.get("name", f"股票{symbol}"),
+                    "area": row.get("area", "未知"),
+                    "industry": row.get("industry", "未知"),
+                    "list_date": row.get("list_date", "未知"),
+                    "exchange": row.get("exchange", "未知"),
+                    "market": row.get("market", "未知"),
+                    "source": "tushare",
+                }
+            else:
+                return {"symbol": symbol, "name": f"股票{symbol}", "source": "tushare"}
+
+        except Exception as e:
+            logger.error(f"❌ [股票信息] Tushare获取失败: {e}")
+            return {
+                "symbol": symbol,
+                "name": f"股票{symbol}",
+                "source": "tushare",
                 "error": str(e),
             }
 

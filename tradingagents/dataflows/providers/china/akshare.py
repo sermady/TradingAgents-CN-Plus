@@ -1157,20 +1157,45 @@ class AKShareProvider(BaseStockDataProvider):
             start_date_formatted = start_date.replace("-", "")
             end_date_formatted = end_date.replace("-", "")
 
-            # 获取历史数据
-            def fetch_historical_data():
-                return self.ak.stock_zh_a_hist(
-                    symbol=code,
-                    period=ak_period,
-                    start_date=start_date_formatted,
-                    end_date=end_date_formatted,
-                    adjust="qfq",  # 前复权
-                )
+            # 获取历史数据（带重试机制）
+            max_retries = 2
+            last_error = None
+            hist_df = None
 
-            hist_df = await asyncio.to_thread(fetch_historical_data)
+            for attempt in range(max_retries):
+                try:
+
+                    def fetch_historical_data():
+                        return self.ak.stock_zh_a_hist(
+                            symbol=code,
+                            period=ak_period,
+                            start_date=start_date_formatted,
+                            end_date=end_date_formatted,
+                            adjust="qfq",  # 前复权
+                        )
+
+                    hist_df = await asyncio.to_thread(fetch_historical_data)
+
+                    if hist_df is None:
+                        raise ValueError("API返回None")
+
+                    if hist_df.empty:
+                        raise ValueError("API返回空DataFrame")
+
+                    break  # 成功获取，跳出重试循环
+
+                except Exception as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        wait_time = 1.5 * (attempt + 1)
+                        logger.warning(
+                            f"⚠️ 获取{code}历史数据失败，{wait_time}秒后重试: {e}"
+                        )
+                        await asyncio.sleep(wait_time)
+                    continue
 
             if hist_df is None or hist_df.empty:
-                logger.warning(f"⚠️ {code}历史数据为空")
+                logger.warning(f"⚠️ {code}历史数据为空或获取失败 (尝试{max_retries}次)")
                 return None
 
             # 标准化列名

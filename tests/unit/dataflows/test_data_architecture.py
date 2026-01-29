@@ -1,53 +1,58 @@
 # -*- coding: utf-8 -*-
 """
-Data Architecture Optimization Verification
-Standalone test, no external dependencies
+数据架构优化验证测试
+独立测试，无外部依赖
 """
 
 import sys
 import os
+import threading
+import pytest
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 
-# Mock PriceCache Core Functions
-class MockPriceCache:
-    """Mock PriceCache for testing"""
+
+class PriceCache:
+    """价格缓存"""
 
     def __init__(self):
         self.cache: Dict[str, Dict[str, Any]] = {}
         self.memory_ttl_seconds = 600
         self.redis_ttl_seconds = 1800
         self._redis_available = False
-        print("[MockPriceCache] Init completed (memory mode)")
 
     def get_price(self, ticker: str) -> Optional[float]:
         if ticker in self.cache:
             entry = self.cache[ticker]
-            age = (datetime.now() - entry['timestamp']).total_seconds()
+            age = (datetime.now() - entry["timestamp"]).total_seconds()
             if age < self.memory_ttl_seconds:
-                return entry['price']
+                return entry["price"]
         return None
 
-    def update(self, ticker: str, price: float, currency: str = "CNY", data: Dict[str, Any] = None):
+    def update(
+        self,
+        ticker: str,
+        price: float,
+        currency: str = "CNY",
+        data: Dict[str, Any] = None,
+    ):
         entry = {
-            'price': float(price),
-            'currency': currency,
-            'timestamp': datetime.now(),
-            'data': data or {}
+            "price": float(price),
+            "currency": currency,
+            "timestamp": datetime.now(),
+            "data": data or {},
         }
         if ticker in self.cache:
             old_entry = self.cache[ticker]
-            age = (datetime.now() - old_entry['timestamp']).total_seconds()
+            age = (datetime.now() - old_entry["timestamp"]).total_seconds()
             if age < 10:
                 return
         self.cache[ticker] = entry
-        expire_time = (datetime.now() + timedelta(seconds=self.memory_ttl_seconds)).strftime('%H:%M:%S')
-        print(f"[MockPriceCache] {ticker} updated: {currency}{price:.2f}, expire: {expire_time}")
 
     def get_price_info(self, ticker: str) -> Optional[Dict[str, Any]]:
         if ticker in self.cache:
             entry = self.cache[ticker]
-            age = (datetime.now() - entry['timestamp']).total_seconds()
+            age = (datetime.now() - entry["timestamp"]).total_seconds()
             if age < self.memory_ttl_seconds:
                 return entry.copy()
         return None
@@ -55,39 +60,40 @@ class MockPriceCache:
     def is_price_fresh(self, ticker: str, max_age_seconds: int = 600) -> bool:
         if ticker in self.cache:
             entry = self.cache[ticker]
-            age = (datetime.now() - entry['timestamp']).total_seconds()
+            age = (datetime.now() - entry["timestamp"]).total_seconds()
             return age < max_age_seconds
         return False
 
     def get_cache_stats(self) -> Dict[str, Any]:
-        valid_count = sum(1 for entry in self.cache.values()
-                         if (datetime.now() - entry['timestamp']).total_seconds() < self.memory_ttl_seconds)
+        valid_count = sum(
+            1
+            for entry in self.cache.values()
+            if (datetime.now() - entry["timestamp"]).total_seconds()
+            < self.memory_ttl_seconds
+        )
         return {
             "memory_cache_count": len(self.cache),
             "valid_memory_cache": valid_count,
             "redis_available": self._redis_available,
             "memory_ttl_seconds": self.memory_ttl_seconds,
-            "redis_ttl_seconds": self.redis_ttl_seconds
+            "redis_ttl_seconds": self.redis_ttl_seconds,
         }
 
     def clear(self, ticker: str = None):
         if ticker:
             if ticker in self.cache:
                 del self.cache[ticker]
-                print(f"[MockPriceCache] {ticker} cleared")
         else:
             self.cache.clear()
-            print("[MockPriceCache] All cleared")
 
 
-class MockDataCoordinator:
-    """Mock DataCoordinator for testing"""
+class DataCoordinator:
+    """数据协调器"""
 
     def __init__(self):
         self._preloaded_cache: Dict[str, Dict[str, Any]] = {}
-        self._price_cache = MockPriceCache()
+        self._price_cache = PriceCache()
         self._cache_ttl_seconds = 600
-        print("[MockDataCoordinator] Init completed")
 
     def _get_cache_key(self, ticker: str, trade_date: str) -> str:
         return f"{ticker}_{trade_date}"
@@ -103,7 +109,7 @@ class MockDataCoordinator:
         return {
             "preloaded_stocks": len(self._preloaded_cache),
             "preloaded_entries": total_entries,
-            "price_cache_stats": self._price_cache.get_cache_stats()
+            "price_cache_stats": self._price_cache.get_cache_stats(),
         }
 
     def clear_cache(self, ticker: str = None):
@@ -115,219 +121,196 @@ class MockDataCoordinator:
         self._price_cache.clear(ticker)
 
 
-def test_price_cache():
-    """Test price cache functionality"""
-    print("\n" + "="*60)
-    print("Test 1: Price Cache Functionality")
-    print("="*60)
+@pytest.mark.unit
+class TestPriceCache:
+    """价格缓存测试"""
 
-    cache = MockPriceCache()
+    def test_price_update_and_get(self):
+        """测试价格更新和获取"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        price = cache.get_price("600519")
+        assert price == 1800.50
 
-    # Test update and get
-    cache.update("600519", 1800.50, "CNY")
-    price = cache.get_price("600519")
-    assert price == 1800.50, f"Price mismatch: {price}"
-    print("  [OK] Price update and get works")
+    def test_price_info_retrieval(self):
+        """测试价格信息获取"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        info = cache.get_price_info("600519")
+        assert info is not None
+        assert info["price"] == 1800.50
+        assert info["currency"] == "CNY"
 
-    # Test price info
-    info = cache.get_price_info("600519")
-    assert info is not None
-    assert info['price'] == 1800.50
-    assert info['currency'] == "CNY"
-    print("  [OK] Price info retrieval works")
+    def test_price_freshness(self):
+        """测试价格新鲜度检查"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        is_fresh = cache.is_price_fresh("600519", 600)
+        assert is_fresh is True
 
-    # Test freshness
-    is_fresh = cache.is_price_fresh("600519", 600)
-    assert is_fresh is True
-    print("  [OK] Price freshness check works")
+    def test_multi_ticker_caching(self):
+        """测试多股票缓存"""
+        cache = PriceCache()
+        cache.update("000001", 15.20, "CNY")
+        cache.update("000002", 25.30, "CNY")
+        assert cache.get_price("000001") == 15.20
+        assert cache.get_price("000002") == 25.30
 
-    # Test multiple tickers
-    cache.update("000001", 15.20, "CNY")
-    cache.update("000002", 25.30, "CNY")
-    assert cache.get_price("000001") == 15.20
-    assert cache.get_price("000002") == 25.30
-    print("  [OK] Multi-ticker caching works")
+    def test_cache_stats(self):
+        """测试缓存统计"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        stats = cache.get_cache_stats()
+        assert "memory_cache_count" in stats
+        assert "redis_available" in stats
+        assert stats["memory_cache_count"] == 1
 
-    # Test stats
-    stats = cache.get_cache_stats()
-    assert 'memory_cache_count' in stats
-    assert 'redis_available' in stats
-    print("  [OK] Cache stats works")
+    def test_cache_clear_single(self):
+        """测试清除单个缓存"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        cache.clear("600519")
+        assert cache.get_price("600519") is None
 
-    # Test clear
-    cache.clear("600519")
-    assert cache.get_price("600519") is None
-    print("  [OK] Cache clear works")
-
-    print("\n[PASS] Price cache functionality all passed")
-
-
-def test_data_coordinator():
-    """Test data coordinator functionality"""
-    print("\n" + "="*60)
-    print("Test 2: Data Coordinator Functionality")
-    print("="*60)
-
-    coordinator = MockDataCoordinator()
-
-    # Test price update
-    coordinator.update_price("TEST_001", 100.50, "CNY")
-    print("  [OK] Price update works")
-
-    # Test price get
-    info = coordinator.get_price_info("TEST_001")
-    assert info is not None
-    assert info['price'] == 100.50
-    print("  [OK] Price get works")
-
-    # Test stats
-    stats = coordinator.get_cache_stats()
-    assert 'preloaded_stocks' in stats
-    assert 'price_cache_stats' in stats
-    print("  [OK] Coordinator stats works")
-
-    # Test clear
-    coordinator.clear_cache("TEST_001")
-    assert coordinator.get_price_info("TEST_001") is None
-    print("  [OK] Coordinator clear works")
-
-    print("\n[PASS] Data coordinator functionality all passed")
+    def test_cache_clear_all(self):
+        """测试清除所有缓存"""
+        cache = PriceCache()
+        cache.update("600519", 1800.50, "CNY")
+        cache.update("000001", 15.20, "CNY")
+        cache.clear()
+        assert cache.get_price("600519") is None
+        assert cache.get_price("000001") is None
 
 
-def test_cache_integration():
-    """Test cache integration"""
-    print("\n" + "="*60)
-    print("Test 3: Cache Integration Test")
-    print("="*60)
+@pytest.mark.unit
+class TestDataCoordinator:
+    """数据协调器测试"""
 
-    coordinator = MockDataCoordinator()
+    def test_price_update(self):
+        """测试价格更新"""
+        coordinator = DataCoordinator()
+        coordinator.update_price("TEST_001", 100.50, "CNY")
+        info = coordinator.get_price_info("TEST_001")
+        assert info is not None
+        assert info["price"] == 100.50
 
-    tickers = ["STOCK_A", "STOCK_B", "STOCK_C"]
-    for ticker in tickers:
-        coordinator.update_price(ticker, 100.0 + len(tickers) * 10, "CNY")
+    def test_coordinator_stats(self):
+        """测试协调器统计"""
+        coordinator = DataCoordinator()
+        stats = coordinator.get_cache_stats()
+        assert "preloaded_stocks" in stats
+        assert "price_cache_stats" in stats
 
-    for i, ticker in enumerate(tickers):
-        price = coordinator.get_price_info(ticker)
-        assert price is not None
-        assert price['price'] == 100.0 + len(tickers) * 10
-        print(f"  [OK] {ticker} cached: {price['price']}")
-
-    stats = coordinator.get_cache_stats()
-    print(f"  [Stats] Preloaded stocks: {stats['preloaded_stocks']}")
-    print(f"  [Stats] Cache stats: {stats['price_cache_stats']}")
-
-    coordinator.clear_cache()
-    for ticker in tickers:
-        assert coordinator.get_price_info(ticker) is None
-    print("  [OK] Batch clear works")
-
-    print("\n[PASS] Cache integration all passed")
+    def test_coordinator_clear(self):
+        """测试协调器清除"""
+        coordinator = DataCoordinator()
+        coordinator.update_price("TEST_001", 100.50, "CNY")
+        coordinator.clear_cache("TEST_001")
+        assert coordinator.get_price_info("TEST_001") is None
 
 
-def test_cache_ttl_behavior():
-    """Test cache TTL behavior"""
-    print("\n" + "="*60)
-    print("Test 4: Cache TTL Behavior")
-    print("="*60)
+@pytest.mark.unit
+class TestCacheIntegration:
+    """缓存集成测试"""
 
-    cache = MockPriceCache()
+    def test_batch_price_update(self):
+        """测试批量价格更新"""
+        coordinator = DataCoordinator()
+        tickers = ["STOCK_A", "STOCK_B", "STOCK_C"]
+        for ticker in tickers:
+            coordinator.update_price(ticker, 100.0, "CNY")
 
-    cache.update("TTL_TEST", 50.00, "CNY")
-    assert cache.is_price_fresh("TTL_TEST", 600) is True
-    print("  [OK] Fresh data freshness works")
+        for ticker in tickers:
+            price = coordinator.get_price_info(ticker)
+            assert price is not None
+            assert price["price"] == 100.0
 
-    cache.memory_ttl_seconds = 0
-    assert cache.is_price_fresh("TTL_TEST", 0) is False
-    print("  [OK] Expired data freshness is False")
+    def test_batch_clear(self):
+        """测试批量清除"""
+        coordinator = DataCoordinator()
+        tickers = ["STOCK_A", "STOCK_B", "STOCK_C"]
+        for ticker in tickers:
+            coordinator.update_price(ticker, 100.0, "CNY")
 
-    cache.memory_ttl_seconds = 600
+        coordinator.clear_cache()
 
-    print("\n[PASS] Cache TTL behavior all passed")
+        for ticker in tickers:
+            assert coordinator.get_price_info(ticker) is None
 
 
-def test_concurrent_access():
-    """Test concurrent access simulation"""
-    print("\n" + "="*60)
-    print("Test 5: Concurrent Access Simulation")
-    print("="*60)
+@pytest.mark.unit
+class TestCacheTTLBehavior:
+    """缓存TTL行为测试"""
 
-    import threading
+    def test_fresh_data_freshness(self):
+        """测试新数据的新鲜度"""
+        cache = PriceCache()
+        cache.update("TTL_TEST", 50.00, "CNY")
+        assert cache.is_price_fresh("TTL_TEST", 600) is True
 
-    cache = MockPriceCache()
-    results = []
-    errors = []
+    def test_expired_data_freshness(self):
+        """测试过期数据的新鲜度"""
+        cache = PriceCache()
+        cache.update("TTL_TEST", 50.00, "CNY")
+        cache.memory_ttl_seconds = 0
+        assert cache.is_price_fresh("TTL_TEST", 0) is False
 
-    def update_prices(ticker_prefix, count):
-        try:
+    def test_ttl_config(self):
+        """测试TTL配置"""
+        cache = PriceCache()
+        assert cache.memory_ttl_seconds == 600
+        assert cache.redis_ttl_seconds == 1800
+
+
+@pytest.mark.unit
+class TestConcurrentAccess:
+    """并发访问测试"""
+
+    def test_concurrent_update_no_errors(self):
+        """测试并发更新无错误"""
+        cache = PriceCache()
+        errors = []
+
+        def update_prices(ticker_prefix, count):
+            try:
+                for i in range(count):
+                    ticker = f"{ticker_prefix}_{i}"
+                    cache.update(ticker, 100.0 + i, "CNY")
+            except Exception as e:
+                errors.append(str(e))
+
+        threads = []
+        for i in range(5):
+            t = threading.Thread(target=update_prices, args=(f"CONCURRENT_{i}", 10))
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0
+
+    def test_all_records_cached(self):
+        """测试所有记录正确缓存"""
+        cache = PriceCache()
+
+        def update_prices(ticker_prefix, count):
             for i in range(count):
                 ticker = f"{ticker_prefix}_{i}"
                 cache.update(ticker, 100.0 + i, "CNY")
-            results.append(True)
-        except Exception as e:
-            errors.append(str(e))
 
-    threads = []
-    for i in range(5):
-        t = threading.Thread(target=update_prices, args=(f"CONCURRENT_{i}", 10))
-        threads.append(t)
+        threads = []
+        for i in range(5):
+            t = threading.Thread(target=update_prices, args=(f"CONCURRENT_{i}", 10))
+            threads.append(t)
 
-    for t in threads:
-        t.start()
+        for t in threads:
+            t.start()
 
-    for t in threads:
-        t.join()
+        for t in threads:
+            t.join()
 
-    assert len(errors) == 0, f"Concurrent access error: {errors}"
-    print("  [OK] Concurrent update no errors")
-
-    total_cached = len(cache.cache)
-    assert total_cached == 50
-    print(f"  [OK] All 50 records cached correctly")
-
-    print("\n[PASS] Concurrent access all passed")
-
-
-def main():
-    print("\n" + "="*60)
-    print("Data Architecture Optimization Verification")
-    print("="*60)
-    print(f"Test Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("Test Content:")
-    print("  1. Price Cache Functionality")
-    print("  2. Data Coordinator Functionality")
-    print("  3. Cache Integration Test")
-    print("  4. Cache TTL Behavior")
-    print("  5. Concurrent Access Simulation")
-    print("="*60)
-
-    try:
-        test_price_cache()
-        test_data_coordinator()
-        test_cache_integration()
-        test_cache_ttl_behavior()
-        test_concurrent_access()
-
-        print("\n" + "="*60)
-        print("ALL TESTS PASSED!")
-        print("="*60)
-        print("\nImplemented Features:")
-        print("  [V] UnifiedPriceCache - Multi-level price cache (Memory + Redis)")
-        print("  [V] DataCoordinator - Data coordinator (Preload + Cache management)")
-        print("  [V] Cache TTL management - Memory 10min, Redis 30min")
-        print("  [V] Thread safety - Lock protection")
-        print("  [V] Data consistency - All analysts use same cache")
-        print("="*60)
-        return 0
-
-    except AssertionError as e:
-        print(f"\n[FAIL] {e}")
-        return 1
-    except Exception as e:
-        print(f"\n[ERROR] {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        total_cached = len(cache.cache)
+        assert total_cached == 50
