@@ -898,6 +898,13 @@ class DataSourceManager:
             # 🔧 计算技术指标（使用完整数据）
             # 确保数据按日期排序
             # 🔧 FIX: Handle both 'date' and 'trade_date' columns
+            # 🔥 FIX: 首先检查并解决 date 列和索引的歧义问题
+            if "date" in data.index.names and "date" in data.columns:
+                logger.debug(
+                    f"⚠️ [DataFrame修复] {symbol} date既是索引又是列，重置索引..."
+                )
+                data = data.reset_index(drop=True)
+
             date_col = None
             if "date" in data.columns:
                 date_col = "date"
@@ -905,6 +912,9 @@ class DataSourceManager:
                 date_col = "trade_date"
                 # Create 'date' column from 'trade_date' for consistency
                 # MongoDB stores trade_date as YYYY-MM-DD string format
+                # 🔥 FIX: 确保没有 date 索引后再创建 date 列
+                if "date" in data.index.names:
+                    data = data.reset_index(drop=True)
                 if not pd.api.types.is_datetime64_any_dtype(data["trade_date"]):
                     data["date"] = pd.to_datetime(
                         data["trade_date"], format="%Y-%m-%d", errors="coerce"
@@ -914,7 +924,10 @@ class DataSourceManager:
             if date_col:
                 if not pd.api.types.is_datetime64_any_dtype(data[date_col]):
                     data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
-                data = data.sort_values(date_col)
+                # 🔥 FIX: 确保排序前没有索引歧义
+                if date_col in data.index.names:
+                    data = data.reset_index(drop=True)
+                data = data.sort_values(by=date_col)
 
             # 🔥 统一价格缓存处理：在计算指标前修正数据
             try:
@@ -4409,8 +4422,13 @@ def get_china_stock_data_unified(symbol: str, start_date: str, end_date: str) ->
         f"🔍 [股票代码追踪] 调用 manager.get_stock_data，传入参数: symbol='{symbol}', start_date='{start_date}', end_date='{end_date}'"
     )
     result = manager.get_stock_data(symbol, start_date, end_date)
+    # 🔥 FIX: 处理返回类型错误（tuple vs str）
+    if isinstance(result, tuple):
+        logger.warning(f"⚠️ [类型修复] get_stock_data 返回了 tuple，提取第一个元素")
+        result = result[0] if len(result) > 0 else None
+
     # 分析返回结果的详细信息
-    if result:
+    if result and isinstance(result, str):
         lines = result.split("\n")
         data_lines = [line for line in lines if "2025-" in line and symbol in line]
         logger.info(

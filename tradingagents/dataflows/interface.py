@@ -1650,10 +1650,24 @@ def get_china_stock_data_unified(
 
         result = get_china_stock_data_unified(ticker, start_date, end_date)
 
+        # 🔥 FIX: 处理返回类型错误（tuple vs str）
+        if isinstance(result, tuple):
+            logger.warning(
+                f"⚠️ [类型修复] get_china_stock_data_unified 返回了 tuple: {ticker}"
+            )
+            result = result[0] if len(result) > 0 else None
+
         # 记录详细的输出结果
         duration = time.time() - start_time
-        result_length = len(result) if result else 0
-        is_success = result and "❌" not in result and "错误" not in result
+        result_length = (
+            len(result) if result and isinstance(result, (str, list, dict)) else 0
+        )
+        is_success = (
+            result
+            and isinstance(result, str)
+            and "❌" not in result
+            and "错误" not in result
+        )
 
         if is_success:
             logger.info(
