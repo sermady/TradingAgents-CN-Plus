@@ -239,10 +239,10 @@ class DataSourceManager:
         ).lower()
 
         # 映射到枚举（使用统一编码）
-        source_mapping = {
-            DataSourceCode.TUSHARE: ChinaDataSource.TUSHARE,
-            DataSourceCode.AKSHARE: ChinaDataSource.AKSHARE,
-            DataSourceCode.BAOSTOCK: ChinaDataSource.BAOSTOCK,
+        source_mapping: Dict[str, ChinaDataSource] = {
+            DataSourceCode.TUSHARE.value: ChinaDataSource.TUSHARE,
+            DataSourceCode.AKSHARE.value: ChinaDataSource.AKSHARE,
+            DataSourceCode.BAOSTOCK.value: ChinaDataSource.BAOSTOCK,
         }
 
         return source_mapping.get(env_source, ChinaDataSource.AKSHARE)
@@ -381,7 +381,7 @@ class DataSourceManager:
         return self._get_tushare_fundamentals(symbol)
 
     def get_news_data(
-        self, symbol: str = None, hours_back: int = 24, limit: int = 20
+        self, symbol: Optional[str] = None, hours_back: int = 24, limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
         获取新闻数据的统一接口，支持多数据源和自动降级
@@ -700,8 +700,8 @@ class DataSourceManager:
     def _get_cached_data(
         self,
         symbol: str,
-        start_date: str = None,
-        end_date: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         max_age_hours: int = 24,
     ) -> Optional[pd.DataFrame]:
         """
@@ -745,8 +745,8 @@ class DataSourceManager:
         self,
         symbol: str,
         data: pd.DataFrame,
-        start_date: str = None,
-        end_date: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ):
         """
         保存数据到缓存
@@ -1279,8 +1279,8 @@ class DataSourceManager:
     def get_stock_dataframe(
         self,
         symbol: str,
-        start_date: str = None,
-        end_date: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         period: str = "daily",
     ) -> pd.DataFrame:
         """
@@ -4784,10 +4784,10 @@ class USDataSourceManager:
         ).lower()
 
         # 映射到枚举
-        source_mapping = {
-            DataSourceCode.YFINANCE: USDataSource.YFINANCE,
-            DataSourceCode.ALPHA_VANTAGE: USDataSource.ALPHA_VANTAGE,
-            DataSourceCode.FINNHUB: USDataSource.FINNHUB,
+        source_mapping: Dict[str, USDataSource] = {
+            DataSourceCode.YFINANCE.value: USDataSource.YFINANCE,
+            DataSourceCode.ALPHA_VANTAGE.value: USDataSource.ALPHA_VANTAGE,
+            DataSourceCode.FINNHUB.value: USDataSource.FINNHUB,
         }
 
         return source_mapping.get(env_source, USDataSource.YFINANCE)
