@@ -3152,10 +3152,8 @@ class DataSourceManager:
                 logger.warning(f"⚠️ [股票信息] Tushare API未初始化")
                 return {"symbol": symbol, "name": f"股票{symbol}", "source": "tushare"}
 
-            if symbol.startswith("6"):
-                ts_code = f"sh.{symbol}"
-            else:
-                ts_code = f"sz.{symbol}"
+            # 🔥 FIX: 使用正确的 ts_code 格式 (code.SZ 或 code.SH)
+            ts_code = provider._normalize_ts_code(symbol)
 
             stock_data = provider.api.stock_basic(
                 ts_code=ts_code,
