@@ -70,3 +70,65 @@ See **skills/SKILLS.md > Section 1** for detailed architecture diagrams.
 | `frontend/` | Proprietary | Contact: hsliup@163.com |
 
 **Personal/Learning Use**: All functionality can be used freely.
+
+## Known Issues & Debugging Guide
+
+### 🟢 实时行情数据源分离 (2026-01-29)
+
+**修改目标**: 分析股票时优先从 MongoDB 读取历史数据，实时行情时直接调用外部 API
+
+**修改内容**:
+1. **`tradingagents/dataflows/data_source_manager.py:1441-1560`**
+   - 重构 `get_realtime_quote()` 方法，移除 MongoDB 备选逻辑
+   - 实现 `get_tushare_realtime_quote()` 方法，使用 Tushare Sina 接口获取实时行情
+   - 新增 `_update_price_cache()` 辅助方法
+
+**新的数据获取策略**:
+```
+历史数据: MongoDB → Tushare → AKShare → BaoStock (缓存优先)
+实时行情: AKShare → Tushare → None (只使用外部API)
+```
+
+**实时行情优先级**:
+1. **AKShare** (新浪/东方财富) - 秒级实时数据，优先尝试
+2. **Tushare** (新浪财经) - 无需高级权限，自动降级
+3. **None** - 所有外部API失败时返回 None，不使用 MongoDB 缓存
+
+**测试验证**:
+```bash
+# 验证实时行情只使用外部API
+python test_realtime_quote.py
+# 预期输出: source: tushare_sina_realtime 或 source: sina_realtime
+```
+
+---
+
+### 🔴 分析日期传递 Bug (已修复)
+
+**问题现象**: 分析师使用系统时间而非前端指定的分析日期（如 2024年 vs 2026-01-29）
+
+**根本原因**: 日期传递链断裂
+```
+前端 → propagate() → state["trade_date"] ✅
+                     ↓
+              Toolkit._config ❌ (未同步)
+                     ↓
+              工具函数 Fallback → datetime.now()
+```
+
+**涉及文件**:
+- `tradingagents/graph/trading_graph.py:988-993`
+- `tradingagents/graph/propagation.py:30`
+
+**修复方案**: 在 `propagate()` 开头同步日期到全局配置
+```python
+from tradingagents.agents.utils.agent_utils import Toolkit
+Toolkit._config["trade_date"] = str(trade_date)
+Toolkit._config["analysis_date"] = str(trade_date)
+```
+
+**预防措施**:
+1. 所有涉及日期的工具函数，优先从 `Toolkit._config` 获取
+2. Fallback 逻辑应先检查 `Toolkit._config` 再使用 `datetime.now()`
+3. 新增工具时需验证日期传递链完整性
+
