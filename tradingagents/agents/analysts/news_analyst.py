@@ -9,16 +9,18 @@ from langchain_core.messages import AIMessage
 logger = get_logger("analysts.news")
 
 
-def create_news_analyst(llm):
+def create_news_analyst(llm, toolkit=None):
     """
     创建新闻分析师节点
 
     Args:
         llm: 语言模型实例
+        toolkit: 工具包（可选，用于兼容性）
 
     Returns:
         news_analyst_node: 新闻分析师节点函数
     """
+
     @log_analyst_module("news")
     def news_analyst_node(state):
         current_date = state["trade_date"]
@@ -35,23 +37,32 @@ def create_news_analyst(llm):
         sentiment_source = data_sources.get("sentiment", "unknown")
 
         if not news_data or "❌" in news_data:
-            logger.warning(f"[News Analyst] News data unavailable for {ticker} (source: {news_source})")
+            logger.warning(
+                f"[News Analyst] News data unavailable for {ticker} (source: {news_source})"
+            )
             news_data = (
-                "警告：新闻数据不可用。已尝试获取但失败。\n"
-                "请检查网络连接或稍后重试。"
+                "警告：新闻数据不可用。已尝试获取但失败。\n请检查网络连接或稍后重试。"
             )
 
-        logger.info(f"[News Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {news_source})")
+        logger.info(
+            f"[News Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {news_source})"
+        )
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
 
         # 根据数据质量等级给出不同的分析指导
-        data_quality_level = "high" if data_quality_score >= 0.8 else "medium" if data_quality_score >= 0.5 else "low"
+        data_quality_level = (
+            "high"
+            if data_quality_score >= 0.8
+            else "medium"
+            if data_quality_score >= 0.5
+            else "low"
+        )
         quality_guidance = {
             "high": "数据质量良好，可以进行深入分析。",
             "medium": "数据质量一般，分析时请留意可能存在的信息偏差。",
-            "low": "数据质量较差，新闻数据可能不完整或延迟，请谨慎分析。"
+            "low": "数据质量较差，新闻数据可能不完整或延迟，请谨慎分析。",
         }.get(data_quality_level, "")
 
         # 舆情数据质量提示

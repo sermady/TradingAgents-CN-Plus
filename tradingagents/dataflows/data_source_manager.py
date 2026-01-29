@@ -2730,7 +2730,11 @@ class DataSourceManager:
             # 尝试获取个股信息
             stock_info = ak.stock_individual_info_em(symbol=akshare_symbol)
 
-            if stock_info is not None and not stock_info.empty:
+            if (
+                stock_info is not None
+                and hasattr(stock_info, "empty")
+                and not stock_info.empty
+            ):
                 # 转换为字典格式
                 info = {"symbol": symbol, "source": "akshare"}
 

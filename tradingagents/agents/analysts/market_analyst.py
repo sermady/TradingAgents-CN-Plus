@@ -9,16 +9,18 @@ from langchain_core.messages import AIMessage
 logger = get_logger("analysts.market")
 
 
-def create_market_analyst(llm):
+def create_market_analyst(llm, toolkit=None):
     """
     创建市场分析师节点
 
     Args:
         llm: 语言模型实例
+        toolkit: 工具包（可选，用于兼容性）
 
     Returns:
         market_analyst_node: 市场分析师节点函数
     """
+
     @log_analyst_module("market")
     def market_analyst_node(state):
         current_date = state["trade_date"]
@@ -43,7 +45,9 @@ def create_market_analyst(llm):
                 "请检查网络连接或稍后重试。"
             )
 
-        logger.info(f"[Market Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {market_source})")
+        logger.info(
+            f"[Market Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {market_source})"
+        )
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
@@ -61,11 +65,17 @@ def create_market_analyst(llm):
                     quality_warning += f"- ℹ️ {message}\n"
 
         # 根据数据质量等级给出不同的分析指导
-        data_quality_level = "high" if data_quality_score >= 0.8 else "medium" if data_quality_score >= 0.5 else "low"
+        data_quality_level = (
+            "high"
+            if data_quality_score >= 0.8
+            else "medium"
+            if data_quality_score >= 0.5
+            else "low"
+        )
         quality_guidance = {
             "high": "数据质量良好，可以进行深入分析。",
             "medium": "数据质量一般，分析时请留意可能存在的数据偏差。",
-            "low": "数据质量较差，请谨慎分析，重点关注数据可靠性问题。"
+            "low": "数据质量较差，请谨慎分析，重点关注数据可靠性问题。",
         }.get(data_quality_level, "")
 
         # 获取 metadata 信息（成交量单位等）

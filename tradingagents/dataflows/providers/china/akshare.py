@@ -509,7 +509,11 @@ class AKShareProvider(BaseStockDataProvider):
             try:
                 stock_info = await asyncio.to_thread(fetch_individual_info)
 
-                if stock_info is not None and not stock_info.empty:
+                if (
+                    stock_info is not None
+                    and hasattr(stock_info, "empty")
+                    and not stock_info.empty
+                ):
                     # 解析信息
                     info = {"code": code}
 
