@@ -260,10 +260,9 @@ class TushareAdapter(DataSourceAdapter):
                 pre_close = to_float(row.get("pre_close"))
                 pct_chg = to_float(row.get("pct_chg"))
 
-                # Tushare daily vol is in hands (100 shares)
+                # Tushare daily vol is in hands (手)
+                # 注意：2026-01-30 单位标准化，统一使用"手"单位，不再转换为股
                 vol = to_float(row.get("vol"))
-                if vol is not None:
-                    vol = vol * 100
 
                 # Tushare daily amount is in thousand yuan
                 amount = to_float(row.get("amount"))
@@ -382,7 +381,7 @@ class TushareAdapter(DataSourceAdapter):
                             "close": float(row.get("close"))
                             if row.get("close") is not None
                             else None,
-                            "volume": float(row.get("vol")) * 100
+                            "volume": float(row.get("vol"))
                             if row.get("vol") is not None
                             else None,
                             "amount": float(row.get("amount"))

@@ -777,14 +777,16 @@ class DataSourceManager:
         Returns:
             float: 成交量（手），如果获取失败返回0
 
-        重要说明 - 2026-01-29 单位标准化：
+        重要说明 - 2026-01-30 单位标准化：
         1. 所有数据源（Tushare/AKShare/BaoStock）统一返回"手"单位
-        2. MongoDB 中存储的 volume 字段单位是"手"（1手=100股）
+        2. MongoDB 中存储的 volume 字段单位是"手"（2026-01-30已修复，之前错误地存为"股"）
         3. 显示时直接标注为"手"，无需转换
 
         历史修复记录：
-        - 之前曾错误地转换为"股"，导致成交量显示异常（如192,770股 vs 192,770手）
-        - 已在数据层统一为"手"，此处保持单位一致性
+        - 2026-01-30 修复：App层（historical_data_service.py, tushare_adapter.py, akshare_adapter.py）
+          移除了手→股的转换，现在 MongoDB 正确存储"手"单位
+        - 之前问题：App层曾错误地将"手"×100转换为"股"存入MongoDB，导致显示放大100倍
+        - 数据清理：需要清除2026-01-30之前的历史数据，重新导入
         """
         try:
             if "volume" in data.columns:
@@ -1635,8 +1637,10 @@ class DataSourceManager:
                         "open": float(row.get("open", 0)),
                         "high": float(row.get("high", 0)),
                         "low": float(row.get("low", 0)),
-                        "volume": int(float(row.get("volume", 0))),  # 已经是股
-                        "amount": float(row.get("amount", 0)),  # 已经是元
+                        "volume": int(
+                            float(row.get("volume", 0))
+                        ),  # 单位：手（Tushare提供者已转换）
+                        "amount": float(row.get("amount", 0)),  # 单位：元
                         "change": change,
                         "change_pct": change_pct,
                         "pre_close": pre_close,
@@ -1707,7 +1711,9 @@ class DataSourceManager:
                                 open_price = float(data[1])
                                 high_price = float(data[4])
                                 low_price = float(data[5])
-                                volume = int(float(data[8])) * 100  # 转换为股
+                                volume = int(
+                                    float(data[8])
+                                )  # 单位：手（直接使用新浪返回的手数）
 
                                 quote = {
                                     "symbol": symbol,
@@ -1715,8 +1721,8 @@ class DataSourceManager:
                                     "open": open_price,
                                     "high": high_price,
                                     "low": low_price,
-                                    "volume": volume,
-                                    "amount": 0.0,
+                                    "volume": volume,  # 单位：手
+                                    "amount": 0.0,  # 单位：元
                                     "change": float(data[2]),
                                     "change_pct": float(data[2]) / float(data[1]) * 100
                                     if float(data[1]) > 0
@@ -1727,7 +1733,7 @@ class DataSourceManager:
                                     "is_realtime": True,
                                 }
                                 logger.info(
-                                    f"✅ [实时行情-新浪] {symbol} 价格={quote['price']:.2f}, 成交量={volume:,.0f}股"
+                                    f"✅ [实时行情-新浪] {symbol} 价格={quote['price']:.2f}, 成交量={volume:,.0f}手"
                                 )
                                 return quote
                 except Exception as e:
@@ -1745,9 +1751,9 @@ class DataSourceManager:
                     # 将 DataFrame 转换为字典
                     data_dict = dict(zip(df["item"], df["value"]))
 
-                    # 成交量单位转换：手 → 股（1手 = 100股）
+                    # 成交量单位：手（直接使用AKShare返回的"总手"字段）
+                    # 注意：2026-01-30 统一单位为"手"
                     volume_in_lots = int(data_dict.get("总手", 0))
-                    volume_in_shares = volume_in_lots * 100
 
                     quote = {
                         "symbol": symbol,
@@ -1755,8 +1761,8 @@ class DataSourceManager:
                         "open": float(data_dict.get("今开", 0)),
                         "high": float(data_dict.get("最高", 0)),
                         "low": float(data_dict.get("最低", 0)),
-                        "volume": volume_in_shares,
-                        "amount": float(data_dict.get("金额", 0)),
+                        "volume": volume_in_lots,  # 单位：手
+                        "amount": float(data_dict.get("金额", 0)),  # 单位：元
                         "change": float(data_dict.get("涨跌", 0)),
                         "change_pct": float(data_dict.get("涨幅", 0)),
                         "date": datetime.now().strftime("%Y-%m-%d"),
@@ -1765,7 +1771,7 @@ class DataSourceManager:
                         "is_realtime": True,
                     }
                     logger.info(
-                        f"✅ [实时行情-东方财富单股票] {symbol} 价格={quote['price']:.2f}, 成交量={volume_in_shares:,.0f}股"
+                        f"✅ [实时行情-东方财富单股票] {symbol} 价格={quote['price']:.2f}, 成交量={volume_in_lots:,.0f}手"
                     )
                     return quote
                 else:
@@ -1812,28 +1818,35 @@ class DataSourceManager:
         start_date: str = None,
         end_date: str = None,
         period: str = "daily",
+        analysis_date: str = None,
     ) -> str:
         """
         获取股票数据的统一接口，支持多周期数据
 
-        🔥 重要更新：盘中交易时间自动使用实时行情
+        🔥 重要更新：根据分析日期智能判断是否使用实时行情
+        - 历史日期：使用历史数据
+        - 今天+盘中：使用实时行情
+        - 今天+盘前/盘后：使用收盘价
 
         Args:
             symbol: 股票代码
             start_date: 开始日期
             end_date: 结束日期
             period: 数据周期（daily/weekly/monthly），默认为daily
+            analysis_date: 用户指定的分析日期（YYYY-MM-DD），用于判断实时行情
 
         Returns:
             str: 格式化的股票数据
         """
-        # 🔥 获取实时价格（始终尝试，不仅仅是盘中）
+        # 🔥 获取实时价格（根据分析日期智能判断）
         realtime_price = None
         realtime_quote = None
         try:
             from tradingagents.utils.market_time import MarketTimeUtils
 
-            should_use_rt, reason = MarketTimeUtils.should_use_realtime_quote(symbol)
+            should_use_rt, reason = MarketTimeUtils.should_use_realtime_quote(
+                symbol, analysis_date=analysis_date
+            )
             logger.info(f"📊 [实时行情检查] {symbol}: {reason}")
 
             # 始终尝试获取实时价格（盘中用实时，盘后用最新收盘价）

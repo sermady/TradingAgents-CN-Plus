@@ -214,13 +214,21 @@ class MarketTimeUtils:
 
     @staticmethod
     def should_use_realtime_quote(
-        symbol: str, check_time: Optional[datetime] = None
+        symbol: str,
+        analysis_date: Optional[str] = None,
+        check_time: Optional[datetime] = None,
     ) -> Tuple[bool, str]:
         """
         判断是否应该使用实时行情
 
+        重要：根据分析日期和当前时间智能判断是否使用实时行情
+        - 历史日期（<今天）：绝对不使用实时行情
+        - 今天 + 盘中：使用实时行情
+        - 今天 + 盘前/盘后：不使用实时行情，使用收盘价
+
         Args:
             symbol: 股票代码
+            analysis_date: 用户指定的分析日期（YYYY-MM-DD），默认为今天
             check_time: 要检查的时间，默认为当前时间
 
         Returns:
@@ -228,34 +236,63 @@ class MarketTimeUtils:
         """
         from tradingagents.utils.stock_utils import StockMarket, StockUtils
 
-        # 识别股票市场
+        # 获取当前时间
+        if check_time is None:
+            check_time = datetime.now(pytz.timezone("Asia/Shanghai"))
+
+        # 获取今天的日期
+        today = check_time.strftime("%Y-%m-%d")
+
+        # 如果没有指定分析日期，默认为今天
+        if analysis_date is None:
+            analysis_date = today
+
+        # 1. 历史日期：绝对不使用实时行情
+        if analysis_date < today:
+            return False, f"⚡ 历史分析（{analysis_date}），使用历史收盘价"
+
+        # 2. 未来日期：报错或使用最新数据
+        if analysis_date > today:
+            return False, f"📅 未来日期（{analysis_date}），使用最新历史数据"
+
+        # 3. 今天：根据交易时间判断
         market = StockUtils.identify_stock_market(symbol)
 
         if market == StockMarket.CHINA_A:
             is_trading, status = MarketTimeUtils.is_a_stock_trading_time(check_time)
             if is_trading:
-                return True, f"A股{status}，使用实时行情"
+                return True, f"⚡ 盘中分析（{status}），使用实时行情"
+            elif "盘前" in status:
+                return False, f"⚡ 盘前分析（{status}），使用昨日收盘价"
+            elif "盘后" in status:
+                return False, f"📊 盘后分析（{status}），使用今日收盘价"
             else:
-                return False, f"A股{status}，使用历史数据"
+                return False, f"📊 {status}，使用历史收盘价"
 
         elif market == StockMarket.HONG_KONG:
             is_trading, status = MarketTimeUtils.is_hk_stock_trading_time(check_time)
             if is_trading:
-                return True, f"港股{status}，使用实时行情"
+                return True, f"⚡ 港股盘中（{status}），使用实时行情"
+            elif "盘前" in status:
+                return False, f"⚡ 港股盘前（{status}），使用昨日收盘价"
+            elif "盘后" in status:
+                return False, f"📊 港股盘后（{status}），使用今日收盘价"
             else:
-                return False, f"港股{status}，使用历史数据"
+                return False, f"📊 港股{status}，使用历史收盘价"
 
         elif market == StockMarket.US:
             is_trading, status = MarketTimeUtils.is_us_stock_trading_time(
                 check_time, include_extended=True
             )
             if is_trading:
-                return True, f"美股{status}，使用实时行情"
+                return True, f"⚡ 美股{status}，使用实时行情"
+            elif "盘前" in status or "盘后" in status:
+                return False, f"📊 美股{status}，使用收盘价"
             else:
-                return False, f"美股{status}，使用历史数据"
+                return False, f"📊 美股{status}，使用历史收盘价"
 
         else:
-            return False, "未知市场，使用历史数据"
+            return False, "📊 未知市场，使用历史数据"
 
     @staticmethod
     def get_market_status(symbol: str, check_time: Optional[datetime] = None) -> Dict:
@@ -297,7 +334,7 @@ class MarketTimeUtils:
             current_time = check_time
 
         should_use_rt, reason = MarketTimeUtils.should_use_realtime_quote(
-            symbol, check_time
+            symbol, analysis_date=None, check_time=check_time
         )
 
         return {
@@ -323,7 +360,9 @@ def is_trading_time(symbol: str, check_time: Optional[datetime] = None) -> bool:
     Returns:
         bool: 是否是交易时间
     """
-    should_use, _ = MarketTimeUtils.should_use_realtime_quote(symbol, check_time)
+    should_use, _ = MarketTimeUtils.should_use_realtime_quote(
+        symbol, analysis_date=None, check_time=check_time
+    )
     return should_use
 
 
@@ -340,7 +379,9 @@ def get_realtime_cache_timeout(
     Returns:
         int: 缓存超时时间（秒）
     """
-    should_use_rt, _ = MarketTimeUtils.should_use_realtime_quote(symbol, check_time)
+    should_use_rt, _ = MarketTimeUtils.should_use_realtime_quote(
+        symbol, analysis_date=None, check_time=check_time
+    )
 
     if should_use_rt:
         # 盘中：缓存10秒

@@ -26,8 +26,8 @@ class StockDailyData:
     high: Optional[float] = None  # 最高价
     low: Optional[float] = None  # 最低价
     close: Optional[float] = None  # 收盘价
-    volume: Optional[float] = None  # 成交量（股）
-    amount: Optional[float] = None  # 成交额（元）
+    volume: Optional[float] = None  # 成交量（手）- 2026-01-30统一单位
+    amount: Optional[float] = None  # 成交额（元）- 统一单位
 
     # 涨跌数据
     change: Optional[float] = None  # 涨跌额

@@ -4,6 +4,17 @@
 清除 MongoDB 中的成交量数据，为重新同步做准备
 用于将成交量单位从"股"转换为"手"后重新获取数据
 
+重要说明 (2026-01-30):
+- 2026-01-30 之前的代码错误地将"手"×100转换为"股"存入 MongoDB
+- 2026-01-30 已修复：移除了 App 层的 ×100 转换
+- 需要清除旧数据后重新导入
+
+受影响的集合:
+- historical_data: 完全删除（由 historical_data_service.py 存储）
+- stock_daily_quotes: 清除 volume 字段
+- realtime_quotes: 完全删除
+- market_quotes: 清除 volume 字段
+
 用法:
     python scripts/clear_volume_data.py          # 交互式确认
     python scripts/clear_volume_data.py --force  # 自动确认
@@ -54,10 +65,26 @@ def clear_volume_data():
         # 检查集合是否存在
         collections = db.list_collection_names()
 
+        # 0. 清除 historical_data 集合中的所有数据（2026-01-30 单位修复）
+        # 注意：historical_data 由 historical_data_service.py 存储，之前错误地存储了"股"单位
+        if "historical_data" in collections:
+            count = db.historical_data.count_documents({})
+            print(f"📊 historical_data 集合:")
+            print(f"   - 文档数: {count}")
+            print(f"   - 说明: 此集合包含由 historical_data_service.py 存储的数据")
+            print(f"   - 状态: 2026-01-30之前的代码错误地将'手'×100存储为'股'")
+
+            if count > 0:
+                result = db.historical_data.delete_many({})
+                print(f"   - 已删除 {result.deleted_count} 条记录")
+                logger.info(f"已清除 historical_data: {result.deleted_count} 条")
+        else:
+            print("⚠️ historical_data 集合不存在")
+
         # 1. 清除 stock_daily_quotes 集合中的 volume 字段
         if "stock_daily_quotes" in collections:
             count = db.stock_daily_quotes.count_documents({"volume": {"$exists": True}})
-            print(f"📊 stock_daily_quotes 集合:")
+            print(f"\n📊 stock_daily_quotes 集合:")
             print(f"   - 包含 volume 字段的文档数: {count}")
 
             if count > 0:
@@ -69,7 +96,7 @@ def clear_volume_data():
                     f"已清除 stock_daily_quotes 的 volume 字段: {result.modified_count} 条"
                 )
         else:
-            print("⚠️ stock_daily_quotes 集合不存在")
+            print("\n⚠️ stock_daily_quotes 集合不存在")
 
         # 2. 清除 realtime_quotes 集合（如果有）
         if "realtime_quotes" in collections:
@@ -133,12 +160,18 @@ if __name__ == "__main__":
     print("警告：这将清除 MongoDB 中的成交量数据！")
     print("⚠️" * 30)
     print()
+    print("修复说明 (2026-01-30):")
+    print("  - 问题：之前代码错误地将'手'×100存储为'股'")
+    print("  - 修复：已移除 App 层的 ×100 转换")
+    print("  - 现状：现在统一使用'手'单位")
+    print()
     print("当前操作:")
     print(f"  - 数据库: {mongodb_db}")
     print(
-        "  - 清除内容: stock_daily_quotes, realtime_quotes, market_quotes 中的 volume 数据"
+        "  - 清除内容: historical_data（完全删除）, stock_daily_quotes（volume字段）, "
+        "realtime_quotes（完全删除）, market_quotes（volume字段）"
     )
-    print("  - 目的: 将成交量单位从'股'转换为'手'后重新获取")
+    print("  - 目的: 清除旧数据后重新导入正确单位的数据")
     print()
 
     if AUTO_CONFIRM:

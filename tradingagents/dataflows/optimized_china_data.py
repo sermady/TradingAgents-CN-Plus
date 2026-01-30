@@ -350,19 +350,21 @@ class OptimizedChinaDataProvider:
                             change_display = f"涨跌幅: {change_pct_str}"
                         else:
                             change_display = "涨跌幅: N/A"
-                        # 🔧 FIX: 成交量单位统一处理 - 检查 volume_unit 并转换为"股"
+                        # 🔧 FIX: 成交量单位统一为"手"（2026-01-30）
                         volume_raw = row_q.get("volume")
-                        volume_unit = row_q.get("volume_unit", "shares")  # 默认假设是股
+                        volume_unit = row_q.get("volume_unit", "lots")  # 默认是手
                         if volume_raw is not None:
                             try:
                                 volume_value = float(volume_raw)
-                                # 如果是手(lots)，转换为股(shares)：1手 = 100股
-                                if volume_unit == "lots":
-                                    volume_value = volume_value * 100
-                                    logger.debug(f"📊 [成交量转换] {symbol}: {volume_raw}手 → {volume_value}股")
-                                volume = f"{int(volume_value):,}"
+                                # 如果数据源错误地返回了"股"（数值过大），则转换为"手"
+                                if volume_value > 1000000 and volume_unit != "shares":
+                                    volume_value = volume_value / 100
+                                    logger.debug(
+                                        f"📊 [成交量转换] {symbol}: {volume_raw}股 → {volume_value}手"
+                                    )
+                                volume = f"{int(volume_value):,}手"
                             except (ValueError, TypeError):
-                                volume = str(volume_raw)
+                                volume = str(volume_raw) + "手"
                         else:
                             volume = "N/A"
 
@@ -456,17 +458,20 @@ class OptimizedChinaDataProvider:
                                 f"🔍 [股票代码追踪] 从market_quotes补齐涨跌幅: {change_pct}"
                             )
                         if volume == "N/A" and row_q.get("volume") is not None:
-                            # 🔧 FIX: 成交量单位统一处理
+                            # 🔧 FIX: 成交量单位统一为"手"（2026-01-30）
                             volume_raw = row_q.get("volume")
-                            volume_unit = row_q.get("volume_unit", "shares")
+                            volume_unit = row_q.get("volume_unit", "lots")
                             try:
                                 volume_value = float(volume_raw)
-                                if volume_unit == "lots":
-                                    volume_value = volume_value * 100
-                                    logger.debug(f"📊 [成交量转换] {symbol}: {volume_raw}手 → {volume_value}股")
-                                volume = f"{int(volume_value):,}"
+                                # 如果数据源错误地返回了"股"（数值过大），则转换为"手"
+                                if volume_value > 1000000 and volume_unit != "shares":
+                                    volume_value = volume_value / 100
+                                    logger.debug(
+                                        f"📊 [成交量转换] {symbol}: {volume_raw}股 → {volume_value}手"
+                                    )
+                                volume = f"{int(volume_value):,}手"
                             except (ValueError, TypeError):
-                                volume = str(volume_raw)
+                                volume = str(volume_raw) + "手"
                             logger.debug(
                                 f"🔍 [股票代码追踪] 从market_quotes补齐成交量: {volume}"
                             )
@@ -2561,7 +2566,9 @@ class OptimizedChinaDataProvider:
             bps = None
 
             # 尝试获取 TTM EPS
-            eps_ttm = financial_data.get("eps_ttm") or financial_data.get("basic_eps_ttm")
+            eps_ttm = financial_data.get("eps_ttm") or financial_data.get(
+                "basic_eps_ttm"
+            )
             if eps_ttm and str(eps_ttm) != "nan" and eps_ttm != "--":
                 try:
                     eps = float(eps_ttm)
@@ -2570,7 +2577,11 @@ class OptimizedChinaDataProvider:
 
             # 如果没有 TTM EPS，尝试获取单期 EPS
             if eps is None:
-                eps_single = financial_data.get("eps") or financial_data.get("basic_eps") or financial_data.get("基本每股收益")
+                eps_single = (
+                    financial_data.get("eps")
+                    or financial_data.get("basic_eps")
+                    or financial_data.get("基本每股收益")
+                )
                 if eps_single and str(eps_single) != "nan" and eps_single != "--":
                     try:
                         eps = float(eps_single)
@@ -2578,7 +2589,11 @@ class OptimizedChinaDataProvider:
                         pass
 
             # 尝试获取 BPS（每股净资产）
-            bps_value = financial_data.get("bps") or financial_data.get("book_value_per_share") or financial_data.get("每股净资产_最新股数")
+            bps_value = (
+                financial_data.get("bps")
+                or financial_data.get("book_value_per_share")
+                or financial_data.get("每股净资产_最新股数")
+            )
             if bps_value and str(bps_value) != "nan" and bps_value != "--":
                 try:
                     bps = float(bps_value)
@@ -2639,7 +2654,9 @@ class OptimizedChinaDataProvider:
             if current_price > 0 and eps and eps > 0:
                 calculated_pe = current_price / eps
                 metrics["pe"] = f"{calculated_pe:.1f}倍"
-                logger.debug(f"✅ [实时PE] 股价{current_price} / EPS{eps:.4f} = {metrics['pe']}")
+                logger.debug(
+                    f"✅ [实时PE] 股价{current_price} / EPS{eps:.4f} = {metrics['pe']}"
+                )
             elif stock_info_pe is not None and stock_info_pe > 0:
                 metrics["pe"] = f"{stock_info_pe:.1f}倍"
             else:
@@ -2649,7 +2666,9 @@ class OptimizedChinaDataProvider:
             if current_price > 0 and bps and bps > 0:
                 calculated_pb = current_price / bps
                 metrics["pb"] = f"{calculated_pb:.2f}倍"
-                logger.debug(f"✅ [实时PB] 股价{current_price} / BPS{bps:.4f} = {metrics['pb']}")
+                logger.debug(
+                    f"✅ [实时PB] 股价{current_price} / BPS{bps:.4f} = {metrics['pb']}"
+                )
             elif stock_info_pb is not None and stock_info_pb > 0:
                 metrics["pb"] = f"{stock_info_pb:.2f}倍"
             else:

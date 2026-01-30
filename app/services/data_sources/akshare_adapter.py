@@ -470,12 +470,8 @@ class AKShareAdapter(DataSourceAdapter):
                     )
                     vol = self._safe_float(row.get(volume_col)) if volume_col else None
 
-                    if vol is not None:
-                        if volume_col and (
-                            "手" in volume_col
-                            or volume_col in ["成交量", "volume", "vol"]
-                        ):
-                            vol = vol * 100
+                    # 注意：2026-01-30 单位标准化，统一使用"手"单位，不再转换为股
+                    # AKShare 返回的成交量已经是"手"单位
 
                     if code in ["300750", "000001", "600000"]:
                         logger.debug(f"📊 [AKShare实时] {code} - vol={vol}, amt={amt}")
