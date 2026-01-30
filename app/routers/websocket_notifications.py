@@ -17,6 +17,31 @@ router = APIRouter()
 logger = logging.getLogger("webapi.websocket")
 
 
+# 🔥 连接信息（用于诊断）
+class ConnectionInfo:
+    def __init__(self, websocket: WebSocket, user_id: str):
+        self.websocket = websocket
+        self.user_id = user_id
+        self.created_at = datetime.utcnow()
+        self.client_info = self._get_client_info(websocket)
+
+    def _get_client_info(self, websocket: WebSocket) -> str:
+        try:
+            # 尝试获取客户端信息
+            if hasattr(websocket, "scope") and websocket.scope:
+                headers = dict(websocket.scope.get("headers", []))
+                user_agent = headers.get(b"user-agent", b"Unknown").decode(
+                    "utf-8", errors="ignore"
+                )
+                return user_agent[:50] if user_agent else "Unknown"
+            return "Unknown"
+        except:
+            return "Unknown"
+
+    def get_lifetime_seconds(self) -> float:
+        return (datetime.utcnow() - self.created_at).total_seconds()
+
+
 # 🔥 全局 WebSocket 连接管理器
 class ConnectionManager:
     """WebSocket 连接管理器"""
@@ -24,6 +49,8 @@ class ConnectionManager:
     def __init__(self):
         # user_id -> Set[WebSocket]
         self.active_connections: Dict[str, Set[WebSocket]] = {}
+        # 🔥 连接信息映射（用于诊断）
+        self.connection_info: Dict[WebSocket, ConnectionInfo] = {}
         self._lock = asyncio.Lock()
         # 每个用户最多允许的WebSocket连接数
         self.max_connections_per_user = 3
@@ -32,28 +59,49 @@ class ConnectionManager:
         """连接 WebSocket"""
         await websocket.accept()
 
+        # 🔥 创建连接信息
+        conn_info = ConnectionInfo(websocket, user_id)
+
         async with self._lock:
             # 检查用户当前连接数
             user_connections = self.active_connections.get(user_id, set())
 
-            # 如果连接数超过限制,关闭最旧的连接
-            while len(user_connections) >= self.max_connections_per_user:
-                oldest_connection = user_connections.pop()
-                logger.warning(
-                    f"⚠️ [WS] 用户 {user_id} 连接数过多 ({len(user_connections)}), 断开最旧连接"
-                )
-                try:
-                    await oldest_connection.close(
-                        code=1000, reason="Connection limit exceeded"
+            # 🔥 如果连接数超过限制,关闭最旧的连接（按创建时间）
+            if len(user_connections) >= self.max_connections_per_user:
+                # 找到最旧的连接
+                oldest_ws = None
+                oldest_time = None
+                for ws in user_connections:
+                    info = self.connection_info.get(ws)
+                    if info:
+                        if oldest_time is None or info.created_at < oldest_time:
+                            oldest_time = info.created_at
+                            oldest_ws = ws
+
+                if oldest_ws:
+                    user_connections.discard(oldest_ws)
+                    old_info = self.connection_info.pop(oldest_ws, None)
+                    lifetime = old_info.get_lifetime_seconds() if old_info else 0
+                    logger.warning(
+                        f"⚠️ [WS] 用户 {user_id} 连接数过多 ({len(user_connections)}), "
+                        f"断开最旧连接 (存活: {lifetime:.1f}s)"
                     )
-                    logger.info(f"🔌 [WS] 断开旧连接: user={user_id}")
-                except Exception as e:
-                    logger.warning(f"⚠️ [WS] 断开旧连接失败: {e}")
+                    try:
+                        await oldest_ws.close(
+                            code=1000, reason="Connection limit exceeded"
+                        )
+                        logger.info(
+                            f"🔌 [WS] 断开旧连接: user={user_id}, lifetime={lifetime:.1f}s"
+                        )
+                    except Exception as e:
+                        logger.warning(f"⚠️ [WS] 断开旧连接失败: {e}")
 
             # 添加新连接
             if user_id not in self.active_connections:
                 self.active_connections[user_id] = set()
             self.active_connections[user_id].add(websocket)
+            # 🔥 记录连接信息
+            self.connection_info[websocket] = conn_info
 
             total_connections = sum(
                 len(conns) for conns in self.active_connections.values()
@@ -61,11 +109,16 @@ class ConnectionManager:
             logger.info(
                 f"✅ [WS] 新连接: user={user_id}, "
                 f"该用户连接数={len(self.active_connections[user_id])}, "
-                f"总连接数={total_connections}"
+                f"总连接数={total_connections}, "
+                f"client={conn_info.client_info[:30]}"
             )
 
     async def disconnect(self, websocket: WebSocket, user_id: str):
         """断开 WebSocket"""
+        # 🔥 获取连接存活时间
+        conn_info = self.connection_info.pop(websocket, None)
+        lifetime = conn_info.get_lifetime_seconds() if conn_info else 0
+
         async with self._lock:
             if user_id in self.active_connections:
                 self.active_connections[user_id].discard(websocket)
@@ -76,7 +129,9 @@ class ConnectionManager:
                 len(conns) for conns in self.active_connections.values()
             )
             logger.info(
-                f"🔌 [WS] 断开连接: user={user_id}, 总连接数={total_connections}"
+                f"🔌 [WS] 断开连接: user={user_id}, "
+                f"存活: {lifetime:.1f}s, "
+                f"总连接数={total_connections}"
             )
 
     async def send_personal_message(self, message: dict, user_id: str):

@@ -15,6 +15,10 @@ export const useNotificationStore = defineStore('notifications', () => {
   let wsReconnectTimer: any = null
   let wsReconnectAttempts = 0
   const maxReconnectAttempts = 10  // 增加重连次数
+  let isManualDisconnect = false  // 🔥 标记是否手动断开（避免自动重连）
+  let connectionStartTime = 0  // 🔥 连接创建时间戳（用于诊断）
+  let connectionId = 0  // 🔥 连接ID（用于日志追踪）
+  let wsListenerAdded = false  // 🔥 页面生命周期监听是否已添加
 
   // 连接状态
   const connected = computed(() => wsConnected.value)
@@ -72,12 +76,55 @@ export const useNotificationStore = defineStore('notifications', () => {
     if (item.status === 'unread') unreadCount.value += 1
   }
 
+  // 🔥 添加页面生命周期监听（防止连接泄漏）
+  function addPageLifecycleListeners() {
+    if (wsListenerAdded) return
+    wsListenerAdded = true
+
+    // 页面刷新/关闭前发送关闭信号
+    window.addEventListener('beforeunload', () => {
+      isManualDisconnect = true
+      if (ws.value) {
+        try { ws.value.close(1000, 'Page unload') } catch {}
+      }
+    })
+
+    // 页面可见性变化监听（处理休眠场景）
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !ws.value && !isManualDisconnect) {
+        // 页面从后台恢复，且连接已断开，尝试重连
+        console.log('[WS] 页面恢复可见，尝试重连...')
+        connectWebSocket()
+      }
+    })
+
+    console.log('[WS] 页面生命周期监听已添加')
+  }
+
   // 🔥 连接 WebSocket（优先）
   function connectWebSocket() {
     try {
-      // 若已存在连接，先关闭
+      // 标记为非手动断开（允许自动重连）
+      isManualDisconnect = false
+
+      // 若已存在连接，先关闭（等待关闭完成）
       if (ws.value) {
-        try { ws.value.close() } catch {}
+        console.log('[WS] 关闭旧连接...')
+        try {
+          ws.value.close(1000, 'Reconnecting')
+          // 等待连接完全关闭（最多500ms）
+          const oldWs = ws.value
+          ws.value = null
+
+          // 🔥 关键：等待旧连接关闭，避免泄漏
+          let waitCount = 0
+          while (oldWs.readyState === WebSocket.OPEN && waitCount < 50) {
+            ws.value = null as any
+            break
+          }
+        } catch (e) {
+          console.warn('[WS] 关闭旧连接失败:', e)
+        }
         ws.value = null
       }
       if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null }
@@ -90,43 +137,58 @@ export const useNotificationStore = defineStore('notifications', () => {
       }
 
       // WebSocket 连接地址
-      // 🔥 统一使用当前访问的服务器地址（开发环境通过 Vite 代理，生产环境通过 Nginx 代理）
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
       const wsUrl = `${wsProtocol}//${host}/api/ws/notifications?token=${encodeURIComponent(token)}`
 
-      console.log('[WS] 连接到:', wsUrl)
+      connectionId++
+      connectionStartTime = Date.now()
+      console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl}`)
 
       const socket = new WebSocket(wsUrl)
       ws.value = socket
 
       socket.onopen = () => {
-        console.log('[WS] 连接成功')
+        const duration = Date.now() - connectionStartTime
+        console.log(`[WS] ✅ 连接成功 #${connectionId} (耗时: ${duration}ms), 当前连接数+1`)
         wsConnected.value = true
         wsReconnectAttempts = 0
+        // 添加页面生命周期监听
+        addPageLifecycleListeners()
       }
 
       socket.onclose = (event) => {
-        console.log('[WS] 连接关闭:', event.code, event.reason)
+        const duration = Date.now() - connectionStartTime
+        const isManual = isManualDisconnect || event.reason === 'Page unload' || event.reason === 'Reconnecting'
+        console.log(
+          `[WS] ❌ 连接关闭 #${connectionId}: code=${event.code}, reason="${event.reason}", ` +
+          `存活: ${duration}ms, 手动断开: ${isManual}`
+        )
         wsConnected.value = false
         ws.value = null
 
-        // 自动重连
+        // 🔥 关键：手动断开时不重连
+        if (isManual) {
+          console.log('[WS] 手动断开连接，停止重连')
+          return
+        }
+
+        // 自动重连（异常断开时）
         if (wsReconnectAttempts < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000)
-          console.log(`[WS] ${delay}ms 后重连 (尝试 ${wsReconnectAttempts + 1}/${maxReconnectAttempts})`)
+          console.log(`[WS] 🔄 ${delay}ms 后重连 (${wsReconnectAttempts + 1}/${maxReconnectAttempts})`)
 
           wsReconnectTimer = setTimeout(() => {
             wsReconnectAttempts++
             connectWebSocket()
           }, delay)
         } else {
-          console.error('[WS] 达到最大重连次数，停止重连')
+          console.error('[WS] ⚠️ 达到最大重连次数，停止重连')
         }
       }
 
       socket.onerror = (error) => {
-        console.error('[WS] 连接错误:', error)
+        console.error(`[WS] ❌ 连接错误 #${connectionId}:`, error)
         wsConnected.value = false
       }
 
@@ -180,13 +242,21 @@ export const useNotificationStore = defineStore('notifications', () => {
 
   // 断开 WebSocket
   function disconnectWebSocket() {
+    console.log('[WS] 🔌 手动断开连接...')
+    isManualDisconnect = true  // 🔥 标记为手动断开，避免自动重连
+
     if (wsReconnectTimer) {
       clearTimeout(wsReconnectTimer)
       wsReconnectTimer = null
     }
 
     if (ws.value) {
-      try { ws.value.close() } catch {}
+      try { 
+        ws.value.close(1000, 'Manual disconnect')
+        console.log('[WS] 已发送关闭信号')
+      } catch (e) {
+        console.warn('[WS] 关闭连接失败:', e)
+      }
       ws.value = null
     }
 
