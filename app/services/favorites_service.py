@@ -149,9 +149,14 @@ class FavoritesService:
                     q = quotes_map.get(code)
                     if q:
                         # 🔥 兼容 AKShare (price/change_percent) 和 Tushare (close/pct_chg)
-                        it["current_price"] = q.get("close") or q.get("price")
-                        it["change_percent"] = q.get("pct_chg") or q.get(
-                            "change_percent"
+                        # 使用 is not None 避免 0 值被误判为 falsy
+                        close = q.get("close")
+                        it["current_price"] = (
+                            close if close is not None else q.get("price")
+                        )
+                        pct_chg = q.get("pct_chg")
+                        it["change_percent"] = (
+                            pct_chg if pct_chg is not None else q.get("change_percent")
                         )
                 # 兜底：对未命中的代码使用在线源补齐（可选）
                 missing = [c for c in codes if c not in quotes_map]
@@ -165,15 +170,22 @@ class FavoritesService:
                                     quotes_online.get(code, {}) if quotes_online else {}
                                 )
                                 # 🔥 兼容 AKShare (price/change_percent) 和 Tushare (close/pct_chg)
-                                it["current_price"] = q2.get("close") or q2.get("price")
-                                it["change_percent"] = q2.get("pct_chg") or q2.get(
-                                    "change_percent"
+                                # 使用 is not None 避免 0 值被误判为 falsy
+                                close2 = q2.get("close")
+                                it["current_price"] = (
+                                    close2 if close2 is not None else q2.get("price")
                                 )
-                    except Exception:
-                        pass
-            except Exception:
+                                pct_chg2 = q2.get("pct_chg")
+                                it["change_percent"] = (
+                                    pct_chg2
+                                    if pct_chg2 is not None
+                                    else q2.get("change_percent")
+                                )
+                    except Exception as e:
+                        logger.warning(f"⚠️ 在线源补齐行情失败: {e}")
+            except Exception as e:
                 # 查询失败时保持占位 None，避免影响基础功能
-                pass
+                logger.warning(f"⚠️ 获取行情失败: {e}")
 
         return items
 
