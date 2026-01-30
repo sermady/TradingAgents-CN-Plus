@@ -227,7 +227,23 @@ async def websocket_notifications_endpoint(
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    user_id = "admin"  # 从 token_data 中获取
+    # 🔥 安全修复：从 token 中解析用户 ID，不再硬编码
+    try:
+        if hasattr(token_data, "sub"):
+            user_id = token_data.sub
+        elif isinstance(token_data, dict):
+            user_id = token_data.get("sub") or token_data.get("username")
+        else:
+            user_id = str(token_data)
+
+        if not user_id:
+            logger.error("❌ [WS] Token 中未找到用户标识")
+            await websocket.close(code=1008, reason="Invalid token data")
+            return
+    except Exception as e:
+        logger.error(f"❌ [WS] 解析 Token 用户 ID 失败: {e}")
+        await websocket.close(code=1008, reason="Token parse error")
+        return
 
     # 连接 WebSocket
     await manager.connect(websocket, user_id)
@@ -317,7 +333,24 @@ async def websocket_task_progress_endpoint(
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    user_id = "admin"
+    # 🔥 安全修复：从 token 中解析用户 ID，不再硬编码
+    try:
+        if hasattr(token_data, "sub"):
+            user_id = token_data.sub
+        elif isinstance(token_data, dict):
+            user_id = token_data.get("sub") or token_data.get("username")
+        else:
+            user_id = str(token_data)
+
+        if not user_id:
+            logger.error("❌ [WS-Task] Token 中未找到用户标识")
+            await websocket.close(code=1008, reason="Invalid token data")
+            return
+    except Exception as e:
+        logger.error(f"❌ [WS-Task] 解析 Token 用户 ID 失败: {e}")
+        await websocket.close(code=1008, reason="Token parse error")
+        return
+
     channel = f"task_progress:{task_id}"
 
     # 连接 WebSocket
