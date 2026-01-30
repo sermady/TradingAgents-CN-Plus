@@ -73,13 +73,28 @@ class DataCoordinator:
         # Price cache
         self._price_cache = None
 
-        # Cache TTL: 10 minutes
+        # Cache TTL: 10 minutes (基础配置)
         self._cache_ttl_seconds = 600
 
         # Lookback days config
         self._lookback_days = 365
 
+        # 分级缓存TTL配置（支持财报发布日期感知）
+        # L1: 实时估值指标 → 1小时
+        # L2: 季度财报数据 → 7天（财报日1小时）
+        # L3: 长期基本面 → 30天
+        self._tiered_cache_config = {
+            "valuation": 3600,  # L1: 估值指标
+            "financial": 604800,  # L2: 财报数据
+            "dividend": 2592000,  # L3: 分红数据
+            "default": 600,  # 默认: 10分钟
+        }
+
         logger.info("[DataCoordinator] Data Coordinator initialized")
+        logger.info("[DataCoordinator] 分级缓存策略已启用")
+        logger.info("  - L1(估值指标): 1小时缓存")
+        logger.info("  - L2(财报数据): 7天缓存（财报日1小时）")
+        logger.info("  - L3(分红数据): 30天缓存")
 
     def _get_price_cache(self):
         """Lazy load price cache"""
@@ -155,12 +170,52 @@ class DataCoordinator:
         """Generate cache key"""
         return f"{ticker}_{trade_date}"
 
-    def _is_cache_valid(self, data: PreloadedData) -> bool:
-        """Check if cache is valid"""
+    def _get_tiered_cache_ttl(self, data_category: str = "default") -> int:
+        """
+        获取分级缓存TTL（支持财报发布日期感知）
+
+        Args:
+            data_category: 数据类别（valuation/financial/dividend/default）
+
+        Returns:
+            int: 缓存TTL（秒）
+        """
+        from tradingagents.utils.financial_calendar import FinancialCalendar
+
+        # 基础TTL
+        base_ttl = self._tiered_cache_config.get(data_category, self._cache_ttl_seconds)
+
+        # 财报数据需要考虑财报发布日期
+        if data_category in ["financial", "fundamental"]:
+            return FinancialCalendar.get_adjusted_ttl(
+                data_category=data_category,
+                base_ttl=base_ttl,
+                sensitive_days=3,  # 财报发布前3天开始缩短缓存
+            )
+
+        return base_ttl
+
+    def _is_cache_valid(
+        self, data: PreloadedData, data_category: str = "default"
+    ) -> bool:
+        """
+        Check if cache is valid
+
+        Args:
+            data: PreloadedData instance
+            data_category: 数据类别，用于分级缓存TTL
+
+        Returns:
+            bool: 缓存是否有效
+        """
         if not data:
             return False
+
+        # 使用分级缓存TTL
+        cache_ttl = self._get_tiered_cache_ttl(data_category)
+
         age = (datetime.now() - data.loaded_at).total_seconds()
-        return age < self._cache_ttl_seconds
+        return age < cache_ttl
 
     def preload_analysis_data(
         self, ticker: str, trade_date: str, analysis_depth: str = None
@@ -361,30 +416,62 @@ class DataCoordinator:
             logger.warning(f"[DataCoordinator] Price cache failed: {e}")
 
     def _load_china_fundamentals(self, ticker: str, trade_date: str) -> str:
-        """Load China stock fundamentals data"""
+        """Load China stock fundamentals data using comprehensive financial tool"""
         try:
-            from datetime import datetime, timedelta
+            from tradingagents.agents.utils.agent_utils import Toolkit
             from tradingagents.dataflows.interface import get_china_stock_data_unified
-            from tradingagents.dataflows.optimized_china_data import (
-                OptimizedChinaDataProvider,
+            from datetime import datetime, timedelta
+
+            logger.info(
+                f"[DataCoordinator] Loading comprehensive financial data for {ticker}"
             )
 
+            # 🔥 使用新的完整财务数据工具获取标准化数据
+            comprehensive_financials = (
+                Toolkit.get_stock_comprehensive_financials.invoke(
+                    {"ticker": ticker, "curr_date": trade_date}
+                )
+            )
+
+            # 同时获取价格数据作为补充
             recent_end = trade_date
             recent_start = (
                 datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=5)
             ).strftime("%Y-%m-%d")
-
             price_data = get_china_stock_data_unified(ticker, recent_start, recent_end)
 
-            analyzer = OptimizedChinaDataProvider()
-            fundamentals = analyzer._generate_fundamentals_report(
-                ticker, price_data, "standard"
-            )
+            # 组合输出
+            return f"""## A-Share Comprehensive Financial Data
 
-            return f"## A-Share Current Price Info\n{price_data}\n\n## A-Share Fundamentals Data\n{fundamentals}"
+{comprehensive_financials}
+
+## A-Share Price Data (Supplement)
+{price_data}
+"""
         except Exception as e:
             logger.error(f"[DataCoordinator] A-Share fundamentals load failed: {e}")
-            return f"Fundamentals data fetch failed: {e}"
+            # 降级到旧方法
+            try:
+                from tradingagents.dataflows.interface import (
+                    get_china_stock_data_unified,
+                )
+                from tradingagents.dataflows.optimized_china_data import (
+                    OptimizedChinaDataProvider,
+                )
+
+                price_data = get_china_stock_data_unified(
+                    ticker, trade_date, trade_date
+                )
+                analyzer = OptimizedChinaDataProvider()
+                fundamentals = analyzer._generate_fundamentals_report(
+                    ticker, price_data, "standard"
+                )
+                return f"## A-Share Fundamentals Data (Fallback)\n{fundamentals}\n\n## Price Data\n{price_data}"
+            except Exception as fallback_error:
+                logger.error(
+                    f"[DataCoordinator] Fallback also failed: {fallback_error}"
+                )
+                return f"Fundamentals data fetch failed: {e}"
 
     def _load_hk_fundamentals(self, ticker: str) -> str:
         """Load HK stock fundamentals data"""

@@ -14,18 +14,74 @@ logger = get_logger("smart_cache")
 
 
 class SmartCache:
-    """智能缓存管理器 - 根据数据特点调整缓存策略"""
+    """智能缓存管理器 - 根据数据特点调整缓存策略
 
-    # 不同类型数据的默认 TTL（秒）
+    支持分级缓存策略：
+    - L1（实时）: 估值指标，1小时缓存，存储于Redis
+    - L2（季度）: 财报数据，7天缓存（财报日1小时），存储于MongoDB
+    - L3（长期）: 分红/基本面，30天缓存，存储于MongoDB
+
+    财报发布日期感知：
+    - 财报发布前3天：缩短缓存至1小时
+    - 财报发布日16:00后：强制刷新缓存
+    """
+
+    # 不同类型数据的默认 TTL（秒）- 分级缓存配置
     DEFAULT_TTLS = {
+        # ===== L1: 实时估值指标（1小时）- Redis存储 =====
+        "valuation": 3600,  # 估值指标（PE、PB、PS、总市值）
+        "daily_basic": 3600,  # 每日指标
         "realtime_quote": 300,  # 实时行情：5分钟
+        # ===== L2: 季度财报数据（7天，财报日调整为1小时）- MongoDB存储 =====
+        "fundamental": 604800,  # 基本面数据（默认7天）
+        "financial": 604800,  # 财报数据
+        "financial_indicators": 604800,  # 财务指标（ROE、EPS等）
+        "income_statement": 604800,  # 利润表
+        "balance_sheet": 604800,  # 资产负债表
+        "cashflow_statement": 604800,  # 现金流量表
         "daily_kline": 3600,  # 日K线：1小时
-        "fundamental": 86400,  # 基本面数据：1天
+        # ===== L3: 长期基本面（30天）- MongoDB存储 =====
+        "dividend": 2592000,  # 分红数据
+        "company_info": 2592000,  # 公司信息
+        "stock_basic": 2592000,  # 股票基础信息
+        # ===== 其他数据 =====
         "news": 1800,  # 新闻数据：30分钟
         "sentiment": 3600,  # 情绪数据：1小时
-        "company_info": 259200,  # 公司信息：3天
         "market_stats": 7200,  # 市场统计：2小时
         "trading_decision": 86400,  # 交易决策：1天
+    }
+
+    # 数据类别到存储位置的映射
+    STORAGE_MAPPING = {
+        # L1: Redis存储（高频访问、实时性要求高）
+        "valuation": "redis",
+        "daily_basic": "redis",
+        "realtime_quote": "redis",
+        # L2/L3: MongoDB存储（持久化、容量大）
+        "fundamental": "mongodb",
+        "financial": "mongodb",
+        "financial_indicators": "mongodb",
+        "income_statement": "mongodb",
+        "balance_sheet": "mongodb",
+        "cashflow_statement": "mongodb",
+        "dividend": "mongodb",
+        "company_info": "mongodb",
+        "stock_basic": "mongodb",
+        "daily_kline": "mongodb",
+        "news": "mongodb",
+        "sentiment": "mongodb",
+        "market_stats": "mongodb",
+        "trading_decision": "mongodb",
+    }
+
+    # 受财报发布日期影响的数据类别
+    REPORT_SENSITIVE_TYPES = {
+        "fundamental",
+        "financial",
+        "financial_indicators",
+        "income_statement",
+        "balance_sheet",
+        "cashflow_statement",
     }
 
     def __init__(self, cache_manager):
@@ -67,14 +123,27 @@ class SmartCache:
         data_type: str,
         params: Optional[Dict] = None,
         ttl: Optional[int] = None,
+        use_calendar: bool = True,
     ) -> Optional[Any]:
-        """获取缓存数据，记录命中率"""
+        """获取缓存数据，记录命中率
+
+        Args:
+            symbol: 股票代码
+            date: 日期
+            data_type: 数据类型
+            params: 额外参数
+            ttl: 自定义TTL（秒）
+            use_calendar: 是否使用财报日历调整TTL（默认True）
+        """
 
         cache_key = self._generate_cache_key(symbol, date, data_type, params)
 
-        # 自动 TTL
+        # 自动 TTL（考虑财报日历）
         if ttl is None:
-            ttl = self.DEFAULT_TTLS.get(data_type, 3600)
+            if use_calendar and self.is_report_sensitive(data_type):
+                ttl = self.get_ttl_with_calendar(data_type)
+            else:
+                ttl = self.DEFAULT_TTLS.get(data_type, 3600)
 
         # 更新统计
         self.cache_miss_stats[data_type] = self.cache_miss_stats.get(data_type, 0) + 1
@@ -99,14 +168,29 @@ class SmartCache:
         params: Optional[Dict] = None,
         ttl: Optional[int] = None,
         priority: int = 0,
+        use_calendar: bool = True,
     ) -> bool:
-        """设置缓存数据"""
+        """设置缓存数据
+
+        Args:
+            symbol: 股票代码
+            date: 日期
+            data_type: 数据类型
+            value: 缓存值
+            params: 额外参数
+            ttl: 自定义TTL（秒）
+            priority: 缓存优先级
+            use_calendar: 是否使用财报日历调整TTL（默认True）
+        """
 
         cache_key = self._generate_cache_key(symbol, date, data_type, params)
 
-        # 自动 TTL
+        # 自动 TTL（考虑财报日历）
         if ttl is None:
-            ttl = self.DEFAULT_TTLS.get(data_type, 3600)
+            if use_calendar and self.is_report_sensitive(data_type):
+                ttl = self.get_ttl_with_calendar(data_type)
+            else:
+                ttl = self.DEFAULT_TTLS.get(data_type, 3600)
 
         return await self.cache_manager.set(cache_key, value, ttl)
 
@@ -167,15 +251,71 @@ class SmartCache:
             else:
                 return 7200  # 老新闻，缓存2小时
 
-        # 基本面数据：更新频率低，可以缓存更久
-        if data_type == "fundamental":
-            return 259200  # 3天
-
         # 交易决策：使用场景固定，可以缓存更久
         if data_type == "trading_decision":
             return 259200  # 3天
 
         return base_ttl
+
+    def get_ttl_with_calendar(
+        self, data_type: str, current_date: Optional[datetime] = None
+    ) -> int:
+        """
+        根据财报发布日历获取优化的TTL
+
+        对于财报敏感的数据类型，在财报发布前3天和发布日16:00后，
+        使用短TTL（1小时）以确保及时获取新财报数据。
+
+        Args:
+            data_type: 数据类型
+            current_date: 当前日期，默认为现在
+
+        Returns:
+            int: 优化后的TTL（秒）
+        """
+        from tradingagents.utils.financial_calendar import FinancialCalendar
+
+        base_ttl = self.DEFAULT_TTLS.get(data_type, 3600)
+
+        # 检查是否是财报敏感类型
+        if data_type not in self.REPORT_SENSITIVE_TYPES:
+            return base_ttl
+
+        # 获取当前日期
+        if current_date is None:
+            current_date = FinancialCalendar.get_current_date()
+
+        # 使用财务日历调整TTL
+        return FinancialCalendar.get_adjusted_ttl(
+            data_category=data_type,
+            base_ttl=base_ttl,
+            current_date=current_date,
+            sensitive_days=3,  # 财报发布前3天开始缩短缓存
+        )
+
+    def get_storage_location(self, data_type: str) -> str:
+        """
+        获取数据类型的存储位置
+
+        Args:
+            data_type: 数据类型
+
+        Returns:
+            str: 存储位置（redis/mongodb）
+        """
+        return self.STORAGE_MAPPING.get(data_type, "mongodb")
+
+    def is_report_sensitive(self, data_type: str) -> bool:
+        """
+        检查数据类型是否受财报发布日期影响
+
+        Args:
+            data_type: 数据类型
+
+        Returns:
+            bool: 是否受财报影响
+        """
+        return data_type in self.REPORT_SENSITIVE_TYPES
 
     def get_cache_priority(self, data_type: str) -> int:
         """
@@ -197,6 +337,54 @@ class SmartCache:
         }
 
         return priority_map.get(data_type, 0)
+
+    def get_cache_info(self, data_type: str) -> Dict[str, Any]:
+        """
+        获取数据类型的缓存信息
+
+        Args:
+            data_type: 数据类型
+
+        Returns:
+            Dict: 包含TTL、存储位置、是否受财报影响等信息
+        """
+        from tradingagents.utils.financial_calendar import FinancialCalendar
+
+        base_ttl = self.DEFAULT_TTLS.get(data_type, 3600)
+        storage = self.get_storage_location(data_type)
+        is_sensitive = self.is_report_sensitive(data_type)
+
+        info = {
+            "data_type": data_type,
+            "base_ttl_seconds": base_ttl,
+            "base_ttl_human": self._format_ttl(base_ttl),
+            "storage_location": storage,
+            "is_report_sensitive": is_sensitive,
+        }
+
+        # 如果是财报敏感类型，添加调整后TTL
+        if is_sensitive:
+            adjusted_ttl = self.get_ttl_with_calendar(data_type)
+            info["adjusted_ttl_seconds"] = adjusted_ttl
+            info["adjusted_ttl_human"] = self._format_ttl(adjusted_ttl)
+
+            # 添加财报日历信息
+            calendar_info = FinancialCalendar.get_report_info()
+            info["financial_calendar"] = calendar_info
+
+        return info
+
+    @staticmethod
+    def _format_ttl(seconds: int) -> str:
+        """格式化TTL为可读字符串"""
+        if seconds < 60:
+            return f"{seconds}秒"
+        elif seconds < 3600:
+            return f"{seconds // 60}分钟"
+        elif seconds < 86400:
+            return f"{seconds // 3600}小时"
+        else:
+            return f"{seconds // 86400}天"
 
 
 class CacheMonitor:

@@ -216,7 +216,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals", "china"],
         debug=False,
         config: Dict[str, Any] = None,
     ):

@@ -756,6 +756,365 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @log_tool_call(tool_name="get_stock_comprehensive_financials", log_args=True)
+    def get_stock_comprehensive_financials(
+        ticker: Annotated[str, "股票代码（支持A股6位代码，如：000001、600000）"],
+        curr_date: Annotated[str, "当前日期，格式：YYYY-MM-DD"] = None,
+    ) -> str:
+        """
+        获取股票完整标准化财务数据（供分析师使用）
+
+        使用 Tushare 5120积分权限，一次性获取所有财务指标：
+        - 估值指标：PE、PE_TTM、PB、PS、股息率
+        - 盈利能力：EPS、ROE、ROA、毛利率、净利率
+        - 财务数据：营业收入、净利润、经营现金流净额
+        - 分红数据：每股分红、股息率、分红历史
+        - 资产负债：总资产、总负债、资产负债率
+
+        数据来源：
+        - daily_basic: 每日估值指标（PE、PB、PS等）
+        - income: 利润表（营收、净利润）
+        - cashflow: 现金流量表（经营现金流）
+        - fina_indicator: 财务指标（EPS、ROE等）
+        - dividend: 分红送股数据
+
+        Args:
+            ticker: 股票代码（如：000001、600000）
+            curr_date: 当前日期（可选，格式：YYYY-MM-DD）
+
+        Returns:
+            str: 标准化的完整财务数据报告
+        """
+        import asyncio
+        from datetime import datetime
+        import pandas as pd
+
+        logger.info(f"📊 [完整财务数据] 开始获取 {ticker} 的完整财务数据")
+
+        # 设置默认日期
+        if not curr_date:
+            curr_date = Toolkit._config.get("trade_date") or datetime.now().strftime(
+                "%Y-%m-%d"
+            )
+            logger.info(f"📅 [完整财务数据] 使用分析日期: {curr_date}")
+
+        try:
+            from tradingagents.dataflows.providers.china.tushare import TushareProvider
+            from tradingagents.utils.stock_utils import StockUtils
+
+            # 验证股票类型
+            market_info = StockUtils.get_market_info(ticker)
+            if not market_info["is_china"]:
+                return f"❌ 该工具仅支持中国A股，当前股票: {ticker} ({market_info['market_name']})"
+
+            # 初始化 TushareProvider
+            provider = TushareProvider()
+
+            # 异步获取完整财务数据
+            async def fetch_all_financials():
+                await provider.connect()
+
+                # 1. 获取完整财务数据包（包含 income、cashflow、fina_indicator、dividend）
+                financial_data = await provider.get_financial_data(ticker, limit=8)
+
+                # 2. 获取每日估值指标（PE、PB、PS等）
+                trade_date = curr_date.replace("-", "")
+                daily_basic_df = await provider.get_daily_basic(trade_date)
+
+                return financial_data, daily_basic_df
+
+            # 运行异步任务（兼容已有事件循环）
+            try:
+                # 检查是否已经在事件循环中
+                loop = asyncio.get_running_loop()
+                # 如果在事件循环中，尝试使用 nest_asyncio
+                try:
+                    import nest_asyncio
+
+                    nest_asyncio.apply()
+                    financial_data, daily_basic_df = asyncio.run(fetch_all_financials())
+                except ImportError:
+                    logger.warning("⚠️ nest_asyncio 未安装，尝试使用异步兼容模式")
+                    # 如果 nest_asyncio 未安装，直接使用 create_task
+                    future = asyncio.ensure_future(fetch_all_financials())
+                    # 等待任务完成
+                    import concurrent.futures
+
+                    executor = concurrent.futures.ThreadPoolExecutor()
+                    try:
+                        financial_data, daily_basic_df = executor.submit(
+                            asyncio.run, fetch_all_financials()
+                        ).result()
+                    finally:
+                        executor.shutdown(wait=False)
+            except RuntimeError as e:
+                if "no running event loop" in str(e).lower():
+                    # 如果没有事件循环，正常使用 asyncio.run
+                    financial_data, daily_basic_df = asyncio.run(fetch_all_financials())
+                else:
+                    raise
+
+            if not financial_data:
+                return f"❌ 未能获取 {ticker} 的财务数据"
+
+            # 构建标准化输出
+            report_lines = [
+                f"# {ticker} 完整财务数据报告",
+                f"数据日期: {curr_date}",
+                "=" * 60,
+                "",
+                "## 📊 估值指标",
+                "-" * 40,
+            ]
+
+            # 从 daily_basic 获取估值指标
+            if daily_basic_df is not None and not daily_basic_df.empty:
+                # 转换股票代码格式
+                ts_code = f"{ticker}.{'SH' if ticker.startswith('6') else 'SZ'}"
+                stock_data = daily_basic_df[daily_basic_df["ts_code"] == ts_code]
+
+                if not stock_data.empty:
+                    row = stock_data.iloc[0]
+                    report_lines.extend(
+                        [
+                            f"市盈率 (PE): {row.get('pe', 'N/A')}",
+                            f"滚动市盈率 (PE_TTM): {row.get('pe_ttm', 'N/A')}",
+                            f"市净率 (PB): {row.get('pb', 'N/A')}",
+                            f"市销率 (PS): {row.get('ps', 'N/A')}",
+                            f"滚动市销率 (PS_TTM): {row.get('ps_ttm', 'N/A')}",
+                            f"股息率 (%): {row.get('dv_ratio', 'N/A')}",
+                            f"总市值 (万元): {row.get('total_mv', 'N/A'):,.0f}"
+                            if pd.notna(row.get("total_mv"))
+                            else "总市值 (万元): N/A",
+                            f"流通市值 (万元): {row.get('circ_mv', 'N/A'):,.0f}"
+                            if pd.notna(row.get("circ_mv"))
+                            else "流通市值 (万元): N/A",
+                            "",
+                        ]
+                    )
+
+            # 从 fina_indicator 获取盈利指标
+            report_lines.extend(
+                [
+                    "## 💰 盈利能力指标",
+                    "-" * 40,
+                ]
+            )
+
+            if "indicators" in financial_data and financial_data["indicators"]:
+                latest = (
+                    financial_data["indicators"][0]
+                    if isinstance(financial_data["indicators"], list)
+                    else financial_data["indicators"]
+                )
+                report_lines.extend(
+                    [
+                        f"每股收益 (EPS): {latest.get('eps', 'N/A')}",
+                        f"净资产收益率 (ROE): {latest.get('roe', 'N/A')}%"
+                        if latest.get("roe")
+                        else "净资产收益率 (ROE): N/A",
+                        f"总资产报酬率 (ROA): {latest.get('roa', 'N/A')}%"
+                        if latest.get("roa")
+                        else "总资产报酬率 (ROA): N/A",
+                        f"销售毛利率: {latest.get('grossprofit_margin', 'N/A')}%"
+                        if latest.get("grossprofit_margin")
+                        else "销售毛利率: N/A",
+                        f"销售净利率: {latest.get('netprofit_margin', 'N/A')}%"
+                        if latest.get("netprofit_margin")
+                        else "销售净利率: N/A",
+                        "",
+                    ]
+                )
+
+            # 从 income 获取营收和利润
+            report_lines.extend(
+                [
+                    "## 📈 营业收入与利润",
+                    "-" * 40,
+                ]
+            )
+
+            if "income" in financial_data and financial_data["income"]:
+                latest_income = (
+                    financial_data["income"][0]
+                    if isinstance(financial_data["income"], list)
+                    else financial_data["income"]
+                )
+                report_lines.extend(
+                    [
+                        f"营业收入: {latest_income.get('revenue', 'N/A'):,.0f} 万元"
+                        if latest_income.get("revenue")
+                        else "营业收入: N/A",
+                        f"营业总收入: {latest_income.get('total_revenue', 'N/A'):,.0f} 万元"
+                        if latest_income.get("total_revenue")
+                        else "营业总收入: N/A",
+                        f"净利润: {latest_income.get('n_income', 'N/A'):,.0f} 万元"
+                        if latest_income.get("n_income")
+                        else "净利润: N/A",
+                        f"归母净利润: {latest_income.get('n_income_attr_p', 'N/A'):,.0f} 万元"
+                        if latest_income.get("n_income_attr_p")
+                        else "归母净利润: N/A",
+                        "",
+                    ]
+                )
+
+            # 从 cashflow 获取现金流
+            report_lines.extend(
+                [
+                    "## 💸 现金流量",
+                    "-" * 40,
+                ]
+            )
+
+            if "cashflow" in financial_data and financial_data["cashflow"]:
+                latest_cf = (
+                    financial_data["cashflow"][0]
+                    if isinstance(financial_data["cashflow"], list)
+                    else financial_data["cashflow"]
+                )
+                report_lines.extend(
+                    [
+                        f"经营现金流净额: {latest_cf.get('n_cashflow_act', 'N/A'):,.0f} 万元"
+                        if latest_cf.get("n_cashflow_act")
+                        else "经营现金流净额: N/A",
+                        f"投资现金流净额: {latest_cf.get('n_cashflow_inv_act', 'N/A'):,.0f} 万元"
+                        if latest_cf.get("n_cashflow_inv_act")
+                        else "投资现金流净额: N/A",
+                        f"筹资现金流净额: {latest_cf.get('n_cashflow_fin_act', 'N/A'):,.0f} 万元"
+                        if latest_cf.get("n_cashflow_fin_act")
+                        else "筹资现金流净额: N/A",
+                        "",
+                    ]
+                )
+
+            # 从 balancesheet 获取资产负债
+            report_lines.extend(
+                [
+                    "## 🏦 资产负债情况",
+                    "-" * 40,
+                ]
+            )
+
+            if "balancesheet" in financial_data and financial_data["balancesheet"]:
+                latest_bs = (
+                    financial_data["balancesheet"][0]
+                    if isinstance(financial_data["balancesheet"], list)
+                    else financial_data["balancesheet"]
+                )
+                report_lines.extend(
+                    [
+                        f"总资产: {latest_bs.get('total_assets', 'N/A'):,.0f} 万元"
+                        if latest_bs.get("total_assets")
+                        else "总资产: N/A",
+                        f"总负债: {latest_bs.get('total_liab', 'N/A'):,.0f} 万元"
+                        if latest_bs.get("total_liab")
+                        else "总负债: N/A",
+                        f"股东权益: {latest_bs.get('total_hldr_eqy_exc_min_int', 'N/A'):,.0f} 万元"
+                        if latest_bs.get("total_hldr_eqy_exc_min_int")
+                        else "股东权益: N/A",
+                        "",
+                    ]
+                )
+
+            # 从 dividend 获取分红数据
+            report_lines.extend(
+                [
+                    "## 💝 分红送股",
+                    "-" * 40,
+                ]
+            )
+
+            if "dividend" in financial_data and financial_data["dividend"]:
+                dividends = (
+                    financial_data["dividend"]
+                    if isinstance(financial_data["dividend"], list)
+                    else [financial_data["dividend"]]
+                )
+                report_lines.append(f"最近 {len(dividends)} 次分红记录:")
+                for i, div in enumerate(dividends[:3]):  # 只显示最近3次
+                    report_lines.extend(
+                        [
+                            f"  {i + 1}. 除权除息日: {div.get('ex_date', 'N/A')}",
+                            f"     每股现金分红: {div.get('cash_div', 'N/A')} 元"
+                            if div.get("cash_div")
+                            else "     每股现金分红: N/A",
+                            f"     实施进度: {div.get('div_proc', 'N/A')}",
+                        ]
+                    )
+                report_lines.append("")
+
+            # 添加最新股息率
+            if "latest_dividend_yield" in financial_data:
+                report_lines.extend(
+                    [
+                        f"最新股息率: {financial_data['latest_dividend_yield']}%",
+                        f"最新每股分红: {financial_data.get('latest_cash_div', 'N/A')} 元"
+                        if financial_data.get("latest_cash_div")
+                        else "最新每股分红: N/A",
+                        "",
+                    ]
+                )
+
+            # 添加财务摘要总结
+            report_lines.extend(
+                [
+                    "=" * 60,
+                    "## 📝 财务健康度摘要",
+                    "-" * 40,
+                ]
+            )
+
+            # 根据数据生成简要分析
+            health_indicators = []
+
+            if "indicators" in financial_data and financial_data["indicators"]:
+                latest = (
+                    financial_data["indicators"][0]
+                    if isinstance(financial_data["indicators"], list)
+                    else financial_data["indicators"]
+                )
+                roe = latest.get("roe")
+                if roe and roe > 15:
+                    health_indicators.append(f"✅ ROE {roe}% > 15%，盈利能力优秀")
+                elif roe and roe > 10:
+                    health_indicators.append(f"✅ ROE {roe}% > 10%，盈利能力良好")
+                elif roe:
+                    health_indicators.append(f"⚠️ ROE {roe}% < 10%，盈利能力一般")
+
+                debt_ratio = latest.get("debt_to_assets")
+                if debt_ratio and debt_ratio < 40:
+                    health_indicators.append(
+                        f"✅ 资产负债率 {debt_ratio}% < 40%，财务风险较低"
+                    )
+                elif debt_ratio and debt_ratio < 60:
+                    health_indicators.append(f"⚠️ 资产负债率 {debt_ratio}% 适中")
+                elif debt_ratio:
+                    health_indicators.append(
+                        f"❌ 资产负债率 {debt_ratio}% > 60%，财务风险较高"
+                    )
+
+            if health_indicators:
+                report_lines.extend(health_indicators)
+            else:
+                report_lines.append("暂无足够数据生成财务健康度分析")
+
+            report_lines.append("")
+            report_lines.append(
+                f"数据来源: Tushare Pro | 积分要求: 5120 | 更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+            return "\n".join(report_lines)
+
+        except Exception as e:
+            import traceback
+
+            error_details = traceback.format_exc()
+            logger.error(f"❌ [完整财务数据] 获取失败: {e}")
+            logger.error(f"详细错误: {error_details}")
+            return f"❌ 获取 {ticker} 完整财务数据失败: {str(e)}"
+
+    @staticmethod
+    @tool
     @log_tool_call(tool_name="get_stock_fundamentals_unified", log_args=True)
     def get_stock_fundamentals_unified(
         ticker: Annotated[str, "股票代码（支持A股、港股、美股）"],

@@ -234,6 +234,14 @@ class Settings(BaseSettings):
     TUSHARE_STATUS_CHECK_ENABLED: bool = Field(default=True)
     TUSHARE_STATUS_CHECK_CRON: str = Field(default="0 * * * *")  # 每小时
 
+    # Tushare每小时批量实时行情同步（使用rt_k接口获取全市场）
+    TUSHARE_HOURLY_BULK_SYNC_ENABLED: bool = Field(
+        default=False, description="启用Tushare每小时批量实时行情同步"
+    )
+    TUSHARE_HOURLY_BULK_SYNC_CRON: str = Field(
+        default="0 9-15 * * 1-5", description="每小时批量同步CRON表达式（仅交易时段）"
+    )
+
     # Tushare数据初始化配置
     TUSHARE_INIT_HISTORICAL_DAYS: int = Field(
         default=365, ge=1, le=3650, description="初始化历史数据天数"

@@ -74,6 +74,7 @@ from app.worker.tushare_sync_service import (
     run_tushare_historical_sync,
     run_tushare_financial_sync,
     run_tushare_status_check,
+    run_tushare_hourly_bulk_sync,
 )
 from app.worker.akshare_sync_service import (
     run_akshare_basic_info_sync,
@@ -537,6 +538,28 @@ async def lifespan(app: FastAPI):
         else:
             logger.info(
                 f"🔍 Tushare状态检查已配置: {settings.TUSHARE_STATUS_CHECK_CRON}"
+            )
+
+        # 每小时批量实时行情同步（Tushare rt_k接口）
+        scheduler.add_job(
+            run_tushare_hourly_bulk_sync,
+            CronTrigger.from_crontab(
+                settings.TUSHARE_HOURLY_BULK_SYNC_CRON, timezone=settings.TIMEZONE
+            ),
+            id="tushare_hourly_bulk_sync",
+            name="每小时批量实时行情同步（Tushare）",
+        )
+        if not (
+            settings.TUSHARE_UNIFIED_ENABLED
+            and settings.TUSHARE_HOURLY_BULK_SYNC_ENABLED
+        ):
+            scheduler.pause_job("tushare_hourly_bulk_sync")
+            logger.info(
+                f"⏸️ Tushare每小时批量同步已添加但暂停: {settings.TUSHARE_HOURLY_BULK_SYNC_CRON}"
+            )
+        else:
+            logger.info(
+                f"📊 Tushare每小时批量同步已配置: {settings.TUSHARE_HOURLY_BULK_SYNC_CRON}"
             )
 
         # AKShare统一数据同步任务配置

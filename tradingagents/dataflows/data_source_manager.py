@@ -767,6 +767,41 @@ class DataSourceManager:
         except Exception as e:
             logger.warning(f"⚠️ 保存数据到缓存失败: {e}")
 
+    def _get_smart_ttl(self, data_category: str) -> int:
+        """
+        获取分级缓存TTL（支持财报发布日期感知）
+
+        使用 SmartCache 的分级缓存策略：
+        - L1（实时）: 估值指标，1小时缓存
+        - L2（季度）: 财报数据，7天缓存（财报日1小时）
+        - L3（长期）: 分红/基本面，30天缓存
+
+        Args:
+            data_category: 数据类别（valuation/financial/dividend等）
+
+        Returns:
+            int: 缓存TTL（秒）
+        """
+        from tradingagents.dataflows.cache.smart_cache import SmartCache
+
+        cache = SmartCache(self.cache_manager)
+        return cache.get_ttl_with_calendar(data_category)
+
+    def _get_storage_location(self, data_category: str) -> str:
+        """
+        获取数据类型的存储位置
+
+        Args:
+            data_category: 数据类别
+
+        Returns:
+            str: 存储位置（redis/mongodb）
+        """
+        from tradingagents.dataflows.cache.smart_cache import SmartCache
+
+        cache = SmartCache(self.cache_manager)
+        return cache.get_storage_location(data_category)
+
     def _get_volume_safely(self, data: pd.DataFrame) -> float:
         """
         安全获取成交量数据
@@ -1838,6 +1873,19 @@ class DataSourceManager:
         Returns:
             str: 格式化的股票数据
         """
+        # 🔥 如果未提供 analysis_date，尝试从 Toolkit._config 获取
+        if analysis_date is None:
+            try:
+                from tradingagents.agents.utils.agent_utils import Toolkit
+
+                analysis_date = Toolkit._config.get("analysis_date")
+                if analysis_date:
+                    logger.info(
+                        f"📅 [自动获取] 从 Toolkit._config 获取分析日期: {analysis_date}"
+                    )
+            except Exception:
+                pass
+
         # 🔥 获取实时价格（根据分析日期智能判断）
         realtime_price = None
         realtime_quote = None
@@ -2835,7 +2883,11 @@ class DataSourceManager:
             return {"error": str(e)}
 
     def get_stock_data_with_fallback(
-        self, stock_code: str, start_date: str, end_date: str
+        self,
+        stock_code: str,
+        start_date: str,
+        end_date: str,
+        analysis_date: str = None,
     ) -> str:
         """
         获取股票数据（兼容 stock_data_service 接口）
@@ -2844,6 +2896,7 @@ class DataSourceManager:
             stock_code: 股票代码
             start_date: 开始日期
             end_date: 结束日期
+            analysis_date: 分析日期（YYYY-MM-DD），用于判断实时行情
 
         Returns:
             str: 格式化的股票数据报告
@@ -2852,7 +2905,9 @@ class DataSourceManager:
 
         try:
             # 使用统一的数据获取接口
-            return self.get_stock_data(stock_code, start_date, end_date)
+            return self.get_stock_data(
+                stock_code, start_date, end_date, analysis_date=analysis_date
+            )
         except Exception as e:
             logger.error(f"❌ 获取股票数据失败: {e}")
             return f"❌ 获取股票数据失败: {str(e)}\n\n💡 建议：\n1. 检查网络连接\n2. 确认股票代码格式正确\n3. 检查数据源配置"
@@ -4602,7 +4657,9 @@ def get_data_source_manager() -> DataSourceManager:
     return _data_source_manager
 
 
-def get_china_stock_data_unified(symbol: str, start_date: str, end_date: str) -> str:
+def get_china_stock_data_unified(
+    symbol: str, start_date: str, end_date: str, analysis_date: str = None
+) -> str:
     """
     统一的中国股票数据获取接口
     自动使用配置的数据源，支持备用数据源
@@ -4611,6 +4668,7 @@ def get_china_stock_data_unified(symbol: str, start_date: str, end_date: str) ->
         symbol: 股票代码
         start_date: 开始日期
         end_date: 结束日期
+        analysis_date: 分析日期（YYYY-MM-DD），用于判断实时行情
 
     Returns:
         str: 格式化的股票数据
@@ -4626,9 +4684,11 @@ def get_china_stock_data_unified(symbol: str, start_date: str, end_date: str) ->
 
     manager = get_data_source_manager()
     logger.info(
-        f"🔍 [股票代码追踪] 调用 manager.get_stock_data，传入参数: symbol='{symbol}', start_date='{start_date}', end_date='{end_date}'"
+        f"🔍 [股票代码追踪] 调用 manager.get_stock_data，传入参数: symbol='{symbol}', start_date='{start_date}', end_date='{end_date}', analysis_date='{analysis_date}'"
     )
-    result = manager.get_stock_data(symbol, start_date, end_date)
+    result = manager.get_stock_data(
+        symbol, start_date, end_date, analysis_date=analysis_date
+    )
     # 🔥 FIX: 处理返回类型错误（tuple vs str）
     if isinstance(result, tuple):
         logger.warning(f"⚠️ [类型修复] get_stock_data 返回了 tuple，提取第一个元素")

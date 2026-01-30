@@ -177,8 +177,20 @@ class OptimizedChinaDataProvider:
             # 调用统一数据源接口（默认Tushare，支持备用数据源）
             from .data_source_manager import get_china_stock_data_unified
 
+            # 🔥 从 Toolkit._config 获取分析日期
+            analysis_date = None
+            try:
+                from tradingagents.agents.utils.agent_utils import Toolkit
+
+                analysis_date = Toolkit._config.get("analysis_date")
+            except Exception as e:
+                logger.debug(f"⚠️ 无法从 Toolkit._config 获取 analysis_date: {e}")
+
             formatted_data = get_china_stock_data_unified(
-                symbol=symbol, start_date=start_date, end_date=end_date
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                analysis_date=analysis_date,
             )
 
             # 检查是否获取成功

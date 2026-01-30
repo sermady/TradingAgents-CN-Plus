@@ -73,6 +73,39 @@ See **skills/SKILLS.md > Section 1** for detailed architecture diagrams.
 
 ## Known Issues & Debugging Guide
 
+### 🟢 Tushare 每小时批量实时行情同步 (2026-01-30)
+
+**功能**: 使用 Tushare `rt_k` 接口每小时批量同步全市场实时行情（约 5000+ 只股票）
+
+**实现文件**:
+- `app/core/config.py` - 新增配置项
+- `app/worker/tushare_sync_service.py` - 新增 `run_tushare_hourly_bulk_sync()` 函数
+- `app/main.py` - 调度器配置
+
+**配置说明**:
+```python
+# .env 文件或配置中心
+TUSHARE_HOURLY_BULK_SYNC_ENABLED=true  # 启用每小时批量同步
+TUSHARE_HOURLY_BULK_SYNC_CRON="0 9-15 * * 1-5"  # 工作日9-15点每小时执行
+```
+
+**数据存储**:
+- **MongoDB**: `market_quotes` 集合，持久化存储
+- **Redis**: `realtime_quote:{symbol}` key，缓存10分钟
+
+**执行逻辑**:
+1. 检查是否在交易时段（工作日 9:30-15:30）
+2. 使用 `rt_k` 接口一次性获取全市场数据
+3. 批量写入 MongoDB 和 Redis
+4. 每小时整点触发（如 10:00, 11:00...）
+
+**适用场景**:
+- 有足够 Tushare 积分（rt_k 接口需要积分）
+- 需要全市场实时行情数据
+- 替代原有的高频实时行情同步
+
+---
+
 ### 🟢 实时行情数据源分离 (2026-01-29)
 
 **修改目标**: 分析股票时优先从 MongoDB 读取历史数据，实时行情时直接调用外部 API

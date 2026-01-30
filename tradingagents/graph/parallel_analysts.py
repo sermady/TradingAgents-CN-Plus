@@ -42,7 +42,7 @@ class ParallelAnalystExecutor:
         self.conditional_logic = base_setup.conditional_logic
 
     def setup_parallel_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["market", "social", "news", "fundamentals", "china"]
     ):
         """设置并行分析师执行图 Setup parallel analyst execution graph
 

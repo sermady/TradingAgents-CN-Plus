@@ -14,6 +14,7 @@ from app.utils.timezone import now_tz
 
 class AnalysisStatus(str, Enum):
     """分析状态枚举"""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -23,6 +24,7 @@ class AnalysisStatus(str, Enum):
 
 class BatchStatus(str, Enum):
     """批次状态枚举"""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -41,11 +43,16 @@ class AnalysisParameters(BaseModel):
     - 深度: 4级 - 深度分析 (10-15分钟)
     - 全面: 5级 - 全面分析 (15-25分钟)
     """
+
     market_type: str = "A股"
     analysis_date: Optional[datetime] = None
-    use_realtime: bool = Field(default=True, description="是否使用实时行情（仅今天有效）")
+    use_realtime: bool = Field(
+        default=True, description="是否使用实时行情（仅今天有效）"
+    )
     research_depth: str = "标准"  # 默认使用3级标准分析（推荐）
-    selected_analysts: List[str] = Field(default_factory=lambda: ["market", "fundamentals", "news", "social"])
+    selected_analysts: List[str] = Field(
+        default_factory=lambda: ["market", "fundamentals", "news", "social", "china"]
+    )
     custom_prompt: Optional[str] = None
     include_sentiment: bool = True
     include_risk: bool = True
@@ -57,6 +64,7 @@ class AnalysisParameters(BaseModel):
 
 class AnalysisResult(BaseModel):
     """分析结果模型"""
+
     analysis_id: Optional[str] = None
     summary: Optional[str] = None
     recommendation: Optional[str] = None
@@ -73,6 +81,7 @@ class AnalysisResult(BaseModel):
 
 class AnalysisTask(BaseModel):
     """分析任务模型"""
+
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     task_id: str = Field(..., description="任务唯一标识")
     batch_id: Optional[str] = None
@@ -88,58 +97,54 @@ class AnalysisTask(BaseModel):
     created_at: datetime = Field(default_factory=now_tz)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
+
     # 执行信息
     worker_id: Optional[str] = None
     parameters: AnalysisParameters = Field(default_factory=AnalysisParameters)
     result: Optional[AnalysisResult] = None
-    
+
     # 重试机制
     retry_count: int = 0
     max_retries: int = 3
     last_error: Optional[str] = None
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class AnalysisBatch(BaseModel):
     """分析批次模型"""
+
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     batch_id: str = Field(..., description="批次唯一标识")
     user_id: PyObjectId
     title: str = Field(..., description="批次标题")
     description: Optional[str] = None
     status: BatchStatus = BatchStatus.PENDING
-    
+
     # 任务统计
     total_tasks: int = 0
     completed_tasks: int = 0
     failed_tasks: int = 0
     cancelled_tasks: int = 0
     progress: int = Field(default=0, ge=0, le=100, description="整体进度 0-100")
-    
+
     # 时间戳
     created_at: datetime = Field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
+
     # 配置参数
     parameters: AnalysisParameters = Field(default_factory=AnalysisParameters)
-    
+
     # 结果摘要
     results_summary: Optional[Dict[str, Any]] = None
-    
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True
-    )
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
 
 class StockInfo(BaseModel):
     """股票信息模型"""
+
     symbol: str = Field(..., description="6位股票代码")
     code: Optional[str] = Field(None, description="股票代码(已废弃,使用symbol)")
     name: str = Field(..., description="股票名称")
@@ -153,8 +158,10 @@ class StockInfo(BaseModel):
 
 # API请求/响应模型
 
+
 class SingleAnalysisRequest(BaseModel):
     """单股分析请求"""
+
     symbol: Optional[str] = Field(None, description="6位股票代码")
     stock_code: Optional[str] = Field(None, description="股票代码(已废弃,使用symbol)")
     parameters: Optional[AnalysisParameters] = None
@@ -166,10 +173,18 @@ class SingleAnalysisRequest(BaseModel):
 
 class BatchAnalysisRequest(BaseModel):
     """批量分析请求"""
+
     title: str = Field(..., description="批次标题")
     description: Optional[str] = None
-    symbols: Optional[List[str]] = Field(None, min_items=1, max_items=10, description="股票代码列表（最多10个）")
-    stock_codes: Optional[List[str]] = Field(None, min_items=1, max_items=10, description="股票代码列表(已废弃,使用symbols，最多10个)")
+    symbols: Optional[List[str]] = Field(
+        None, min_items=1, max_items=10, description="股票代码列表（最多10个）"
+    )
+    stock_codes: Optional[List[str]] = Field(
+        None,
+        min_items=1,
+        max_items=10,
+        description="股票代码列表(已废弃,使用symbols，最多10个)",
+    )
     parameters: Optional[AnalysisParameters] = None
 
     def get_symbols(self) -> List[str]:
@@ -179,6 +194,7 @@ class BatchAnalysisRequest(BaseModel):
 
 class AnalysisTaskResponse(BaseModel):
     """分析任务响应"""
+
     task_id: str
     batch_id: Optional[str]
     symbol: str
@@ -191,7 +207,7 @@ class AnalysisTaskResponse(BaseModel):
     completed_at: Optional[datetime]
     result: Optional[AnalysisResult]
 
-    @field_serializer('created_at', 'started_at', 'completed_at')
+    @field_serializer("created_at", "started_at", "completed_at")
     def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
         """序列化 datetime 为 ISO 8601 格式，保留时区信息"""
         if dt:
@@ -201,6 +217,7 @@ class AnalysisTaskResponse(BaseModel):
 
 class AnalysisBatchResponse(BaseModel):
     """分析批次响应"""
+
     batch_id: str
     title: str
     description: Optional[str]
@@ -214,7 +231,7 @@ class AnalysisBatchResponse(BaseModel):
     completed_at: Optional[datetime]
     parameters: AnalysisParameters
 
-    @field_serializer('created_at', 'started_at', 'completed_at')
+    @field_serializer("created_at", "started_at", "completed_at")
     def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
         """序列化 datetime 为 ISO 8601 格式，保留时区信息"""
         if dt:
@@ -224,6 +241,7 @@ class AnalysisBatchResponse(BaseModel):
 
 class AnalysisHistoryQuery(BaseModel):
     """分析历史查询参数"""
+
     status: Optional[AnalysisStatus] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None

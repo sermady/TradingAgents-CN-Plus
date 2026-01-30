@@ -1648,7 +1648,18 @@ def get_china_stock_data_unified(
     try:
         from .data_source_manager import get_china_stock_data_unified
 
-        result = get_china_stock_data_unified(ticker, start_date, end_date)
+        # 🔥 从 Toolkit._config 获取分析日期，用于判断实时行情
+        analysis_date = None
+        try:
+            from tradingagents.agents.utils.agent_utils import Toolkit
+
+            analysis_date = Toolkit._config.get("analysis_date")
+        except Exception as e:
+            logger.debug(f"⚠️ 无法从 Toolkit._config 获取 analysis_date: {e}")
+
+        result = get_china_stock_data_unified(
+            ticker, start_date, end_date, analysis_date=analysis_date
+        )
 
         # 🔥 FIX: 处理返回类型错误（tuple vs str）
         if isinstance(result, tuple):
@@ -2057,7 +2068,17 @@ def get_stock_data_by_market(
 
         if market_info["is_china"]:
             # 中国A股
-            return get_china_stock_data_unified(symbol, start_date, end_date)
+            # 🔥 从 Toolkit._config 获取分析日期
+            analysis_date = None
+            try:
+                from tradingagents.agents.utils.agent_utils import Toolkit
+
+                analysis_date = Toolkit._config.get("analysis_date")
+            except Exception as e:
+                logger.debug(f"⚠️ 无法从 Toolkit._config 获取 analysis_date: {e}")
+            return get_china_stock_data_unified(
+                symbol, start_date, end_date, analysis_date=analysis_date
+            )
         elif market_info["is_hk"]:
             # 港股
             return get_hk_stock_data_unified(symbol, start_date, end_date)
