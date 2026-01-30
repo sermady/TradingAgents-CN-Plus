@@ -17,11 +17,12 @@ logger = logging.getLogger(__name__)
 
 AKSHARE_QUOTES_CACHE = {}
 AKSHARE_CACHE_TTL = 15
-AKSHARE_CACHE_LOCK = threading.Lock()
+# 🔥 修复：使用 asyncio.Lock 替代 threading.Lock（避免在异步代码中阻塞事件循环）
+AKSHARE_CACHE_LOCK = asyncio.Lock()
 
 
 def _get_akshare_cached_quote(code: str) -> Optional[Dict[str, Any]]:
-    """获取AKShare单个股票行情缓存"""
+    """获取AKShare单个股票行情缓存（无锁读取，用于快速检查）"""
     now = datetime.now()
     if code in AKSHARE_QUOTES_CACHE:
         cached = AKSHARE_QUOTES_CACHE[code]
@@ -31,9 +32,21 @@ def _get_akshare_cached_quote(code: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+async def _get_akshare_cached_quote_async(code: str) -> Optional[Dict[str, Any]]:
+    """获取AKShare单个股票行情缓存（异步版本，带锁）"""
+    async with AKSHARE_CACHE_LOCK:
+        return _get_akshare_cached_quote(code)
+    return None
+
+
 def _set_akshare_cached_quote(code: str, data: Dict[str, Any]) -> None:
-    """设置AKShare单个股票行情缓存"""
-    with AKSHARE_CACHE_LOCK:
+    """设置AKShare单个股票行情缓存（无锁版本，用于同步上下文）"""
+    AKSHARE_QUOTES_CACHE[code] = {"data": data, "timestamp": datetime.now()}
+
+
+async def _set_akshare_cached_quote_async(code: str, data: Dict[str, Any]) -> None:
+    """设置AKShare单个股票行情缓存（异步版本，带锁）"""
+    async with AKSHARE_CACHE_LOCK:
         AKSHARE_QUOTES_CACHE[code] = {"data": data, "timestamp": datetime.now()}
 
 
@@ -994,7 +1007,7 @@ class AKShareProvider(BaseStockDataProvider):
                 f"✅ {code} 实时行情获取成功: 最新价={quotes['price']}, 涨跌幅={quotes['change_percent']}%, 成交量={quotes['volume']}, 成交额={quotes['amount']}"
             )
 
-            _set_akshare_cached_quote(code, quotes)
+            await _set_akshare_cached_quote_async(code, quotes)
             return quotes
 
         except Exception as e:
@@ -1015,14 +1028,14 @@ class AKShareProvider(BaseStockDataProvider):
             标准化的行情数据
         """
         if not force_refresh:
-            cached = _get_akshare_cached_quote(code)
+            cached = await _get_akshare_cached_quote_async(code)
             if cached is not None:
                 logger.debug(f"[Cache] 使用AKShare缓存: {code}")
                 return cached
 
         result = await self.get_stock_quotes(code)
         if result is not None:
-            _set_akshare_cached_quote(code, result)
+            await _set_akshare_cached_quote_async(code, result)
         return result
 
     def get_akshare_cache_status(self) -> Dict[str, Any]:

@@ -6,6 +6,7 @@ Supports hybrid cache strategy to reduce API calls
 """
 
 import logging
+import asyncio
 import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
@@ -68,6 +69,8 @@ class DataCoordinator:
 
         # Preloaded data cache {ticker: {trade_date: PreloadedData}}
         self._preloaded_cache: Dict[str, Dict[str, PreloadedData]] = {}
+        # 注意：DataCoordinator 主要在同步上下文使用，且操作快速（仅字典访问）
+        # threading.Lock 在此处是合适的，不改为 asyncio.Lock 以避免破坏现有 API
         self._cache_lock = threading.Lock()
 
         # Price cache
