@@ -10,7 +10,6 @@ import pandas as pd
 import asyncio
 import logging
 import os
-import threading
 import json
 
 from ..base_provider import BaseStockDataProvider
@@ -27,7 +26,21 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-BATCH_QUOTES_CACHE = {"data": None, "timestamp": None, "lock": threading.Lock()}
+# 🔥 修复：使用 asyncio.Lock 替代 threading.Lock（在异步代码中避免阻塞事件循环）
+# 注意：asyncio.Lock 必须在事件循环中创建，使用 _get_lock() 函数延迟初始化
+from typing import Any
+
+BATCH_QUOTES_CACHE: Dict[str, Any] = {"data": None, "timestamp": None, "_lock": None}
+
+
+def _get_batch_cache_lock() -> asyncio.Lock:
+    """获取或创建异步锁（线程安全）"""
+    if BATCH_QUOTES_CACHE["_lock"] is None:
+        # 创建新的异步锁
+        BATCH_QUOTES_CACHE["_lock"] = asyncio.Lock()
+    return BATCH_QUOTES_CACHE["_lock"]
+
+
 BATCH_CACHE_TTL_SECONDS = 30
 
 
@@ -46,16 +59,18 @@ def _get_cached_batch_quotes() -> Optional[Dict[str, Dict[str, Any]]]:
     return None
 
 
-def _set_cached_batch_quotes(data: Dict[str, Dict[str, Any]]) -> None:
-    """设置批量行情缓存"""
-    with BATCH_QUOTES_CACHE["lock"]:
+async def _set_cached_batch_quotes(data: Dict[str, Dict[str, Any]]) -> None:
+    """设置批量行情缓存（异步版本）"""
+    lock = _get_batch_cache_lock()
+    async with lock:
         BATCH_QUOTES_CACHE["data"] = data
         BATCH_QUOTES_CACHE["timestamp"] = datetime.now()
 
 
-def _invalidate_batch_cache() -> None:
-    """使批量缓存失效"""
-    with BATCH_QUOTES_CACHE["lock"]:
+async def _invalidate_batch_cache() -> None:
+    """使批量缓存失效（异步版本）"""
+    lock = _get_batch_cache_lock()
+    async with lock:
         BATCH_QUOTES_CACHE["data"] = None
         BATCH_QUOTES_CACHE["timestamp"] = None
 

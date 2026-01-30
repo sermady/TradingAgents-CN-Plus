@@ -823,36 +823,41 @@ class Toolkit:
 
                 return financial_data, daily_basic_df
 
-            # 运行异步任务（兼容已有事件循环）
+            # 🔥 修复：安全地运行异步任务（避免事件循环冲突）
+            def run_async_in_thread(coro):
+                """在新线程中创建新的事件循环来运行协程（避免与主事件循环冲突）"""
+                import threading
+                import concurrent.futures
+
+                def run_coro():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        return loop.run_until_complete(coro)
+                    finally:
+                        loop.close()
+
+                # 使用线程池执行，避免阻塞当前线程
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(run_coro)
+                    return future.result(timeout=120)  # 120秒超时
+
             try:
                 # 检查是否已经在事件循环中
-                loop = asyncio.get_running_loop()
-                # 如果在事件循环中，尝试使用 nest_asyncio
                 try:
-                    import nest_asyncio
-
-                    nest_asyncio.apply()
+                    loop = asyncio.get_running_loop()
+                    # 如果在事件循环中，在新线程中运行以避免冲突
+                    logger.debug("🔧 在已有事件循环中运行，使用线程隔离模式")
+                    financial_data, daily_basic_df = run_async_in_thread(
+                        fetch_all_financials()
+                    )
+                except RuntimeError:
+                    # 没有事件循环，可以直接使用 asyncio.run
+                    logger.debug("🔧 无事件循环，直接运行")
                     financial_data, daily_basic_df = asyncio.run(fetch_all_financials())
-                except ImportError:
-                    logger.warning("⚠️ nest_asyncio 未安装，尝试使用异步兼容模式")
-                    # 如果 nest_asyncio 未安装，直接使用 create_task
-                    future = asyncio.ensure_future(fetch_all_financials())
-                    # 等待任务完成
-                    import concurrent.futures
-
-                    executor = concurrent.futures.ThreadPoolExecutor()
-                    try:
-                        financial_data, daily_basic_df = executor.submit(
-                            asyncio.run, fetch_all_financials()
-                        ).result()
-                    finally:
-                        executor.shutdown(wait=False)
-            except RuntimeError as e:
-                if "no running event loop" in str(e).lower():
-                    # 如果没有事件循环，正常使用 asyncio.run
-                    financial_data, daily_basic_df = asyncio.run(fetch_all_financials())
-                else:
-                    raise
+            except Exception as e:
+                logger.error(f"❌ [完整财务数据] 异步执行失败: {e}")
+                return f"❌ 获取财务数据失败: {str(e)}"
 
             if not financial_data:
                 return f"❌ 未能获取 {ticker} 的财务数据"
