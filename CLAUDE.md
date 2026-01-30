@@ -182,3 +182,67 @@ Toolkit._config["analysis_date"] = str(trade_date)
 2. Fallback 逻辑应先检查 `Toolkit._config` 再使用 `datetime.now()`
 3. 新增工具时需验证日期传递链完整性
 
+---
+
+### 🟢 Tushare ts_code 格式修复 (2026-01-30)
+
+**问题现象**: Tushare 股票信息查询时 ts_code 格式错误，导致部分接口返回空数据
+
+**修复内容**:
+- `tradingagents/dataflows/tushare.py`: 修正 ts_code 格式处理逻辑
+- 确保股票代码格式统一为 `000001.SZ` 格式
+
+**验证方法**:
+```bash
+# 测试Tushare股票信息查询
+python -c "from tradingagents.dataflows import TushareProvider; t = TushareProvider(); print(t.get_stock_info('000001'))"
+```
+
+---
+
+### 🟢 LSP 类型错误修复 (2026-01-30)
+
+**批量修复多个文件的类型注解问题**:
+
+1. **Tushare** (`tushare.py:132cf70`): 修复 `Optional[str]` 类型错误
+2. **AKShare** (`akshare.py:d71fbee`): 修复 `Optional[str]` 类型错误
+3. **BaoStock** (`baostock.py:cf16954`): 修复 `Optional[str]` 类型错误
+4. **Enum 映射** (`1b3eff9`): 修复 Enum 映射和 Optional 参数类型错误
+
+**修复原则**:
+- 明确区分 `str` 和 `Optional[str]` 的使用场景
+- 函数参数默认值为 None 时必须标注 `Optional[str]`
+- 返回值可能为 None 时必须使用 `Optional[str]`
+
+---
+
+### 🟢 数据源增强与修复批次 (2026-01-29)
+
+**第一批修复** (`a9e62b4`): 解决 DataFrame 歧义和 tuple 类型错误
+- 修复 AKShare 返回值解包问题
+- 统一返回数据结构
+
+**第二批修复** (`f62f69f`): Tushare 和 AKShare 数据源增强
+- 增加错误重试机制
+- 优化数据缓存策略
+
+**第三批修复** (`dd053ca`): BaoStock 异步 + MongoDB 兜底
+- 添加异步连接检查，避免重复登录
+- MongoDB 作为数据获取失败时的兜底方案
+
+---
+
+### 🟢 Tushare 新接口集成 (2026-01-29)
+
+**新增3个接口，充分利用 5210 积分权限**:
+
+1. **实时行情接口** (`sina_realtime`): 新浪财经实时数据
+2. **分钟线数据** (`minute_data`): 支持 1/5/15/30/60 分钟 K 线
+3. **资金流向数据** (`money_flow`): 主力资金流向追踪
+
+**接口优先级**:
+```
+积分充足时: Tushare 优先 (稳定性高)
+积分不足时: AKShare 兜底 (免费但有限流)
+```
+

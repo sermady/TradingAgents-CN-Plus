@@ -32,8 +32,12 @@ logger = get_logger("data_coordinator")
 
 # ==================== 重试机制 ====================
 
-def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 10.0):
+
+def retry_with_backoff(
+    max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
+):
     """指数退避重试装饰器"""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -44,19 +48,26 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay:
                 except Exception as e:
                     last_exception = e
                     if attempt < max_retries - 1:
-                        delay = min(base_delay * (2 ** attempt), max_delay)
-                        logger.warning(f"⚠️ {func.__name__} 第 {attempt + 1} 次尝试失败: {e}，{delay:.1f}s 后重试...")
+                        delay = min(base_delay * (2**attempt), max_delay)
+                        logger.warning(
+                            f"⚠️ {func.__name__} 第 {attempt + 1} 次尝试失败: {e}，{delay:.1f}s 后重试..."
+                        )
                         time.sleep(delay)
                     else:
-                        logger.error(f"❌ {func.__name__} 所有 {max_retries} 次尝试都失败")
+                        logger.error(
+                            f"❌ {func.__name__} 所有 {max_retries} 次尝试都失败"
+                        )
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
 @dataclass
 class DataFetchResult:
     """数据获取结果封装"""
+
     data: str
     source: str
     quality_score: float
@@ -87,22 +98,27 @@ class DataCoordinator:
         "market": {
             "name": "市场数据",
             "validator": "price",
-            "weight": 0.25,
+            "weight": 0.20,
         },
         "financial": {
             "name": "基本面数据",
             "validator": "fundamentals",
-            "weight": 0.25,
+            "weight": 0.20,
         },
         "news": {
             "name": "新闻数据",
             "validator": None,
-            "weight": 0.25,
+            "weight": 0.20,
         },
         "sentiment": {
             "name": "舆情数据",
             "validator": None,
-            "weight": 0.25,
+            "weight": 0.20,
+        },
+        "china_market": {
+            "name": "A股特色数据",
+            "validator": None,
+            "weight": 0.20,
         },
     }
 
@@ -124,9 +140,15 @@ class DataCoordinator:
     def _init_validators(self):
         """初始化数据验证器"""
         try:
-            from tradingagents.dataflows.validators.price_validator import PriceValidator
-            from tradingagents.dataflows.validators.volume_validator import VolumeValidator
-            from tradingagents.dataflows.validators.fundamentals_validator import FundamentalsValidator
+            from tradingagents.dataflows.validators.price_validator import (
+                PriceValidator,
+            )
+            from tradingagents.dataflows.validators.volume_validator import (
+                VolumeValidator,
+            )
+            from tradingagents.dataflows.validators.fundamentals_validator import (
+                FundamentalsValidator,
+            )
 
             self.validators["price"] = PriceValidator(tolerance=0.01)
             self.validators["volume"] = VolumeValidator(tolerance=0.05)
@@ -225,9 +247,21 @@ class DataCoordinator:
                     try:
                         value = float(matches[0])
                         # 处理单位转换（如果是万或亿）
-                        if "亿" in data_str[data_str.find(matches[0]):data_str.find(matches[0])+10]:
+                        if (
+                            "亿"
+                            in data_str[
+                                data_str.find(matches[0]) : data_str.find(matches[0])
+                                + 10
+                            ]
+                        ):
                             result[key] = value  # 已经是亿
-                        elif "万" in data_str[data_str.find(matches[0]):data_str.find(matches[0])+10]:
+                        elif (
+                            "万"
+                            in data_str[
+                                data_str.find(matches[0]) : data_str.find(matches[0])
+                                + 10
+                            ]
+                        ):
                             result[key] = value / 10000  # 万转亿
                         else:
                             result[key] = value
@@ -245,7 +279,9 @@ class DataCoordinator:
 
         return result
 
-    def _validate_data(self, data_type: str, symbol: str, data: Dict[str, Any]) -> Tuple[float, List[Dict]]:
+    def _validate_data(
+        self, data_type: str, symbol: str, data: Dict[str, Any]
+    ) -> Tuple[float, List[Dict]]:
         """
         验证数据并返回质量评分
 
@@ -266,21 +302,27 @@ class DataCoordinator:
             # 转换问题列表
             issues = []
             for issue in result.discrepancies:
-                issues.append({
-                    "severity": issue.severity.value,
-                    "message": issue.message,
-                    "field": issue.field,
-                    "expected": issue.expected,
-                    "actual": issue.actual,
-                })
+                issues.append(
+                    {
+                        "severity": issue.severity.value,
+                        "message": issue.message,
+                        "field": issue.field,
+                        "expected": issue.expected,
+                        "actual": issue.actual,
+                    }
+                )
 
             return result.confidence, issues
 
         except Exception as e:
             logger.warning(f"验证 {data_type} 数据失败: {e}")
-            return 0.8, [{"severity": "warning", "message": f"验证失败: {e}", "field": ""}]
+            return 0.8, [
+                {"severity": "warning", "message": f"验证失败: {e}", "field": ""}
+            ]
 
-    def _get_market_data_with_fallback(self, symbol: str, trade_date: str) -> DataFetchResult:
+    def _get_market_data_with_fallback(
+        self, symbol: str, trade_date: str
+    ) -> DataFetchResult:
         """
         获取市场数据（带降级策略）
 
@@ -297,7 +339,7 @@ class DataCoordinator:
                 source="cache",
                 quality_score=0.9,
                 issues=[],
-                fetch_time=time.time() - start_time
+                fetch_time=time.time() - start_time,
             )
 
         # 2. 尝试各个数据源
@@ -312,7 +354,9 @@ class DataCoordinator:
                 if data and "❌" not in str(data):
                     # 解析并验证数据
                     parsed = self._parse_market_data(data)
-                    quality_score, issues = self._validate_data("market", symbol, parsed)
+                    quality_score, issues = self._validate_data(
+                        "market", symbol, parsed
+                    )
 
                     # 标记数据来源
                     if parsed:
@@ -322,14 +366,16 @@ class DataCoordinator:
                     self._set_cached_data(cache_key, data)
 
                     fetch_time = time.time() - start_time
-                    logger.info(f"✅ {source} 市场数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)")
+                    logger.info(
+                        f"✅ {source} 市场数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+                    )
 
                     return DataFetchResult(
                         data=data,
                         source=source,
                         quality_score=quality_score,
                         issues=issues,
-                        fetch_time=fetch_time
+                        fetch_time=fetch_time,
                     )
 
             except Exception as e:
@@ -347,10 +393,12 @@ class DataCoordinator:
             source="failed",
             quality_score=0.0,
             issues=[{"severity": "critical", "message": error_msg, "field": ""}],
-            fetch_time=time.time() - start_time
+            fetch_time=time.time() - start_time,
         )
 
-    def _get_fundamentals_data_with_fallback(self, symbol: str, trade_date: str) -> DataFetchResult:
+    def _get_fundamentals_data_with_fallback(
+        self, symbol: str, trade_date: str
+    ) -> DataFetchResult:
         """
         获取基本面数据（带降级策略）
 
@@ -372,7 +420,7 @@ class DataCoordinator:
                 source="cache",
                 quality_score=0.9,
                 issues=[],
-                fetch_time=time.time() - start_time
+                fetch_time=time.time() - start_time,
             )
 
         # 2. 尝试各个数据源
@@ -382,17 +430,23 @@ class DataCoordinator:
         for source in sources:
             try:
                 logger.info(f"💰 尝试从 {source} 获取基本面数据...")
-                data = self._fetch_fundamentals_data_from_source(symbol, trade_date, source)
+                data = self._fetch_fundamentals_data_from_source(
+                    symbol, trade_date, source
+                )
 
                 if data and "❌" not in str(data):
                     # 解析数据
                     parsed = self._parse_fundamentals_data(data)
 
                     # 基础验证
-                    quality_score, issues = self._validate_data("financial", symbol, parsed)
+                    quality_score, issues = self._validate_data(
+                        "financial", symbol, parsed
+                    )
 
                     # ========== PS 比率源头验证和修正 ==========
-                    ps_issues, corrected_ps = self._validate_and_fix_ps_ratio(parsed, symbol)
+                    ps_issues, corrected_ps = self._validate_and_fix_ps_ratio(
+                        parsed, symbol
+                    )
                     if ps_issues:
                         issues.extend(ps_issues)
                         if corrected_ps:
@@ -403,8 +457,13 @@ class DataCoordinator:
                             quality_score = max(0.3, quality_score - 0.2)  # 严重扣分
 
                     # ========== 成交量单位标准化 ==========
-                    parsed, volume_unit_info = self._standardize_volume_unit(parsed, data)
-                    if volume_unit_info in ["converted_from_lots", "inferred_lots_converted"]:
+                    parsed, volume_unit_info = self._standardize_volume_unit(
+                        parsed, data
+                    )
+                    if volume_unit_info in [
+                        "converted_from_lots",
+                        "inferred_lots_converted",
+                    ]:
                         # 添加单位转换标记
                         data += f"\n成交量单位: 已统一转换为'股'（原始数据可能是'手'）"
                         logger.info(f"📊 成交量单位转换: {symbol} {volume_unit_info}")
@@ -417,7 +476,9 @@ class DataCoordinator:
                     self._set_cached_data(cache_key, data)
 
                     fetch_time = time.time() - start_time
-                    logger.info(f"✅ {source} 基本面数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)")
+                    logger.info(
+                        f"✅ {source} 基本面数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+                    )
 
                     return DataFetchResult(
                         data=data,
@@ -428,7 +489,7 @@ class DataCoordinator:
                         metadata={
                             "corrected_ps": corrected_ps,
                             "volume_unit_info": volume_unit_info,
-                        }
+                        },
                     )
 
             except Exception as e:
@@ -446,10 +507,12 @@ class DataCoordinator:
             source="failed",
             quality_score=0.0,
             issues=[{"severity": "critical", "message": error_msg, "field": ""}],
-            fetch_time=time.time() - start_time
+            fetch_time=time.time() - start_time,
         )
 
-    def _validate_and_fix_ps_ratio(self, data: Dict[str, Any], symbol: str) -> Tuple[List[Dict], Optional[float]]:
+    def _validate_and_fix_ps_ratio(
+        self, data: Dict[str, Any], symbol: str
+    ) -> Tuple[List[Dict], Optional[float]]:
         """
         验证并修正 PS 比率计算
 
@@ -477,51 +540,63 @@ class DataCoordinator:
                 diff_pct = abs((calculated_ps - ps) / ps) * 100 if ps != 0 else 100
 
                 if diff_pct > 20:  # 差异超过20%
-                    issues.append({
-                        "severity": "error",
-                        "message": f"PS比率计算错误! 报告值={ps:.2f}, 正确值应为≈{calculated_ps:.2f} (市值={market_cap:.2f}亿/营收={revenue:.2f}亿)",
-                        "field": "PS",
-                        "expected": round(calculated_ps, 2),
-                        "actual": ps,
-                    })
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "message": f"PS比率计算错误! 报告值={ps:.2f}, 正确值应为≈{calculated_ps:.2f} (市值={market_cap:.2f}亿/营收={revenue:.2f}亿)",
+                            "field": "PS",
+                            "expected": round(calculated_ps, 2),
+                            "actual": ps,
+                        }
+                    )
                     corrected_ps = calculated_ps
                 elif diff_pct > 10:  # 差异超过10%
-                    issues.append({
-                        "severity": "warning",
-                        "message": f"PS比率可能存在偏差: 报告值={ps:.2f}, 计算值={calculated_ps:.2f}",
-                        "field": "PS",
-                        "expected": round(calculated_ps, 2),
-                        "actual": ps,
-                    })
+                    issues.append(
+                        {
+                            "severity": "warning",
+                            "message": f"PS比率可能存在偏差: 报告值={ps:.2f}, 计算值={calculated_ps:.2f}",
+                            "field": "PS",
+                            "expected": round(calculated_ps, 2),
+                            "actual": ps,
+                        }
+                    )
             else:
                 # 数据中没有PS，但可以根据市值和营收计算
                 corrected_ps = calculated_ps
-                issues.append({
-                    "severity": "info",
-                    "message": f"已自动计算PS比率={calculated_ps:.2f} (市值={market_cap:.2f}亿/营收={revenue:.2f}亿)",
-                    "field": "PS",
-                    "expected": round(calculated_ps, 2),
-                })
+                issues.append(
+                    {
+                        "severity": "info",
+                        "message": f"已自动计算PS比率={calculated_ps:.2f} (市值={market_cap:.2f}亿/营收={revenue:.2f}亿)",
+                        "field": "PS",
+                        "expected": round(calculated_ps, 2),
+                    }
+                )
 
             # 检查PS是否在合理范围内
             if calculated_ps < 0.1 or calculated_ps > 100:
-                issues.append({
-                    "severity": "warning",
-                    "message": f"PS比率={calculated_ps:.2f} 超出常规范围(0.1-100)",
-                    "field": "PS",
-                    "actual": round(calculated_ps, 2),
-                })
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "message": f"PS比率={calculated_ps:.2f} 超出常规范围(0.1-100)",
+                        "field": "PS",
+                        "actual": round(calculated_ps, 2),
+                    }
+                )
 
         except (ValueError, TypeError, ZeroDivisionError) as e:
-            issues.append({
-                "severity": "warning",
-                "message": f"PS比率验证失败: {e}",
-                "field": "PS",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "message": f"PS比率验证失败: {e}",
+                    "field": "PS",
+                }
+            )
 
         return issues, corrected_ps
 
-    def _standardize_volume_unit(self, data: Dict[str, Any], data_str: str) -> Tuple[Dict[str, Any], str]:
+    def _standardize_volume_unit(
+        self, data: Dict[str, Any], data_str: str
+    ) -> Tuple[Dict[str, Any], str]:
         """
         标准化成交量单位为"股"
 
@@ -558,7 +633,9 @@ class DataCoordinator:
                     # 换手率 = 成交量(股) / 总股本(股) * 100
                     share_count_shares = share_count * 10000  # 万股转股
                     calculated_turnover_as_shares = (volume / share_count_shares) * 100
-                    calculated_turnover_as_lots = (volume * 100 / share_count_shares) * 100
+                    calculated_turnover_as_lots = (
+                        volume * 100 / share_count_shares
+                    ) * 100
 
                     diff_as_shares = abs(calculated_turnover_as_shares - turnover_rate)
                     diff_as_lots = abs(calculated_turnover_as_lots - turnover_rate)
@@ -591,12 +668,15 @@ class DataCoordinator:
 
         return data_str + correction_note
 
-    def _fetch_market_data_from_source(self, symbol: str, trade_date: str, source: str) -> str:
+    def _fetch_market_data_from_source(
+        self, symbol: str, trade_date: str, source: str
+    ) -> str:
         """从指定数据源获取市场数据"""
         from tradingagents.dataflows.interface import get_china_stock_data_unified
 
         # 临时切换数据源
         import os
+
         original_source = os.environ.get("DEFAULT_CHINA_DATA_SOURCE", "akshare")
 
         try:
@@ -605,12 +685,15 @@ class DataCoordinator:
         finally:
             os.environ["DEFAULT_CHINA_DATA_SOURCE"] = original_source
 
-    def _fetch_fundamentals_data_from_source(self, symbol: str, trade_date: str, source: str) -> str:
+    def _fetch_fundamentals_data_from_source(
+        self, symbol: str, trade_date: str, source: str
+    ) -> str:
         """从指定数据源获取基本面数据"""
         from tradingagents.agents.utils.agent_utils import Toolkit
 
         # 临时切换数据源
         import os
+
         original_source = os.environ.get("DEFAULT_CHINA_DATA_SOURCE", "akshare")
 
         try:
@@ -651,14 +734,16 @@ class DataCoordinator:
                 else:
                     quality_score = 0.5
 
-            logger.info(f"✅ 新闻数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)")
+            logger.info(
+                f"✅ 新闻数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+            )
 
             return DataFetchResult(
                 data=news_data if news_data else "暂无相关新闻数据",
                 source="unified",
                 quality_score=quality_score,
                 issues=[],
-                fetch_time=fetch_time
+                fetch_time=fetch_time,
             )
 
         except Exception as e:
@@ -669,7 +754,7 @@ class DataCoordinator:
                 source="failed",
                 quality_score=0.0,
                 issues=[{"severity": "error", "message": str(e), "field": ""}],
-                fetch_time=time.time() - start_time
+                fetch_time=time.time() - start_time,
             )
 
     def _get_sentiment_data(self, symbol: str, trade_date: str) -> DataFetchResult:
@@ -690,14 +775,16 @@ class DataCoordinator:
                 if "情绪指数" in sentiment_data or "舆情" in sentiment_data:
                     quality_score = 0.9
 
-            logger.info(f"✅ 舆情数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)")
+            logger.info(
+                f"✅ 舆情数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+            )
 
             return DataFetchResult(
                 data=sentiment_data if sentiment_data else "暂无舆情数据",
                 source="unified",
                 quality_score=quality_score,
                 issues=[],
-                fetch_time=fetch_time
+                fetch_time=fetch_time,
             )
 
         except Exception as e:
@@ -708,10 +795,198 @@ class DataCoordinator:
                 source="failed",
                 quality_score=0.0,
                 issues=[{"severity": "error", "message": str(e), "field": ""}],
-                fetch_time=time.time() - start_time
+                fetch_time=time.time() - start_time,
             )
 
-    def fetch_all_data(self, symbol: str, trade_date: str, parallel: bool = True, use_cache: bool = True) -> Dict[str, Any]:
+    def _get_china_market_features_data(
+        self, symbol: str, trade_date: str
+    ) -> DataFetchResult:
+        """
+        获取A股特色数据（涨跌停、换手率、量比、北向资金等）
+
+        这些数据专门用于中国市场分析师，聚焦A股市场特色指标
+        """
+        start_time = time.time()
+
+        try:
+            logger.info(f"🇨🇳 正在获取A股特色数据...")
+
+            # 构建A股特色数据字符串
+            china_features_data = []
+            china_features_data.append(f"=== A股市场特色数据 ===")
+            china_features_data.append(f"股票代码: {symbol}")
+            china_features_data.append(f"数据日期: {trade_date}")
+            china_features_data.append("")
+
+            # 尝试获取涨跌停数据
+            try:
+                from tradingagents.dataflows.interface import (
+                    get_china_stock_data_unified,
+                )
+
+                market_data = get_china_stock_data_unified(
+                    symbol, trade_date, trade_date
+                )
+
+                # 提取关键指标
+                if market_data and "❌" not in market_data:
+                    # 解析涨跌停状态
+                    china_features_data.append("【涨跌停分析】")
+
+                    # 提取价格数据
+                    import re
+
+                    price_match = re.search(r"最新价[：:]\s*(\d+\.?\d*)", market_data)
+                    high_match = re.search(r"最高[：:]\s*(\d+\.?\d*)", market_data)
+                    low_match = re.search(r"最低[：:]\s*(\d+\.?\d*)", market_data)
+                    open_match = re.search(r"今开[：:]\s*(\d+\.?\d*)", market_data)
+
+                    if all([price_match, open_match]):
+                        current_price = float(price_match.group(1))
+                        open_price = float(open_match.group(1))
+                        change_pct = ((current_price - open_price) / open_price) * 100
+
+                        china_features_data.append(f"当前价格: {current_price}")
+                        china_features_data.append(f"今日开盘: {open_price}")
+                        china_features_data.append(f"涨跌幅: {change_pct:.2f}%")
+
+                        # 判断是否触及涨跌停
+                        if change_pct >= 9.5:
+                            china_features_data.append("⚠️ 触及涨停板（或接近涨停）")
+                        elif change_pct <= -9.5:
+                            china_features_data.append("⚠️ 触及跌停板（或接近跌停）")
+                        elif change_pct >= 5:
+                            china_features_data.append("📈 大幅上涨")
+                        elif change_pct <= -5:
+                            china_features_data.append("📉 大幅下跌")
+                        else:
+                            china_features_data.append("➡️ 正常波动")
+
+                    china_features_data.append("")
+
+                    # 提取换手率
+                    turnover_match = re.search(
+                        r"换手率[：:]\s*(\d+\.?\d*)", market_data
+                    )
+                    if turnover_match:
+                        turnover = float(turnover_match.group(1))
+                        china_features_data.append("【换手率分析】")
+                        china_features_data.append(f"换手率: {turnover:.2f}%")
+
+                        if turnover < 1:
+                            china_features_data.append(
+                                "💤 极低换手：交易清淡，流动性差"
+                            )
+                        elif turnover < 3:
+                            china_features_data.append(
+                                "🔄 低换手：正常范围，交易不活跃"
+                            )
+                        elif turnover < 7:
+                            china_features_data.append("⚡ 中等换手：正常活跃")
+                        elif turnover < 10:
+                            china_features_data.append(
+                                "🔥 高换手：高度活跃，关注资金动向"
+                            )
+                        elif turnover < 20:
+                            china_features_data.append(
+                                "🚨 极高换手：异常活跃，可能有重大消息"
+                            )
+                        else:
+                            china_features_data.append(
+                                "⚠️ 超高换手：极度活跃，高风险高机会"
+                            )
+
+                        china_features_data.append("")
+
+                    # 提取量比（如果有）
+                    volume_ratio_match = re.search(
+                        r"量比[：:]\s*(\d+\.?\d*)", market_data
+                    )
+                    if volume_ratio_match:
+                        volume_ratio = float(volume_ratio_match.group(1))
+                        china_features_data.append("【量比分析】")
+                        china_features_data.append(f"量比: {volume_ratio:.2f}")
+
+                        if volume_ratio < 0.5:
+                            china_features_data.append("📉 严重缩量：成交清淡")
+                        elif volume_ratio < 0.8:
+                            china_features_data.append("📉 缩量：交易活跃度下降")
+                        elif volume_ratio < 1.5:
+                            china_features_data.append("➡️ 正常放量")
+                        elif volume_ratio < 2.5:
+                            china_features_data.append("📈 明显放量：资金关注度提升")
+                        elif volume_ratio < 5:
+                            china_features_data.append("🔥 显著放量：大量资金介入")
+                        else:
+                            china_features_data.append("🚨 异常放量：需关注消息面")
+
+                        china_features_data.append("")
+
+                    # 提取振幅
+                    amplitude_match = re.search(r"振幅[：:]\s*(\d+\.?\d*)", market_data)
+                    if amplitude_match:
+                        amplitude = float(amplitude_match.group(1))
+                        china_features_data.append("【振幅分析】")
+                        china_features_data.append(f"振幅: {amplitude:.2f}%")
+
+                        if amplitude < 2:
+                            china_features_data.append("💤 窄幅波动")
+                        elif amplitude < 5:
+                            china_features_data.append("📊 正常波动")
+                        elif amplitude < 10:
+                            china_features_data.append("⚡ 宽幅波动")
+                        else:
+                            china_features_data.append("🚨 剧烈波动")
+
+                        china_features_data.append("")
+
+                    # 标记数据来源
+                    china_features_data.append(f"数据来源: 市场数据接口")
+
+            except Exception as e:
+                logger.warning(f"⚠️ 获取A股特色数据失败: {e}")
+                china_features_data.append(f"⚠️ 部分数据获取失败: {e}")
+
+            final_data = "\n".join(china_features_data)
+            fetch_time = time.time() - start_time
+
+            # 评估数据质量
+            quality_score = 0.8
+            if "触及涨停板" in final_data or "换手率" in final_data:
+                quality_score = 0.95
+            elif "涨跌幅" in final_data:
+                quality_score = 0.85
+
+            logger.info(
+                f"✅ A股特色数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+            )
+
+            return DataFetchResult(
+                data=final_data,
+                source="unified",
+                quality_score=quality_score,
+                issues=[],
+                fetch_time=fetch_time,
+            )
+
+        except Exception as e:
+            error_msg = f"❌ A股特色数据获取失败: {e}"
+            logger.error(error_msg)
+            return DataFetchResult(
+                data=error_msg,
+                source="failed",
+                quality_score=0.0,
+                issues=[{"severity": "error", "message": str(e), "field": ""}],
+                fetch_time=time.time() - start_time,
+            )
+
+    def fetch_all_data(
+        self,
+        symbol: str,
+        trade_date: str,
+        parallel: bool = True,
+        use_cache: bool = True,
+    ) -> Dict[str, Any]:
         """
         获取所有类型的数据
 
@@ -729,22 +1004,35 @@ class DataCoordinator:
         if use_cache:
             cached_result = self._get_analysis_cache(cache_key)
             if cached_result:
-                logger.info(f"💾 [Data Coordinator] 使用分析级缓存: {symbol} (剩余TTL: {self._get_cache_ttl(cache_key):.0f}s)")
+                logger.info(
+                    f"💾 [Data Coordinator] 使用分析级缓存: {symbol} (剩余TTL: {self._get_cache_ttl(cache_key):.0f}s)"
+                )
                 return cached_result
 
-        logger.info(f"🔄 [Data Coordinator] 开始获取 {symbol} 的所有数据 (并行={parallel})")
+        logger.info(
+            f"🔄 [Data Coordinator] 开始获取 {symbol} 的所有数据 (并行={parallel})"
+        )
         start_time = time.time()
 
         results = {}
 
         if parallel:
-            # 并行获取所有数据
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            # 并行获取所有数据（包括A股特色数据）
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = {
-                    executor.submit(self._get_market_data_with_fallback, symbol, trade_date): "market",
-                    executor.submit(self._get_fundamentals_data_with_fallback, symbol, trade_date): "financial",
+                    executor.submit(
+                        self._get_market_data_with_fallback, symbol, trade_date
+                    ): "market",
+                    executor.submit(
+                        self._get_fundamentals_data_with_fallback, symbol, trade_date
+                    ): "financial",
                     executor.submit(self._get_news_data, symbol, trade_date): "news",
-                    executor.submit(self._get_sentiment_data, symbol, trade_date): "sentiment",
+                    executor.submit(
+                        self._get_sentiment_data, symbol, trade_date
+                    ): "sentiment",
+                    executor.submit(
+                        self._get_china_market_features_data, symbol, trade_date
+                    ): "china_market",
                 }
 
                 for future in as_completed(futures):
@@ -758,50 +1046,94 @@ class DataCoordinator:
                             data=f"❌ {data_type} 数据获取失败: {e}",
                             source="failed",
                             quality_score=0.0,
-                            issues=[{"severity": "critical", "message": str(e), "field": ""}],
-                            fetch_time=0
+                            issues=[
+                                {"severity": "critical", "message": str(e), "field": ""}
+                            ],
+                            fetch_time=0,
                         )
         else:
             # 串行获取
             results["market"] = self._get_market_data_with_fallback(symbol, trade_date)
-            results["financial"] = self._get_fundamentals_data_with_fallback(symbol, trade_date)
+            results["financial"] = self._get_fundamentals_data_with_fallback(
+                symbol, trade_date
+            )
             results["news"] = self._get_news_data(symbol, trade_date)
             results["sentiment"] = self._get_sentiment_data(symbol, trade_date)
+            results["china_market"] = self._get_china_market_features_data(
+                symbol, trade_date
+            )
 
         # 计算总体质量评分
-        total_weight = sum(self.DATA_TYPES[dt]["weight"] for dt in results if dt in self.DATA_TYPES)
+        total_weight = sum(
+            self.DATA_TYPES[dt]["weight"] for dt in results if dt in self.DATA_TYPES
+        )
         if total_weight > 0:
-            overall_quality = sum(
-                results[dt].quality_score * self.DATA_TYPES[dt]["weight"]
-                for dt in results if dt in self.DATA_TYPES
-            ) / total_weight
+            overall_quality = (
+                sum(
+                    results[dt].quality_score * self.DATA_TYPES[dt]["weight"]
+                    for dt in results
+                    if dt in self.DATA_TYPES
+                )
+                / total_weight
+            )
         else:
             overall_quality = 0.0
 
         total_time = time.time() - start_time
-        logger.info(f"✅ [Data Coordinator] 所有数据获取完成 (总体质量分: {overall_quality:.2f}, 总耗时: {total_time:.2f}s)")
+        logger.info(
+            f"✅ [Data Coordinator] 所有数据获取完成 (总体质量分: {overall_quality:.2f}, 总耗时: {total_time:.2f}s)"
+        )
 
         # 收集 metadata（如 PS 修正值、成交量单位等）
-        financial_metadata = results.get("financial", DataFetchResult("", "", 0.0, [], 0)).metadata
+        financial_metadata = results.get(
+            "financial", DataFetchResult("", "", 0.0, [], 0)
+        ).metadata
 
         # 构建返回结果
         result = {
-            "market_data": results.get("market", DataFetchResult("", "", 0.0, [], 0)).data,
-            "financial_data": results.get("financial", DataFetchResult("", "", 0.0, [], 0)).data,
+            "market_data": results.get(
+                "market", DataFetchResult("", "", 0.0, [], 0)
+            ).data,
+            "financial_data": results.get(
+                "financial", DataFetchResult("", "", 0.0, [], 0)
+            ).data,
             "news_data": results.get("news", DataFetchResult("", "", 0.0, [], 0)).data,
-            "sentiment_data": results.get("sentiment", DataFetchResult("", "", 0.0, [], 0)).data,
+            "sentiment_data": results.get(
+                "sentiment", DataFetchResult("", "", 0.0, [], 0)
+            ).data,
+            "china_market_data": results.get(
+                "china_market", DataFetchResult("", "", 0.0, [], 0)
+            ).data,
             "data_quality_score": overall_quality,
             "data_sources": {
-                "market": results.get("market", DataFetchResult("", "", 0.0, [], 0)).source,
-                "financial": results.get("financial", DataFetchResult("", "", 0.0, [], 0)).source,
+                "market": results.get(
+                    "market", DataFetchResult("", "", 0.0, [], 0)
+                ).source,
+                "financial": results.get(
+                    "financial", DataFetchResult("", "", 0.0, [], 0)
+                ).source,
                 "news": results.get("news", DataFetchResult("", "", 0.0, [], 0)).source,
-                "sentiment": results.get("sentiment", DataFetchResult("", "", 0.0, [], 0)).source,
+                "sentiment": results.get(
+                    "sentiment", DataFetchResult("", "", 0.0, [], 0)
+                ).source,
+                "china_market": results.get(
+                    "china_market", DataFetchResult("", "", 0.0, [], 0)
+                ).source,
             },
             "data_issues": {
-                "market": results.get("market", DataFetchResult("", "", 0.0, [], 0)).issues,
-                "financial": results.get("financial", DataFetchResult("", "", 0.0, [], 0)).issues,
+                "market": results.get(
+                    "market", DataFetchResult("", "", 0.0, [], 0)
+                ).issues,
+                "financial": results.get(
+                    "financial", DataFetchResult("", "", 0.0, [], 0)
+                ).issues,
                 "news": results.get("news", DataFetchResult("", "", 0.0, [], 0)).issues,
-                "sentiment": results.get("sentiment", DataFetchResult("", "", 0.0, [], 0)).issues,
+                "sentiment": results.get(
+                    "sentiment", DataFetchResult("", "", 0.0, [], 0)
+                ).issues,
+                "china_market": results.get(
+                    "china_market", DataFetchResult("", "", 0.0, [], 0)
+                ).issues,
             },
             "data_metadata": {
                 "corrected_ps": financial_metadata.get("corrected_ps"),
@@ -835,7 +1167,9 @@ class DataCoordinator:
         """设置分析级缓存"""
         expires_at = time.time() + self.analysis_cache_ttl
         self.analysis_cache[key] = (data, expires_at)
-        logger.info(f"💾 [Data Coordinator] 分析级缓存已设置: {key} (TTL: {self.analysis_cache_ttl}s)")
+        logger.info(
+            f"💾 [Data Coordinator] 分析级缓存已设置: {key} (TTL: {self.analysis_cache_ttl}s)"
+        )
 
     def _get_cache_ttl(self, key: str) -> float:
         """获取缓存剩余时间"""
@@ -888,7 +1222,8 @@ def data_coordinator_node(state: AgentState):
     # 将分析日期设置到 Toolkit._config，确保工具函数能获取到
     if trade_date:
         from tradingagents.agents.utils.agent_utils import Toolkit
-        Toolkit.update_config({'trade_date': trade_date})
+
+        Toolkit.update_config({"trade_date": trade_date})
         logger.info(f"📅 [Data Coordinator] 已设置分析日期到 Toolkit: {trade_date}")
 
     if not company:
@@ -919,7 +1254,12 @@ def data_coordinator_node(state: AgentState):
             "news_data": f"⚠️ 不支持的市场: {market_info.get('market_name', 'Unknown')}，当前仅支持 A 股",
             "sentiment_data": f"⚠️ 不支持的市场: {market_info.get('market_name', 'Unknown')}，当前仅支持 A 股",
             "data_quality_score": 0.0,
-            "data_sources": {"market": "unsupported", "financial": "unsupported", "news": "unsupported", "sentiment": "unsupported"},
+            "data_sources": {
+                "market": "unsupported",
+                "financial": "unsupported",
+                "news": "unsupported",
+                "sentiment": "unsupported",
+            },
         }
 
     # 仅支持 A 股数据预取
@@ -927,6 +1267,7 @@ def data_coordinator_node(state: AgentState):
 
     # 使用交易日管理器确保日期正确
     from tradingagents.utils.trading_date_manager import get_trading_date_manager
+
     date_mgr = get_trading_date_manager()
     adjusted_date = date_mgr.get_latest_trading_date(trade_date)
     if adjusted_date != trade_date:
@@ -938,8 +1279,12 @@ def data_coordinator_node(state: AgentState):
     results = coordinator.fetch_all_data(company, trade_date, parallel=True)
 
     logger.info(f"✅ [Data Coordinator] 数据预取完成")
-    logger.info(f"   市场数据质量: {results.get('data_sources', {}).get('market', 'unknown')}")
-    logger.info(f"   基本面数据质量: {results.get('data_sources', {}).get('financial', 'unknown')}")
+    logger.info(
+        f"   市场数据质量: {results.get('data_sources', {}).get('market', 'unknown')}"
+    )
+    logger.info(
+        f"   基本面数据质量: {results.get('data_sources', {}).get('financial', 'unknown')}"
+    )
     logger.info(f"   总体质量评分: {results.get('data_quality_score', 0):.2f}")
 
     return {
@@ -947,6 +1292,7 @@ def data_coordinator_node(state: AgentState):
         "financial_data": results["financial_data"],
         "news_data": results["news_data"],
         "sentiment_data": results["sentiment_data"],
+        "china_market_data": results["china_market_data"],
         "data_quality_score": results["data_quality_score"],
         "data_sources": results["data_sources"],
         "data_issues": results.get("data_issues", {}),

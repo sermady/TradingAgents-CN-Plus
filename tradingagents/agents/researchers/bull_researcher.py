@@ -26,6 +26,9 @@ def create_bull_researcher(llm, memory):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
 
+        # 获取中国市场分析师报告（如果可用）
+        china_market_report = state.get("china_market_report", "")
+
         # 使用统一的股票类型检测
         ticker = state.get("company_of_interest", "Unknown")
         from tradingagents.utils.stock_utils import StockUtils
@@ -47,6 +50,8 @@ def create_bull_researcher(llm, memory):
         logger.debug(f"🐂 [DEBUG] - 情绪报告长度: {len(sentiment_report)}")
         logger.debug(f"🐂 [DEBUG] - 新闻报告长度: {len(news_report)}")
         logger.debug(f"🐂 [DEBUG] - 基本面报告长度: {len(fundamentals_report)}")
+        if is_china and china_market_report:
+            logger.debug(f"🐂 [DEBUG] - A股市场报告长度: {len(china_market_report)}")
         logger.debug(
             f"🐂 [DEBUG] - 基本面报告前200字符: {fundamentals_report[:200]}..."
         )
@@ -57,7 +62,11 @@ def create_bull_researcher(llm, memory):
             f"🐂 [DEBUG] - 市场详情: 中国A股={is_china}, 港股={is_hk}, 美股={is_us}"
         )
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
+        # 构建当前情况，如果是A股则包含中国市场分析师报告
+        if is_china and china_market_report:
+            curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}\n\n{china_market_report}"
+        else:
+            curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
 
         # 安全检查：确保memory不为None
         if memory is not None:
@@ -123,6 +132,7 @@ def create_bull_researcher(llm, memory):
 社交媒体情绪报告：{sentiment_report}
 最新世界事务新闻：{news_report}
 公司基本面报告：{fundamentals_report}
+{f"A股市场特色分析报告：{china_market_report}" if is_china and china_market_report else ""}
 辩论对话历史：{history}
 最后的看跌论点：{current_response}
 类似情况的反思和经验教训：{past_memory_str}

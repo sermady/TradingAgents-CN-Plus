@@ -24,6 +24,9 @@ def create_bear_researcher(llm, memory):
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
 
+        # 获取中国市场分析师报告（如果可用）
+        china_market_report = state.get("china_market_report", "")
+
         # 使用统一的股票类型检测
         ticker = state.get("company_of_interest", "Unknown")
         from tradingagents.utils.stock_utils import StockUtils
@@ -40,7 +43,11 @@ def create_bear_researcher(llm, memory):
         currency = market_info["currency_name"]
         currency_symbol = market_info["currency_symbol"]
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
+        # 构建当前情况，如果是A股则包含中国市场分析师报告
+        if is_china and china_market_report:
+            curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}\n\n{china_market_report}"
+        else:
+            curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
 
         # 安全检查：确保memory不为None
         if memory is not None:
@@ -105,11 +112,12 @@ def create_bear_researcher(llm, memory):
 - 参与讨论：以对话风格呈现你的论点，直接回应看涨分析师的观点并进行有效辩论，而不仅仅是列举事实
  
 可用资源：
- 
+  
 市场研究报告：{market_research_report}
 社交媒体情绪报告：{sentiment_report}
 最新世界事务新闻：{news_report}
 公司基本面报告：{fundamentals_report}
+{f"A股市场特色分析报告：{china_market_report}" if is_china and china_market_report else ""}
 辩论对话历史：{history}
 最后的看涨论点：{current_response}
 类似情况的反思和经验教训：{past_memory_str}

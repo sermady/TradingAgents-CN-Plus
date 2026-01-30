@@ -56,7 +56,7 @@ class GraphSetup:
         self.react_llm = react_llm
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["market", "social", "news", "fundamentals", "china"]
     ):
         """Set up and compile the agent workflow graph.
 
@@ -66,44 +66,47 @@ class GraphSetup:
                 - "social": Social media analyst
                 - "news": News analyst
                 - "fundamentals": Fundamentals analyst
+                - "china": China market analyst (A-share specific)
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
 
         # Create analyst nodes
         analyst_nodes = {}
-        delete_nodes = {}
 
         # 注意：ToolNode 已弃用，分析师使用 DataCoordinator 预加载的数据
         # 分析流程：DataCoordinator 预加载 → Analyst 直接从 state 获取数据 → 生成报告
+        # 注意：并行执行模式下不再使用 Msg Clear 节点，避免消息删除冲突
 
         if "market" in selected_analysts:
             logger.debug(f"📈 [DEBUG] Setup Market Analyst")
             analyst_nodes["market"] = create_market_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
-            delete_nodes["market"] = create_msg_delete()
 
         if "social" in selected_analysts:
             logger.debug(f"💬 [DEBUG] Setup Social Media Analyst")
             analyst_nodes["social"] = create_social_media_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
-            delete_nodes["social"] = create_msg_delete()
 
         if "news" in selected_analysts:
             logger.debug(f"📰 [DEBUG] Setup News Analyst")
             analyst_nodes["news"] = create_news_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
-            delete_nodes["news"] = create_msg_delete()
 
         if "fundamentals" in selected_analysts:
             logger.debug(f"💼 [DEBUG] Setup Fundamentals Analyst")
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(
                 self.quick_thinking_llm, self.toolkit
             )
-            delete_nodes["fundamentals"] = create_msg_delete()
+
+        if "china" in selected_analysts:
+            logger.debug(f"🇨🇳 [DEBUG] Setup China Market Analyst")
+            analyst_nodes["china"] = create_china_market_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
 
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
@@ -134,10 +137,7 @@ class GraphSetup:
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
             workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
-            workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
-            )
-            # No tool nodes added for analysts anymore
+            # 注意：并行执行模式下不使用 Msg Clear 节点
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -154,24 +154,19 @@ class GraphSetup:
         # 1. START -> Data Coordinator
         workflow.add_edge(START, "Data Coordinator")
 
-        # 2. Data Coordinator -> First Analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge("Data Coordinator", f"{first_analyst.capitalize()} Analyst")
+        # 2. Data Coordinator -> All Analysts in PARALLEL
+        # 所有选中的分析师并行执行，提高效率
+        for analyst_type in selected_analysts:
+            workflow.add_edge(
+                "Data Coordinator", f"{analyst_type.capitalize()} Analyst"
+            )
 
-        # 3. Connect analysts in sequence (Linear flow, no tool loops)
-        for i, analyst_type in enumerate(selected_analysts):
+        # 3. Connect analysts directly to Bull Researcher (parallel -> sync point)
+        # 所有分析师并行执行完成后，直接汇聚到 Bull Researcher
+        # 注意：不在此处清理消息，避免并行冲突
+        for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
-            current_clear = f"Msg Clear {analyst_type.capitalize()}"
-
-            # Direct edge: Analyst -> Clear Msg
-            workflow.add_edge(current_analyst, current_clear)
-
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i + 1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+            workflow.add_edge(current_analyst, "Bull Researcher")
 
         # 4. Add remaining edges (Debate and Risk flows)
         workflow.add_conditional_edges(

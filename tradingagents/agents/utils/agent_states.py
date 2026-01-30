@@ -64,6 +64,7 @@ class AgentState(MessagesState):
     financial_data: Annotated[str, "Raw fundamental data"]
     news_data: Annotated[str, "Raw aggregated news data"]
     sentiment_data: Annotated[str, "Raw social sentiment data"]
+    china_market_data: Annotated[str, "Raw China A-share market features data"]
 
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]
@@ -72,6 +73,7 @@ class AgentState(MessagesState):
         str, "Report from the News Researcher of current world affairs"
     ]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
+    china_market_report: Annotated[str, "Report from the China Market Analyst"]
 
     # 🔧 死循环修复: 工具调用计数器 (已废弃)
     # 注：重构后分析师使用 Data Coordinator 预取数据，不再直接调用工具
