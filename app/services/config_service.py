@@ -662,6 +662,7 @@ class ConfigService:
         except Exception as e:
             print(f"❌ 删除LLM配置失败: {e}")
             import traceback
+
             print("完整堆栈跟踪:")
             print(traceback.format_exc())
             return False
@@ -1296,7 +1297,15 @@ class ConfigService:
                         logger.info(
                             f"🔍 [TEST] Database API Key truncated: {truncated_db_key}"
                         )
-                        logger.info(f"🔍 [TEST] Received API Key: {api_key}")
+                        # 🔥 安全修复：不记录完整 API Key，只记录长度和截断版本
+                        masked_key = (
+                            f"{api_key[:3]}***{api_key[-3:]}"
+                            if api_key and len(api_key) > 6
+                            else "***"
+                        )
+                        logger.info(
+                            f"🔍 [TEST] Received API Key: length={len(api_key) if api_key else 0}, masked={masked_key}"
+                        )
 
                         # 比较截断后的值
                         if api_key == truncated_db_key:
@@ -1630,7 +1639,15 @@ class ConfigService:
                         logger.info(
                             f"🔍 [TEST] Database API Key truncated: {truncated_db_key}"
                         )
-                        logger.info(f"🔍 [TEST] Received API Key: {api_key}")
+                        # 🔥 安全修复：不记录完整 API Key，只记录长度和截断版本
+                        masked_key2 = (
+                            f"{api_key[:3]}***{api_key[-3:]}"
+                            if api_key and len(api_key) > 6
+                            else "***"
+                        )
+                        logger.info(
+                            f"🔍 [TEST] Received API Key: length={len(api_key) if api_key else 0}, masked={masked_key2}"
+                        )
 
                         # 比较截断后的值
                         if api_key == truncated_db_key:
