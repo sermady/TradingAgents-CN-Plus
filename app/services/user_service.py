@@ -19,10 +19,12 @@ try:
 except ImportError:
     # 如果导入失败，使用标准日志
     import logging
+
     def get_logger(name: str) -> logging.Logger:
         return logging.getLogger(name)
 
-logger = get_logger('user_service')
+
+logger = get_logger("user_service")
 
 
 class UserService:
@@ -35,45 +37,103 @@ class UserService:
 
     def close(self):
         """关闭数据库连接"""
-        if hasattr(self, 'client') and self.client:
+        if hasattr(self, "client") and self.client:
             self.client.close()
             logger.info("✅ UserService MongoDB 连接已关闭")
 
     def __del__(self):
         """析构函数，确保连接被关闭"""
         self.close()
-    
+
     @staticmethod
-    def hash_password(password: str) -> str:
-        """密码哈希"""
-        # 使用 bcrypt 会更安全，但为了兼容性先使用 SHA-256
-        return hashlib.sha256(password.encode()).hexdigest()
-    
+    def hash_password(password: str) -> tuple[str, str]:
+        """
+        密码哈希 - 使用 bcrypt (12轮)
+
+        Returns:
+            tuple: (hashed_password, version)
+                - hashed_password: bcrypt 哈希值
+                - version: "bcrypt" 标识加密版本
+        """
+        import bcrypt
+
+        salt = bcrypt.gensalt(rounds=12)
+        hashed = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+        return hashed, "bcrypt"
+
     @staticmethod
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """验证密码"""
-        return UserService.hash_password(plain_password) == hashed_password
-    
+    def verify_password(
+        plain_password: str, hashed_password: str, password_version: str = None
+    ) -> tuple[bool, bool]:
+        """
+        验证密码 - 双轨制支持（bcrypt + 兼容旧 SHA-256）
+
+        Args:
+            plain_password: 明文密码
+            hashed_password: 哈希后的密码
+            password_version: 密码版本标识（"bcrypt" 或 "sha256" 或 None）
+
+        Returns:
+            tuple: (is_valid, needs_upgrade)
+                - is_valid: 密码是否正确
+                - needs_upgrade: 是否需要升级到 bcrypt（仅对旧 SHA-256 返回 True）
+        """
+        import bcrypt
+
+        # 如果是 bcrypt 格式
+        if password_version == "bcrypt" or hashed_password.startswith("$2"):
+            try:
+                is_valid = bcrypt.checkpw(
+                    plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+                )
+                return is_valid, False  # 已是最新版本，无需升级
+            except Exception:
+                return False, False
+
+        # 兼容旧 SHA-256（自动迁移）
+        # 注意：SHA-256 格式是 64 位十六进制字符串
+        if password_version == "sha256" or len(hashed_password) == 64:
+            import hashlib
+
+            legacy_hash = hashlib.sha256(plain_password.encode()).hexdigest()
+            is_valid = legacy_hash == hashed_password
+            return is_valid, is_valid  # 如果验证通过，需要升级到 bcrypt
+
+        # 未知格式，尝试 bcrypt 验证
+        try:
+            is_valid = bcrypt.checkpw(
+                plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+            )
+            return is_valid, False
+        except Exception:
+            return False, False
+
     async def create_user(self, user_data: UserCreate) -> Optional[User]:
         """创建用户"""
         try:
             # 检查用户名是否已存在
-            existing_user = self.users_collection.find_one({"username": user_data.username})
+            existing_user = self.users_collection.find_one(
+                {"username": user_data.username}
+            )
             if existing_user:
                 logger.warning(f"用户名已存在: {user_data.username}")
                 return None
-            
+
             # 检查邮箱是否已存在
             existing_email = self.users_collection.find_one({"email": user_data.email})
             if existing_email:
                 logger.warning(f"邮箱已存在: {user_data.email}")
                 return None
-            
+
+            # 🔥 安全修复：使用 bcrypt 哈希密码
+            hashed_password, password_version = self.hash_password(user_data.password)
+
             # 创建用户文档
             user_doc = {
                 "username": user_data.username,
                 "email": user_data.email,
-                "hashed_password": self.hash_password(user_data.password),
+                "hashed_password": hashed_password,
+                "password_version": password_version,  # 🔥 新增：密码版本标识
                 "is_active": True,
                 "is_verified": False,
                 "is_admin": False,
@@ -97,26 +157,26 @@ class UserService:
                     "email_notifications": False,
                     "desktop_notifications": True,
                     "analysis_complete_notification": True,
-                    "system_maintenance_notification": True
+                    "system_maintenance_notification": True,
                 },
                 "daily_quota": 1000,
                 "concurrent_limit": 3,
                 "total_analyses": 0,
                 "successful_analyses": 0,
                 "failed_analyses": 0,
-                "favorite_stocks": []
+                "favorite_stocks": [],
             }
-            
+
             result = self.users_collection.insert_one(user_doc)
             user_doc["_id"] = result.inserted_id
-            
+
             logger.info(f"✅ 用户创建成功: {user_data.username}")
             return User(**user_doc)
-            
+
         except Exception as e:
             logger.error(f"❌ 创建用户失败: {e}")
             return None
-    
+
     async def authenticate_user(self, username: str, password: str) -> Optional[User]:
         """用户认证"""
         try:
@@ -124,25 +184,59 @@ class UserService:
 
             # 查找用户
             user_doc = self.users_collection.find_one({"username": username})
-            logger.info(f"🔍 [authenticate_user] 数据库查询结果: {'找到用户' if user_doc else '用户不存在'}")
+            logger.info(
+                f"🔍 [authenticate_user] 数据库查询结果: {'找到用户' if user_doc else '用户不存在'}"
+            )
 
             if not user_doc:
                 logger.warning(f"❌ [authenticate_user] 用户不存在: {username}")
                 return None
 
-            logger.info(f"🔍 [authenticate_user] 用户信息: username={user_doc.get('username')}, email={user_doc.get('email')}, is_active={user_doc.get('is_active')}")
+            logger.info(
+                f"🔍 [authenticate_user] 用户信息: username={user_doc.get('username')}, email={user_doc.get('email')}, is_active={user_doc.get('is_active')}"
+            )
 
-            # 验证密码
-            input_password_hash = self.hash_password(password)
+            # 🔥 安全修复：使用双轨制验证密码（bcrypt + 兼容旧 SHA-256）
             stored_password_hash = user_doc["hashed_password"]
-            logger.info(f"🔍 [authenticate_user] 密码哈希对比:")
-            logger.info(f"   输入密码哈希: {input_password_hash[:20]}...")
-            logger.info(f"   存储密码哈希: {stored_password_hash[:20]}...")
-            logger.info(f"   哈希匹配: {input_password_hash == stored_password_hash}")
+            password_version = user_doc.get("password_version")  # 可能不存在（旧用户）
 
-            if not self.verify_password(password, user_doc["hashed_password"]):
+            # 🔥 安全日志：不记录密码哈希的任何部分！
+            logger.info(f"🔍 [authenticate_user] 验证密码...")
+
+            is_valid, needs_upgrade = self.verify_password(
+                password, stored_password_hash, password_version
+            )
+
+            if not is_valid:
                 logger.warning(f"❌ [authenticate_user] 密码错误: {username}")
                 return None
+
+            # 🔥 自动迁移：如果密码是旧 SHA-256 格式，升级到 bcrypt
+            if needs_upgrade:
+                logger.info(
+                    f"🔄 [authenticate_user] 用户 {username} 的密码使用旧格式，自动升级到 bcrypt..."
+                )
+                try:
+                    new_hashed_password, new_version = self.hash_password(password)
+                    self.users_collection.update_one(
+                        {"_id": user_doc["_id"]},
+                        {
+                            "$set": {
+                                "hashed_password": new_hashed_password,
+                                "password_version": new_version,
+                                "updated_at": datetime.utcnow(),
+                            }
+                        },
+                    )
+                    logger.info(
+                        f"✅ [authenticate_user] 用户 {username} 的密码已成功升级到 bcrypt"
+                    )
+                    # 更新内存中的值
+                    user_doc["hashed_password"] = new_hashed_password
+                    user_doc["password_version"] = new_version
+                except Exception as e:
+                    logger.error(f"⚠️ [authenticate_user] 密码自动升级失败: {e}")
+                    # 继续认证流程，不因为升级失败而阻止登录
 
             # 检查用户是否激活
             if not user_doc.get("is_active", True):
@@ -151,17 +245,16 @@ class UserService:
 
             # 更新最后登录时间
             self.users_collection.update_one(
-                {"_id": user_doc["_id"]},
-                {"$set": {"last_login": datetime.utcnow()}}
+                {"_id": user_doc["_id"]}, {"$set": {"last_login": datetime.utcnow()}}
             )
 
             logger.info(f"✅ [authenticate_user] 用户认证成功: {username}")
             return User(**user_doc)
-            
+
         except Exception as e:
             logger.error(f"❌ 用户认证失败: {e}")
             return None
-    
+
     async def get_user_by_username(self, username: str) -> Optional[User]:
         """根据用户名获取用户"""
         try:
@@ -172,13 +265,13 @@ class UserService:
         except Exception as e:
             logger.error(f"❌ 获取用户失败: {e}")
             return None
-    
+
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
         """根据用户ID获取用户"""
         try:
             if not ObjectId.is_valid(user_id):
                 return None
-            
+
             user_doc = self.users_collection.find_one({"_id": ObjectId(user_id)})
             if user_doc:
                 return User(**user_doc)
@@ -186,50 +279,50 @@ class UserService:
         except Exception as e:
             logger.error(f"❌ 获取用户失败: {e}")
             return None
-    
+
     async def update_user(self, username: str, user_data: UserUpdate) -> Optional[User]:
         """更新用户信息"""
         try:
             update_data = {"updated_at": datetime.utcnow()}
-            
+
             # 只更新提供的字段
             if user_data.email:
                 # 检查邮箱是否已被其他用户使用
-                existing_email = self.users_collection.find_one({
-                    "email": user_data.email,
-                    "username": {"$ne": username}
-                })
+                existing_email = self.users_collection.find_one(
+                    {"email": user_data.email, "username": {"$ne": username}}
+                )
                 if existing_email:
                     logger.warning(f"邮箱已被使用: {user_data.email}")
                     return None
                 update_data["email"] = user_data.email
-            
+
             if user_data.preferences:
                 update_data["preferences"] = user_data.preferences.model_dump()
-            
+
             if user_data.daily_quota is not None:
                 update_data["daily_quota"] = user_data.daily_quota
-            
+
             if user_data.concurrent_limit is not None:
                 update_data["concurrent_limit"] = user_data.concurrent_limit
-            
+
             result = self.users_collection.update_one(
-                {"username": username},
-                {"$set": update_data}
+                {"username": username}, {"$set": update_data}
             )
-            
+
             if result.modified_count > 0:
                 logger.info(f"✅ 用户信息更新成功: {username}")
                 return await self.get_user_by_username(username)
             else:
                 logger.warning(f"用户不存在或无需更新: {username}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"❌ 更新用户信息失败: {e}")
             return None
-    
-    async def change_password(self, username: str, old_password: str, new_password: str) -> bool:
+
+    async def change_password(
+        self, username: str, old_password: str, new_password: str
+    ) -> bool:
         """修改密码"""
         try:
             # 验证旧密码
@@ -237,56 +330,64 @@ class UserService:
             if not user:
                 logger.warning(f"旧密码验证失败: {username}")
                 return False
-            
-            # 更新密码
-            new_hashed_password = self.hash_password(new_password)
+
+            # 🔥 安全修复：使用 bcrypt 哈希新密码
+            new_hashed_password, password_version = self.hash_password(new_password)
             result = self.users_collection.update_one(
                 {"username": username},
                 {
                     "$set": {
                         "hashed_password": new_hashed_password,
-                        "updated_at": datetime.utcnow()
+                        "password_version": password_version,
+                        "updated_at": datetime.utcnow(),
                     }
-                }
+                },
             )
-            
+
             if result.modified_count > 0:
                 logger.info(f"✅ 密码修改成功: {username}")
                 return True
             else:
                 logger.error(f"❌ 密码修改失败: {username}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"❌ 修改密码失败: {e}")
             return False
-    
+
     async def reset_password(self, username: str, new_password: str) -> bool:
         """重置密码（管理员操作）"""
         try:
-            new_hashed_password = self.hash_password(new_password)
+            # 🔥 安全修复：使用 bcrypt 哈希新密码
+            new_hashed_password, password_version = self.hash_password(new_password)
             result = self.users_collection.update_one(
                 {"username": username},
                 {
                     "$set": {
                         "hashed_password": new_hashed_password,
-                        "updated_at": datetime.utcnow()
+                        "password_version": password_version,
+                        "updated_at": datetime.utcnow(),
                     }
-                }
+                },
             )
-            
+
             if result.modified_count > 0:
                 logger.info(f"✅ 密码重置成功: {username}")
                 return True
             else:
                 logger.error(f"❌ 密码重置失败: {username}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"❌ 重置密码失败: {e}")
             return False
-    
-    async def create_admin_user(self, username: str = "admin", password: str = "admin123", email: str = "admin@tradingagents.cn") -> Optional[User]:
+
+    async def create_admin_user(
+        self,
+        username: str = "admin",
+        password: str = "admin123",
+        email: str = "admin@tradingagents.cn",
+    ) -> Optional[User]:
         """创建管理员用户"""
         try:
             # 检查是否已存在管理员
@@ -294,12 +395,16 @@ class UserService:
             if existing_admin:
                 logger.info(f"管理员用户已存在: {username}")
                 return User(**existing_admin)
-            
+
+            # 🔥 安全修复：使用 bcrypt 哈希管理员密码
+            hashed_password, password_version = self.hash_password(password)
+
             # 创建管理员用户文档
             admin_doc = {
                 "username": username,
                 "email": email,
-                "hashed_password": self.hash_password(password),
+                "hashed_password": hashed_password,
+                "password_version": password_version,
                 "is_active": True,
                 "is_verified": True,
                 "is_admin": True,
@@ -312,103 +417,95 @@ class UserService:
                     "ui_theme": "light",
                     "language": "zh-CN",
                     "notifications_enabled": True,
-                    "email_notifications": False
+                    "email_notifications": False,
                 },
                 "daily_quota": 10000,  # 管理员更高配额
                 "concurrent_limit": 10,
                 "total_analyses": 0,
                 "successful_analyses": 0,
                 "failed_analyses": 0,
-                "favorite_stocks": []
+                "favorite_stocks": [],
             }
-            
+
             result = self.users_collection.insert_one(admin_doc)
             admin_doc["_id"] = result.inserted_id
-            
+
             logger.info(f"✅ 管理员用户创建成功: {username}")
             logger.info(f"   密码: {password}")
             logger.info("   ⚠️  请立即修改默认密码！")
-            
+
             return User(**admin_doc)
-            
+
         except Exception as e:
             logger.error(f"❌ 创建管理员用户失败: {e}")
             return None
-    
+
     async def list_users(self, skip: int = 0, limit: int = 100) -> List[UserResponse]:
         """获取用户列表"""
         try:
             cursor = self.users_collection.find().skip(skip).limit(limit)
             users = []
-            
+
             for user_doc in cursor:
                 user = User(**user_doc)
-                users.append(UserResponse(
-                    id=str(user.id),
-                    username=user.username,
-                    email=user.email,
-                    is_active=user.is_active,
-                    is_verified=user.is_verified,
-                    created_at=user.created_at,
-                    last_login=user.last_login,
-                    preferences=user.preferences,
-                    daily_quota=user.daily_quota,
-                    concurrent_limit=user.concurrent_limit,
-                    total_analyses=user.total_analyses,
-                    successful_analyses=user.successful_analyses,
-                    failed_analyses=user.failed_analyses
-                ))
-            
+                users.append(
+                    UserResponse(
+                        id=str(user.id),
+                        username=user.username,
+                        email=user.email,
+                        is_active=user.is_active,
+                        is_verified=user.is_verified,
+                        created_at=user.created_at,
+                        last_login=user.last_login,
+                        preferences=user.preferences,
+                        daily_quota=user.daily_quota,
+                        concurrent_limit=user.concurrent_limit,
+                        total_analyses=user.total_analyses,
+                        successful_analyses=user.successful_analyses,
+                        failed_analyses=user.failed_analyses,
+                    )
+                )
+
             return users
-            
+
         except Exception as e:
             logger.error(f"❌ 获取用户列表失败: {e}")
             return []
-    
+
     async def deactivate_user(self, username: str) -> bool:
         """禁用用户"""
         try:
             result = self.users_collection.update_one(
                 {"username": username},
-                {
-                    "$set": {
-                        "is_active": False,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
+                {"$set": {"is_active": False, "updated_at": datetime.utcnow()}},
             )
-            
+
             if result.modified_count > 0:
                 logger.info(f"✅ 用户已禁用: {username}")
                 return True
             else:
                 logger.warning(f"用户不存在: {username}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"❌ 禁用用户失败: {e}")
             return False
-    
+
     async def activate_user(self, username: str) -> bool:
         """激活用户"""
         try:
             result = self.users_collection.update_one(
                 {"username": username},
-                {
-                    "$set": {
-                        "is_active": True,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
+                {"$set": {"is_active": True, "updated_at": datetime.utcnow()}},
             )
-            
+
             if result.modified_count > 0:
                 logger.info(f"✅ 用户已激活: {username}")
                 return True
             else:
                 logger.warning(f"用户不存在: {username}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"❌ 激活用户失败: {e}")
             return False
