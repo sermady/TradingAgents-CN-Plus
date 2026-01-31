@@ -419,10 +419,11 @@ class HistoricalDataService:
         end_date: str = None,
         data_source: str = None,
         period: str = None,
-        limit: int = None,
+        limit: int = 1000,
+        skip: int = 0,
     ) -> List[Dict[str, Any]]:
         """
-        查询历史数据
+        查询历史数据（支持分页）
 
         Args:
             symbol: 股票代码
@@ -430,7 +431,8 @@ class HistoricalDataService:
             end_date: 结束日期 (YYYY-MM-DD)
             data_source: 数据源筛选
             period: 数据周期筛选 (daily/weekly/monthly)
-            limit: 限制返回数量
+            limit: 限制返回数量（默认1000，最大10000）
+            skip: 跳过记录数（用于分页）
 
         Returns:
             历史数据列表
@@ -456,13 +458,18 @@ class HistoricalDataService:
             if period:
                 query["period"] = period
 
-            # 执行查询
+            # 执行查询（带分页限制）
+            # 限制最大返回数量，防止内存溢出
+            max_limit = min(limit, 10000) if limit else 1000
+
             cursor = self.collection.find(query).sort("trade_date", -1)
 
-            if limit:
-                cursor = cursor.limit(limit)
+            if skip > 0:
+                cursor = cursor.skip(skip)
 
-            results = await cursor.to_list(length=None)
+            cursor = cursor.limit(max_limit)
+
+            results = await cursor.to_list(length=max_limit)
 
             logger.info(f"📊 查询历史数据: {symbol} 返回 {len(results)} 条记录")
             return results

@@ -3011,7 +3011,10 @@ class ConfigService:
             db = await self._get_db()
             providers_collection = db.llm_providers
 
-            providers_data = await providers_collection.find().to_list(length=None)
+            # [分页] 限制大模型厂家数量，通常不会超过100个
+            providers_data = (
+                await providers_collection.find().limit(100).to_list(length=100)
+            )
             providers = []
 
             logger.info(

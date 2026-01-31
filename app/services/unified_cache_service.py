@@ -100,8 +100,19 @@ class UnifiedCacheService:
         self._stats = {"hits": 0, "misses": 0, "sets": 0, "deletes": 0, "expires": 0}
         self._stats_lock = Lock()
 
+        # 防雪崩保护 (Cache Stampede Protection)
+        # 使用锁字典防止同一key的并发重建
+        self._refresh_locks: Dict[str, Lock] = {}
+        self._refresh_locks_lock = Lock()
+        # 标记正在重建中的key
+        self._refreshing_keys: set = set()
+        # 早期刷新阈值（在TTL剩余多少比例时提前刷新）
+        self._early_refresh_ratio = 0.2
+        # 陈旧数据容忍时间（即使过期也继续使用的时间，单位：秒）
+        self._stale_ttl_tolerance = 30
+
         self._initialized = True
-        logger.info("✅ 统一缓存服务初始化完成")
+        logger.info("✅ 统一缓存服务初始化完成（含防雪崩保护）")
 
     # ==================== 键管理 ====================
 
@@ -146,6 +157,132 @@ class UnifiedCacheService:
         key_hash = hashlib.md5(key_str.encode()).hexdigest()[:16]
 
         return f"{category}:{key_hash}"
+
+    # ==================== 防雪崩保护方法 ====================
+
+    def _get_refresh_lock(self, key: str) -> Lock:
+        """获取指定key的刷新锁（用于防止并发重建）"""
+        with self._refresh_locks_lock:
+            if key not in self._refresh_locks:
+                self._refresh_locks[key] = Lock()
+            return self._refresh_locks[key]
+
+    def _is_refreshing(self, key: str) -> bool:
+        """检查指定key是否正在刷新中"""
+        with self._refresh_locks_lock:
+            return key in self._refreshing_keys
+
+    def _mark_refreshing(self, key: str):
+        """标记key正在刷新中"""
+        with self._refresh_locks_lock:
+            self._refreshing_keys.add(key)
+
+    def _unmark_refreshing(self, key: str):
+        """取消标记key正在刷新中"""
+        with self._refresh_locks_lock:
+            self._refreshing_keys.discard(key)
+
+    def _should_early_refresh(self, entry: "CacheEntry") -> bool:
+        """检查是否应该提前刷新（预防雪崩）
+
+        在TTL剩余20%时提前触发刷新，避免大量请求同时等待缓存过期
+        """
+        if entry.ttl <= 0:
+            return False
+        age = (datetime.now(timezone.utc) - entry.created_at).total_seconds()
+        remaining_ratio = (entry.ttl - age) / entry.ttl
+        return remaining_ratio < self._early_refresh_ratio
+
+    def get_with_refresh(
+        self,
+        key: str,
+        refresh_func,
+        category: str = "general",
+        ttl: int = 3600,
+        refresh_ttl: int = 30,
+        levels: List[str] = None,
+    ) -> Tuple[Optional[Any], str]:
+        """获取缓存值，并在需要时自动刷新（防雪崩版本）
+
+        核心机制：
+        1. 优先返回现有缓存（即使已过期，在容忍期内仍可用）
+        2. 只有一个请求负责重建缓存
+        3. 重建期间其他请求返回旧数据，避免等待
+
+        Args:
+            key: 缓存键
+            refresh_func: 刷新函数，返回新值
+            category: 缓存类别
+            ttl: 缓存过期时间（秒）
+            refresh_ttl: 重建锁超时时间（秒）
+            levels: 缓存级别
+
+        Returns:
+            (值, 来源) - 来源可能是 "memory", "redis", "stale", "refreshed", "error"
+        """
+        if levels is None:
+            levels = ["memory", "redis", "mongodb"]
+
+        normalized_key = self.normalize_key(key, category)
+
+        # 步骤1：尝试获取现有缓存
+        value, source = self.get(key, category, levels)
+
+        if value is not None:
+            # 检查是否需要提前刷新（预防性刷新）
+            with self._memory_lock:
+                entry = self._memory_cache.get(normalized_key)
+                if entry and not self._should_early_refresh(entry):
+                    # 缓存正常，无需刷新
+                    return value, source
+
+        # 步骤2：尝试获取刷新锁（只有一个请求能重建）
+        refresh_lock = self._get_refresh_lock(normalized_key)
+        acquired = refresh_lock.acquire(blocking=False)
+
+        if not acquired:
+            # 其他请求正在重建，返回现有值（即使过期）
+            if value is not None:
+                logger.debug(f"⚡ 缓存重建中，返回旧值: {normalized_key}")
+                return value, f"{source}_stale"
+            # 没有旧值，等待其他请求重建完成
+            acquired_timeout = refresh_lock.acquire(timeout=refresh_ttl)
+            if acquired_timeout:
+                refresh_lock.release()
+            # 再次尝试获取缓存
+            value, source = self.get(key, category, levels)
+            if value is not None:
+                return value, source
+            return None, "timeout"
+
+        # 步骤3：获得锁，执行重建
+        try:
+            self._mark_refreshing(normalized_key)
+            logger.info(f"🔄 缓存重建: {normalized_key}")
+
+            # 执行刷新函数
+            new_value = refresh_func()
+
+            if new_value is not None:
+                # 保存新缓存
+                self.set(key, new_value, ttl, category, levels)
+                return new_value, "refreshed"
+            else:
+                # 刷新失败，返回旧值
+                if value is not None:
+                    logger.warning(f"⚠️ 刷新失败，使用旧值: {normalized_key}")
+                    return value, f"{source}_stale"
+                return None, "error"
+
+        except Exception as e:
+            logger.error(f"❌ 缓存重建异常 {normalized_key}: {e}")
+            # 异常时返回旧值
+            if value is not None:
+                return value, f"{source}_stale"
+            return None, "error"
+        finally:
+            self._unmark_refreshing(normalized_key)
+            refresh_lock.release()
 
     # ==================== 内存缓存 ====================
 
@@ -605,6 +742,171 @@ class UnifiedCacheService:
 
         logger.info(f"🗑️ 清除类别缓存: {category} ({deleted}个)")
         return deleted
+
+    # ==================== 缓存击穿保护 ====================
+
+    def get_or_set_with_fallback(
+        self,
+        key: str,
+        factory_func,
+        category: str = "general",
+        ttl: int = 3600,
+        fallback_value: Any = None,
+        fallback_ttl: int = 60,
+        max_retries: int = 3,
+        levels: List[str] = None,
+    ) -> Tuple[Any, str]:
+        """获取或设置缓存，带缓存击穿保护
+
+        当缓存失效且数据源不可用时，防止大量请求直接冲击后端系统。
+        使用降级策略：
+        1. 正常获取缓存
+        2. 缓存失效时，只有一个请求重建
+        3. 重建失败时，返回兜底值并设置短时效缓存
+
+        Args:
+            key: 缓存键
+            factory_func: 数据工厂函数（用于重建缓存）
+            category: 缓存类别
+            ttl: 正常缓存过期时间（秒）
+            fallback_value: 兜底值（当factory_func失败时使用）
+            fallback_ttl: 兜底值缓存时间（秒，默认60秒）
+            max_retries: 重建重试次数
+            levels: 缓存级别
+
+        Returns:
+            (值, 来源) - 来源可能是 "cache", "refreshed", "fallback", "error"
+        """
+        if levels is None:
+            levels = ["memory", "redis", "mongodb"]
+
+        # 步骤1：尝试获取现有缓存
+        value, source = self.get(key, category, levels)
+
+        if value is not None:
+            return value, source
+
+        # 步骤2：使用防雪崩机制重建缓存
+        normalized_key = self.normalize_key(key, category)
+        refresh_lock = self._get_refresh_lock(normalized_key)
+        acquired = refresh_lock.acquire(blocking=False)
+
+        if not acquired:
+            # 其他请求正在重建，等待后重试
+            logger.debug(f"⏳ 等待缓存重建: {normalized_key}")
+            acquired_timeout = refresh_lock.acquire(timeout=fallback_ttl)
+            if acquired_timeout:
+                refresh_lock.release()
+
+            # 再次尝试获取
+            value, source = self.get(key, category, levels)
+            if value is not None:
+                return value, source
+            # 仍然没有，使用兜底值
+            if fallback_value is not None:
+                logger.warning(f"⚠️ 使用兜底值: {normalized_key}")
+                return fallback_value, "fallback"
+            return None, "error"
+
+        # 步骤3：获得锁，尝试重建
+        try:
+            self._mark_refreshing(normalized_key)
+
+            # 重试机制
+            for attempt in range(max_retries):
+                try:
+                    logger.info(
+                        f"🔄 缓存重建尝试 {attempt + 1}/{max_retries}: {normalized_key}"
+                    )
+                    new_value = factory_func()
+
+                    if new_value is not None:
+                        # 重建成功，保存正常缓存
+                        self.set(key, new_value, ttl, category, levels)
+                        return new_value, "refreshed"
+
+                    # 工厂函数返回None，短暂等待后重试
+                    if attempt < max_retries - 1:
+                        import time
+
+                        time.sleep(0.5 * (attempt + 1))
+
+                except Exception as e:
+                    logger.error(f"❌ 重建尝试 {attempt + 1} 失败: {e}")
+                    if attempt < max_retries - 1:
+                        import time
+
+                        time.sleep(0.5 * (attempt + 1))
+
+            # 所有重试都失败，使用兜底值
+            if fallback_value is not None:
+                logger.warning(f"⚠️ 重建失败，使用兜底值: {normalized_key}")
+                # 设置短时效缓存，防止持续冲击
+                self.set(key, fallback_value, fallback_ttl, category, levels)
+                return fallback_value, "fallback"
+
+            return None, "error"
+
+        finally:
+            self._unmark_refreshing(normalized_key)
+            refresh_lock.release()
+
+    def set_circuit_breaker(
+        self,
+        key: str,
+        is_fail: bool,
+        category: str = "general",
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+    ) -> bool:
+        """设置熔断器状态（简化版缓存击穿保护）
+
+        当数据源连续失败时，自动启用兜底模式。
+
+        Args:
+            key: 缓存键
+            is_fail: 本次请求是否失败
+            category: 缓存类别
+            failure_threshold: 失败阈值，超过则启用兜底
+            recovery_timeout: 恢复超时时间（秒）
+
+        Returns:
+            True: 当前应该使用兜底模式
+            False: 正常模式
+        """
+        cb_key = f"_circuit_breaker:{category}:{key}"
+
+        # 获取当前熔断器状态
+        state, _ = self.get(cb_key, "_internal", ["memory"])
+
+        if state is None:
+            state = {"failures": 0, "last_failure": None, "open": False}
+
+        if is_fail:
+            state["failures"] += 1
+            state["last_failure"] = datetime.now(timezone.utc).isoformat()
+
+            if state["failures"] >= failure_threshold:
+                state["open"] = True
+                logger.warning(f"🔥 熔断器开启: {key} (连续{state['failures']}次失败)")
+        else:
+            # 成功，减少失败计数
+            if state["failures"] > 0:
+                state["failures"] -= 1
+
+            # 如果熔断器开启，检查是否可以关闭
+            if state["open"] and state["last_failure"]:
+                last_fail = datetime.fromisoformat(state["last_failure"])
+                elapsed = (datetime.now(timezone.utc) - last_fail).total_seconds()
+                if elapsed > recovery_timeout:
+                    state["open"] = False
+                    state["failures"] = 0
+                    logger.info(f"✅ 熔断器关闭: {key} (已恢复{elapsed:.0f}秒)")
+
+        # 保存熔断器状态（短时效）
+        self.set(cb_key, state, 300, "_internal", ["memory"])
+
+        return state["open"]
 
     # ==================== 统计 ====================
 

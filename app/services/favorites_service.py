@@ -76,6 +76,9 @@ class FavoritesService:
 
         # 批量获取股票基础信息（板块等）
         codes = [it.get("stock_code") for it in items if it.get("stock_code")]
+        # [类型安全] 确保codes是list类型（支持list/set等可迭代类型）
+        if not isinstance(codes, list):
+            codes = list(codes)
         if codes:
             try:
                 # 🔥 获取数据源优先级配置
@@ -99,14 +102,16 @@ class FavoritesService:
 
                 # 从 stock_basic_info 获取板块信息（只查询优先级最高的数据源）
                 basic_info_coll = db["stock_basic_info"]
+                # [分页] 限制返回数量，防止内存溢出（用户自选股通常<500只）
+                max_codes = min(len(codes), 500)
                 cursor = basic_info_coll.find(
                     {
-                        "code": {"$in": codes},
+                        "code": {"$in": codes[:max_codes]},
                         "source": preferred_source,
-                    },  # 🔥 添加数据源筛选
+                    },  # [火] 添加数据源筛选
                     {"code": 1, "sse": 1, "market": 1, "_id": 0},
-                )
-                basic_docs = await cursor.to_list(length=None)
+                ).limit(max_codes)
+                basic_docs = await cursor.to_list(length=max_codes)
                 basic_map = {str(d.get("code")).zfill(6): d for d in (basic_docs or [])}
 
                 for it in items:
@@ -130,9 +135,11 @@ class FavoritesService:
         if codes:
             try:
                 coll = db["market_quotes"]
-                # 🔥 兼容 AKShare (price/change_percent) 和 Tushare (close/pct_chg)
+                # 兼容 AKShare (price/change_percent) 和 Tushare (close/pct_chg)
+                # [分页] 限制查询数量，防止内存溢出
+                max_quotes = min(len(codes), 500)
                 cursor = coll.find(
-                    {"code": {"$in": codes}},
+                    {"code": {"$in": codes[:max_quotes]}},
                     {
                         "code": 1,
                         "close": 1,
@@ -141,8 +148,8 @@ class FavoritesService:
                         "change_percent": 1,
                         "amount": 1,
                     },
-                )
-                docs = await cursor.to_list(length=None)
+                ).limit(max_quotes)
+                docs = await cursor.to_list(length=max_quotes)
                 quotes_map = {str(d.get("code")).zfill(6): d for d in (docs or [])}
                 for it in items:
                     code = it.get("stock_code")
