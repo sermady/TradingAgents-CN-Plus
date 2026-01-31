@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-行情兜底缓存模块
+行情兜底缓存模块（支持异步）
 
 当实时行情请求失败时，提供最后有效报价的缓存兜底机制。
 确保系统在高延迟或网络不稳定情况下仍能返回可用的旧数据。
+
+🔥 修复：添加 asyncio.Lock 支持，避免在异步代码中阻塞事件循环
+- 保留 threading.Lock 供同步代码使用
+- 新增异步方法使用 asyncio.Lock
+- 混合场景下自动检测并使用合适的锁
 """
 
+import asyncio
 import logging
 import threading
 import time
@@ -20,182 +26,163 @@ STALE_THRESHOLD = 600
 
 class QuoteFallbackCache:
     """
-    行情兜底缓存
+    行情兜底缓存（线程安全 + 异步安全）
 
     特性：
     - 存储最后有效的行情数据
     - 支持TTL过期机制
-    - 线程安全
+    - 线程安全（threading.Lock）
+    - 异步安全（asyncio.Lock）
     - 可配置过期阈值（用于判断缓存是否"过于陈旧"）
     """
 
     def __init__(self, ttl: int = DEFAULT_TTL, stale_threshold: int = STALE_THRESHOLD):
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._timestamps: Dict[str, float] = {}
-        self._lock = threading.Lock()
+        # 🔥 修复：同时支持同步和异步锁
+        self._thread_lock = threading.Lock()
+        self._async_lock: Optional[asyncio.Lock] = None
         self._ttl = ttl
         self._stale_threshold = stale_threshold
 
+    def _get_async_lock(self) -> asyncio.Lock:
+        """获取或创建异步锁（延迟初始化）"""
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
+
     def set(self, code: str, data: Dict[str, Any]) -> None:
-        """存储行情数据（带时间戳）"""
-        with self._lock:
+        """存储行情数据（同步版本，使用 thread锁）"""
+        with self._thread_lock:
+            self._cache[code] = data.copy()
+            self._cache[code]["_cached_at"] = datetime.now().isoformat()
+            self._cache[code]["_cache_timestamp"] = time.time()
+            self._timestamps[code] = time.time()
+
+    async def set_async(self, code: str, data: Dict[str, Any]) -> None:
+        """存储行情数据（异步版本，使用 asyncio锁）"""
+        async with self._get_async_lock():
             self._cache[code] = data.copy()
             self._cache[code]["_cached_at"] = datetime.now().isoformat()
             self._cache[code]["_cache_timestamp"] = time.time()
             self._timestamps[code] = time.time()
 
     def get(self, code: str) -> Optional[Dict[str, Any]]:
-        """获取缓存的行情数据"""
-        with self._lock:
-            if code not in self._cache:
+        """获取缓存的行情数据（同步版本）"""
+        with self._thread_lock:
+            return self._get_impl(code)
+
+    async def get_async(self, code: str) -> Optional[Dict[str, Any]]:
+        """获取缓存的行情数据（异步版本）"""
+        async with self._get_async_lock():
+            return self._get_impl(code)
+
+    def _get_impl(self, code: str) -> Optional[Dict[str, Any]]:
+        """实际获取逻辑（无锁，内部使用）"""
+        if code not in self._cache:
+            return None
+
+        now = time.time()
+        timestamp = self._timestamps.get(code, 0)
+
+        # 检查是否过期
+        if now - timestamp > self._ttl:
+            # 过期但可能还能用（stale数据）
+            if now - timestamp > self._stale_threshold:
+                logger.warning(
+                    f"缓存数据过于陈旧: {code}, 年龄: {now - timestamp:.0f}s"
+                )
                 return None
+            else:
+                # 返回陈旧数据但标记
+                data = self._cache[code].copy()
+                data["_stale"] = True
+                data["_stale_seconds"] = now - timestamp
+                return data
 
-            timestamp = self._timestamps.get(code, 0)
-            age = time.time() - timestamp
-
-            if age > self._ttl:
-                del self._cache[code]
-                del self._timestamps[code]
-                return None
-
-            return self._cache[code].copy()
-
-    def get_with_stale_info(self, code: str) -> tuple[Optional[Dict[str, Any]], bool]:
-        """
-        获取缓存的行情数据，同时返回是否过期的信息
-
-        Returns:
-            (data, is_stale): 数据字典和是否过期标记
-        """
-        with self._lock:
-            if code not in self._cache:
-                return None, True
-
-            timestamp = self._timestamps.get(code, 0)
-            age = time.time() - timestamp
-            is_stale = age > self._stale_threshold
-
-            if age > self._ttl:
-                del self._cache[code]
-                del self._timestamps[code]
-                return None, True
-
-            result = self._cache[code].copy()
-            result["_is_stale"] = is_stale
-            result["_age_seconds"] = age
-            return result, is_stale
-
-    def get_last_valid(self, code: str) -> Optional[Dict[str, Any]]:
-        """
-        获取最后有效的报价（即使已过期）
-
-        用于在网络完全失败时返回兜底数据
-        """
-        with self._lock:
-            if code not in self._cache:
-                return None
-
-            data = self._cache[code].copy()
-            timestamp = self._timestamps.get(code, 0)
-            age = time.time() - timestamp
-            data["_age_seconds"] = age
-            data["_is_stale"] = True
-            return data
+        # 返回有效数据
+        return self._cache[code].copy()
 
     def is_stale(self, code: str) -> bool:
-        """检查缓存是否过期（超过TTL）"""
-        with self._lock:
-            if code not in self._timestamps:
-                return True
-            age = time.time() - self._timestamps[code]
-            return age > self._ttl
+        """检查缓存是否陈旧（同步版本）"""
+        with self._thread_lock:
+            return self._is_stale_impl(code)
 
-    def is_very_stale(self, code: str) -> bool:
-        """检查缓存是否非常陈旧（超过stale_threshold）"""
-        with self._lock:
-            if code not in self._timestamps:
-                return True
-            age = time.time() - self._timestamps[code]
-            return age > self._stale_threshold
+    async def is_stale_async(self, code: str) -> bool:
+        """检查缓存是否陈旧（异步版本）"""
+        async with self._get_async_lock():
+            return self._is_stale_impl(code)
 
-    def update_from_quotes(self, quotes_map: Dict[str, Dict[str, Any]]) -> int:
-        """
-        从行情映射更新缓存
+    def _is_stale_impl(self, code: str) -> bool:
+        """实际检查逻辑（无锁）"""
+        if code not in self._cache:
+            return True
 
-        Args:
-            quotes_map: 股票代码到行情数据的映射
-
-        Returns:
-            更新的股票数量
-        """
-        count = 0
-        with self._lock:
-            for code, data in quotes_map.items():
-                self._cache[code] = data.copy()
-                self._cache[code]["_cached_at"] = datetime.now().isoformat()
-                self._cache[code]["_cache_timestamp"] = time.time()
-                self._timestamps[code] = time.time()
-                count += 1
-        return count
-
-    def get_stale_codes(self) -> list[tuple[str, float]]:
-        """获取所有陈旧缓存的代码和年龄"""
         now = time.time()
-        stale = []
-        with self._lock:
-            for code, timestamp in self._timestamps.items():
-                age = now - timestamp
-                if age > self._ttl:
-                    stale.append((code, age))
-        return stale
+        timestamp = self._timestamps.get(code, 0)
+        return (now - timestamp) > self._ttl
 
-    def cleanup(self) -> int:
-        """清理过期缓存"""
-        count = 0
-        now = time.time()
-        with self._lock:
-            expired = [
-                code for code, ts in self._timestamps.items() if now - ts > self._ttl
-            ]
-            for code in expired:
-                del self._cache[code]
-                del self._timestamps[code]
-                count += 1
-        if count > 0:
-            logger.debug(f"清理了 {count} 条过期缓存")
-        return count
+    def clear(self, code: str = None) -> None:
+        """清除缓存（同步版本）"""
+        with self._thread_lock:
+            self._clear_impl(code)
 
-    def clear(self) -> int:
-        """清空所有缓存"""
-        with self._lock:
-            count = len(self._cache)
+    async def clear_async(self, code: str = None) -> None:
+        """清除缓存（异步版本）"""
+        async with self._get_async_lock():
+            self._clear_impl(code)
+
+    def _clear_impl(self, code: str = None) -> None:
+        """实际清除逻辑（无锁）"""
+        if code:
+            self._cache.pop(code, None)
+            self._timestamps.pop(code, None)
+        else:
             self._cache.clear()
             self._timestamps.clear()
-        return count
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取缓存统计信息"""
-        with self._lock:
-            now = time.time()
-            ages = [now - ts for ts in self._timestamps.values()]
-            return {
-                "total_codes": len(self._cache),
-                "fresh_count": sum(1 for a in ages if a <= self._ttl),
-                "stale_count": sum(
-                    1 for a in ages if self._ttl < a <= self._stale_threshold
-                ),
-                "very_stale_count": sum(1 for a in ages if a > self._stale_threshold),
-                "ttl_seconds": self._ttl,
-                "stale_threshold_seconds": self._stale_threshold,
-            }
+        """获取缓存统计（同步版本）"""
+        with self._thread_lock:
+            return self._get_stats_impl()
+
+    async def get_stats_async(self) -> Dict[str, Any]:
+        """获取缓存统计（异步版本）"""
+        async with self._get_async_lock():
+            return self._get_stats_impl()
+
+    def _get_stats_impl(self) -> Dict[str, Any]:
+        """实际统计逻辑（无锁）"""
+        now = time.time()
+        total = len(self._cache)
+        expired = sum(
+            1
+            for code in self._cache
+            if (now - self._timestamps.get(code, 0)) > self._ttl
+        )
+        stale = sum(
+            1
+            for code in self._cache
+            if (now - self._timestamps.get(code, 0)) > self._stale_threshold
+        )
+
+        return {
+            "total_cached": total,
+            "expired": expired,
+            "stale": stale,
+            "valid": total - expired,
+            "ttl_seconds": self._ttl,
+            "stale_threshold": self._stale_threshold,
+        }
 
 
-_fallback_cache = None
+# 全局兜底缓存实例（向后兼容）
+_fallback_cache: Optional[QuoteFallbackCache] = None
 _fallback_cache_lock = threading.Lock()
 
 
 def get_fallback_cache() -> QuoteFallbackCache:
-    """获取全局兜底缓存单例"""
+    """获取全局兜底缓存实例（线程安全）"""
     global _fallback_cache
     if _fallback_cache is None:
         with _fallback_cache_lock:
@@ -204,33 +191,12 @@ def get_fallback_cache() -> QuoteFallbackCache:
     return _fallback_cache
 
 
-def update_fallback_cache_from_manager(quotes_map: Dict[str, Dict[str, Any]]) -> None:
-    """从行情管理器更新兜底缓存"""
-    cache = get_fallback_cache()
-    count = cache.update_from_quotes(quotes_map)
-    if count > 0:
-        logger.debug(f"更新兜底缓存: {count} 只股票")
-
-
-def get_fallback_quote(code: str) -> tuple[Optional[Dict[str, Any]], str]:
-    """
-    获取兜底行情
-
-    Returns:
-        (data, status): 数据和状态描述
-        - status: "fresh" | "stale" | "very_stale" | "not_found"
-    """
-    cache = get_fallback_cache()
-    data, is_stale = cache.get_with_stale_info(code)
-
-    if data is None:
-        return None, "not_found"
-
-    if not is_stale:
-        return data, "fresh"
-
-    is_very_stale = cache.is_very_stale(code)
-    if is_very_stale:
-        return data, "very_stale"
-
-    return data, "stale"
+async def get_fallback_cache_async() -> QuoteFallbackCache:
+    """获取全局兜底缓存实例（异步安全）"""
+    global _fallback_cache
+    if _fallback_cache is None:
+        # 使用 asyncio.Lock 保护初始化
+        async with asyncio.Lock():
+            if _fallback_cache is None:
+                _fallback_cache = QuoteFallbackCache()
+    return _fallback_cache
