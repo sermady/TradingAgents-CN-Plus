@@ -2561,11 +2561,11 @@ class OptimizedChinaDataProvider:
             else:
                 metrics["debt_ratio"] = "N/A"
 
-            # 🔥 添加核心财务指标绝对值（万元）
+            # 🔥 添加核心财务指标绝对值（Tushare返回的是元，需要转换为亿元）
             # 营业收入
             if total_revenue > 0:
                 metrics["total_revenue"] = total_revenue
-                metrics["total_revenue_fmt"] = f"{total_revenue / 10000:.2f}亿元"
+                metrics["total_revenue_fmt"] = f"{total_revenue / 100000000:.2f}亿元"
             else:
                 metrics["total_revenue"] = 0
                 metrics["total_revenue_fmt"] = "N/A"
@@ -2573,7 +2573,7 @@ class OptimizedChinaDataProvider:
             # 净利润
             if net_income > 0:
                 metrics["net_income"] = net_income
-                metrics["net_income_fmt"] = f"{net_income / 10000:.2f}亿元"
+                metrics["net_income_fmt"] = f"{net_income / 100000000:.2f}亿元"
             else:
                 metrics["net_income"] = 0
                 metrics["net_income_fmt"] = "N/A"
@@ -2581,7 +2581,7 @@ class OptimizedChinaDataProvider:
             # 营业利润
             if operate_profit > 0:
                 metrics["operate_profit"] = operate_profit
-                metrics["operate_profit_fmt"] = f"{operate_profit / 10000:.2f}亿元"
+                metrics["operate_profit_fmt"] = f"{operate_profit / 100000000:.2f}亿元"
             else:
                 metrics["operate_profit"] = 0
                 metrics["operate_profit_fmt"] = "N/A"
@@ -2598,7 +2598,9 @@ class OptimizedChinaDataProvider:
 
             if net_profit_attr > 0:
                 metrics["net_profit_attr"] = net_profit_attr
-                metrics["net_profit_attr_fmt"] = f"{net_profit_attr / 10000:.2f}亿元"
+                metrics["net_profit_attr_fmt"] = (
+                    f"{net_profit_attr / 100000000:.2f}亿元"
+                )
             else:
                 metrics["net_profit_attr"] = net_profit_attr if net_profit_attr else 0
                 metrics["net_profit_attr_fmt"] = "N/A"
@@ -2618,7 +2620,7 @@ class OptimizedChinaDataProvider:
             # 经营性现金流净额
             if n_cashflow_act:
                 metrics["n_cashflow_act"] = n_cashflow_act
-                metrics["n_cashflow_act_fmt"] = f"{n_cashflow_act / 10000:.2f}亿元"
+                metrics["n_cashflow_act_fmt"] = f"{n_cashflow_act / 100000000:.2f}亿元"
             else:
                 metrics["n_cashflow_act"] = 0
                 metrics["n_cashflow_act_fmt"] = "N/A"
@@ -2627,7 +2629,7 @@ class OptimizedChinaDataProvider:
             if n_cashflow_inv_act:
                 metrics["n_cashflow_inv_act"] = n_cashflow_inv_act
                 metrics["n_cashflow_inv_act_fmt"] = (
-                    f"{n_cashflow_inv_act / 10000:.2f}亿元"
+                    f"{n_cashflow_inv_act / 100000000:.2f}亿元"
                 )
             else:
                 metrics["n_cashflow_inv_act"] = 0
@@ -2637,7 +2639,7 @@ class OptimizedChinaDataProvider:
             if n_cashflow_fin_act:
                 metrics["n_cashflow_fin_act"] = n_cashflow_fin_act
                 metrics["n_cashflow_fin_act_fmt"] = (
-                    f"{n_cashflow_fin_act / 10000:.2f}亿元"
+                    f"{n_cashflow_fin_act / 100000000:.2f}亿元"
                 )
             else:
                 metrics["n_cashflow_fin_act"] = 0
@@ -2965,7 +2967,7 @@ class OptimizedChinaDataProvider:
                 logger.debug(f"计算PS失败: {e}")
                 metrics["ps"] = "N/A"
 
-            # 🔥 添加核心财务指标绝对值（从 financial_data 提取）
+            # 🔥 添加核心财务指标绝对值（从 financial_data 提取，Tushare返回的是元）
             # 营业收入
             total_revenue = financial_data.get("revenue") or financial_data.get(
                 "oper_rev"
@@ -2974,7 +2976,7 @@ class OptimizedChinaDataProvider:
                 try:
                     revenue_val = float(total_revenue)
                     metrics["total_revenue"] = revenue_val
-                    metrics["total_revenue_fmt"] = f"{revenue_val / 10000:.2f}亿元"
+                    metrics["total_revenue_fmt"] = f"{revenue_val / 100000000:.2f}亿元"
                 except (ValueError, TypeError):
                     metrics["total_revenue"] = 0
                     metrics["total_revenue_fmt"] = "N/A"
@@ -2990,7 +2992,7 @@ class OptimizedChinaDataProvider:
                 try:
                     net_income_val = float(net_income)
                     metrics["net_income"] = net_income_val
-                    metrics["net_income_fmt"] = f"{net_income_val / 10000:.2f}亿元"
+                    metrics["net_income_fmt"] = f"{net_income_val / 100000000:.2f}亿元"
                 except (ValueError, TypeError):
                     metrics["net_income"] = 0
                     metrics["net_income_fmt"] = "N/A"
@@ -3007,7 +3009,7 @@ class OptimizedChinaDataProvider:
                     operate_profit_val = float(operate_profit)
                     metrics["operate_profit"] = operate_profit_val
                     metrics["operate_profit_fmt"] = (
-                        f"{operate_profit_val / 10000:.2f}亿元"
+                        f"{operate_profit_val / 100000000:.2f}亿元"
                     )
                 except (ValueError, TypeError):
                     metrics["operate_profit"] = 0
@@ -3030,7 +3032,7 @@ class OptimizedChinaDataProvider:
                     net_profit_attr_val = float(net_profit_attr)
                     metrics["net_profit_attr"] = net_profit_attr_val
                     metrics["net_profit_attr_fmt"] = (
-                        f"{net_profit_attr_val / 10000:.2f}亿元"
+                        f"{net_profit_attr_val / 100000000:.2f}亿元"
                     )
                 except (ValueError, TypeError):
                     metrics["net_profit_attr"] = 0
@@ -3046,7 +3048,7 @@ class OptimizedChinaDataProvider:
                     n_cashflow_act_val = float(n_cashflow_act)
                     metrics["n_cashflow_act"] = n_cashflow_act_val
                     metrics["n_cashflow_act_fmt"] = (
-                        f"{n_cashflow_act_val / 10000:.2f}亿元"
+                        f"{n_cashflow_act_val / 100000000:.2f}亿元"
                     )
                 except (ValueError, TypeError):
                     metrics["n_cashflow_act"] = 0
@@ -3066,7 +3068,7 @@ class OptimizedChinaDataProvider:
                     n_cashflow_inv_act_val = float(n_cashflow_inv_act)
                     metrics["n_cashflow_inv_act"] = n_cashflow_inv_act_val
                     metrics["n_cashflow_inv_act_fmt"] = (
-                        f"{n_cashflow_inv_act_val / 10000:.2f}亿元"
+                        f"{n_cashflow_inv_act_val / 100000000:.2f}亿元"
                     )
                 except (ValueError, TypeError):
                     metrics["n_cashflow_inv_act"] = 0
@@ -3086,7 +3088,7 @@ class OptimizedChinaDataProvider:
                     n_cashflow_fin_act_val = float(n_cashflow_fin_act)
                     metrics["n_cashflow_fin_act"] = n_cashflow_fin_act_val
                     metrics["n_cashflow_fin_act_fmt"] = (
-                        f"{n_cashflow_fin_act_val / 10000:.2f}亿元"
+                        f"{n_cashflow_fin_act_val / 100000000:.2f}亿元"
                     )
                 except (ValueError, TypeError):
                     metrics["n_cashflow_fin_act"] = 0
