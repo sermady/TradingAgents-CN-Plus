@@ -152,8 +152,11 @@ class OptimizedChinaDataProvider:
                     )
                     return df.to_string()
 
-        # 2. 检查文件缓存（除非强制刷新）
-        if not force_refresh:
+        # 2. 检查文件缓存（除非强制刷新或配置了跳过缓存）
+        # 🔥 检查是否跳过缓存（环境变量 SKIP_MONGODB_CACHE_ON_QUERY 也控制文件缓存）
+        skip_cache = os.getenv("SKIP_MONGODB_CACHE_ON_QUERY", "true").lower() == "true"
+
+        if not force_refresh and not skip_cache:
             cache_key = self.cache.find_cached_stock_data(
                 symbol=symbol,
                 start_date=start_date,
@@ -166,6 +169,10 @@ class OptimizedChinaDataProvider:
                 if cached_data:
                     logger.info(f"⚡ [数据来源: 文件缓存] 从缓存加载A股数据: {symbol}")
                     return cached_data
+        elif skip_cache:
+            logger.info(
+                f"🔄 [配置跳过缓存] SKIP_MONGODB_CACHE_ON_QUERY=true，跳过文件缓存: {symbol}"
+            )
 
         # 缓存未命中，从统一数据源接口获取
         logger.info(f"🌐 [数据来源: API调用] 从统一数据源接口获取数据: {symbol}")
@@ -2957,6 +2964,172 @@ class OptimizedChinaDataProvider:
             except (ValueError, TypeError, ZeroDivisionError) as e:
                 logger.debug(f"计算PS失败: {e}")
                 metrics["ps"] = "N/A"
+
+            # 🔥 添加核心财务指标绝对值（从 financial_data 提取）
+            # 营业收入
+            total_revenue = financial_data.get("revenue") or financial_data.get(
+                "oper_rev"
+            )
+            if total_revenue and str(total_revenue) not in ["nan", "--", "None", ""]:
+                try:
+                    revenue_val = float(total_revenue)
+                    metrics["total_revenue"] = revenue_val
+                    metrics["total_revenue_fmt"] = f"{revenue_val / 10000:.2f}亿元"
+                except (ValueError, TypeError):
+                    metrics["total_revenue"] = 0
+                    metrics["total_revenue_fmt"] = "N/A"
+            else:
+                metrics["total_revenue"] = 0
+                metrics["total_revenue_fmt"] = "N/A"
+
+            # 净利润（优先使用 n_income，备选 net_income）
+            net_income = financial_data.get("n_income") or financial_data.get(
+                "net_income"
+            )
+            if net_income and str(net_income) not in ["nan", "--", "None", ""]:
+                try:
+                    net_income_val = float(net_income)
+                    metrics["net_income"] = net_income_val
+                    metrics["net_income_fmt"] = f"{net_income_val / 10000:.2f}亿元"
+                except (ValueError, TypeError):
+                    metrics["net_income"] = 0
+                    metrics["net_income_fmt"] = "N/A"
+            else:
+                metrics["net_income"] = 0
+                metrics["net_income_fmt"] = "N/A"
+
+            # 营业利润
+            operate_profit = financial_data.get("oper_profit") or financial_data.get(
+                "total_profit"
+            )
+            if operate_profit and str(operate_profit) not in ["nan", "--", "None", ""]:
+                try:
+                    operate_profit_val = float(operate_profit)
+                    metrics["operate_profit"] = operate_profit_val
+                    metrics["operate_profit_fmt"] = (
+                        f"{operate_profit_val / 10000:.2f}亿元"
+                    )
+                except (ValueError, TypeError):
+                    metrics["operate_profit"] = 0
+                    metrics["operate_profit_fmt"] = "N/A"
+            else:
+                metrics["operate_profit"] = 0
+                metrics["operate_profit_fmt"] = "N/A"
+
+            # 归母净利润
+            net_profit_attr = financial_data.get(
+                "n_income_attr_p"
+            ) or financial_data.get("net_profit")
+            if net_profit_attr and str(net_profit_attr) not in [
+                "nan",
+                "--",
+                "None",
+                "",
+            ]:
+                try:
+                    net_profit_attr_val = float(net_profit_attr)
+                    metrics["net_profit_attr"] = net_profit_attr_val
+                    metrics["net_profit_attr_fmt"] = (
+                        f"{net_profit_attr_val / 10000:.2f}亿元"
+                    )
+                except (ValueError, TypeError):
+                    metrics["net_profit_attr"] = 0
+                    metrics["net_profit_attr_fmt"] = "N/A"
+            else:
+                metrics["net_profit_attr"] = 0
+                metrics["net_profit_attr_fmt"] = "N/A"
+
+            # 现金流数据
+            n_cashflow_act = financial_data.get("n_cashflow_act")
+            if n_cashflow_act and str(n_cashflow_act) not in ["nan", "--", "None", ""]:
+                try:
+                    n_cashflow_act_val = float(n_cashflow_act)
+                    metrics["n_cashflow_act"] = n_cashflow_act_val
+                    metrics["n_cashflow_act_fmt"] = (
+                        f"{n_cashflow_act_val / 10000:.2f}亿元"
+                    )
+                except (ValueError, TypeError):
+                    metrics["n_cashflow_act"] = 0
+                    metrics["n_cashflow_act_fmt"] = "N/A"
+            else:
+                metrics["n_cashflow_act"] = 0
+                metrics["n_cashflow_act_fmt"] = "N/A"
+
+            n_cashflow_inv_act = financial_data.get("n_cashflow_inv_act")
+            if n_cashflow_inv_act and str(n_cashflow_inv_act) not in [
+                "nan",
+                "--",
+                "None",
+                "",
+            ]:
+                try:
+                    n_cashflow_inv_act_val = float(n_cashflow_inv_act)
+                    metrics["n_cashflow_inv_act"] = n_cashflow_inv_act_val
+                    metrics["n_cashflow_inv_act_fmt"] = (
+                        f"{n_cashflow_inv_act_val / 10000:.2f}亿元"
+                    )
+                except (ValueError, TypeError):
+                    metrics["n_cashflow_inv_act"] = 0
+                    metrics["n_cashflow_inv_act_fmt"] = "N/A"
+            else:
+                metrics["n_cashflow_inv_act"] = 0
+                metrics["n_cashflow_inv_act_fmt"] = "N/A"
+
+            n_cashflow_fin_act = financial_data.get("n_cashflow_fin_act")
+            if n_cashflow_fin_act and str(n_cashflow_fin_act) not in [
+                "nan",
+                "--",
+                "None",
+                "",
+            ]:
+                try:
+                    n_cashflow_fin_act_val = float(n_cashflow_fin_act)
+                    metrics["n_cashflow_fin_act"] = n_cashflow_fin_act_val
+                    metrics["n_cashflow_fin_act_fmt"] = (
+                        f"{n_cashflow_fin_act_val / 10000:.2f}亿元"
+                    )
+                except (ValueError, TypeError):
+                    metrics["n_cashflow_fin_act"] = 0
+                    metrics["n_cashflow_fin_act_fmt"] = "N/A"
+            else:
+                metrics["n_cashflow_fin_act"] = 0
+                metrics["n_cashflow_fin_act_fmt"] = "N/A"
+
+            # 🔥 添加同比增速（从 financial_data 直接获取或使用 income_statement 计算）
+            revenue_yoy = financial_data.get("revenue_yoy") or financial_data.get(
+                "oper_rev_yoy"
+            )
+            if revenue_yoy and str(revenue_yoy) not in ["nan", "--", "None", ""]:
+                try:
+                    revenue_yoy_val = float(revenue_yoy)
+                    metrics["revenue_yoy"] = revenue_yoy_val
+                    metrics["revenue_yoy_fmt"] = f"{revenue_yoy_val:+.1f}%"
+                except (ValueError, TypeError):
+                    metrics["revenue_yoy"] = None
+                    metrics["revenue_yoy_fmt"] = "N/A"
+            else:
+                metrics["revenue_yoy"] = None
+                metrics["revenue_yoy_fmt"] = "N/A"
+
+            net_income_yoy = financial_data.get("net_income_yoy") or financial_data.get(
+                "n_income_yoy"
+            )
+            if net_income_yoy and str(net_income_yoy) not in ["nan", "--", "None", ""]:
+                try:
+                    net_income_yoy_val = float(net_income_yoy)
+                    metrics["net_income_yoy"] = net_income_yoy_val
+                    metrics["net_income_yoy_fmt"] = f"{net_income_yoy_val:+.1f}%"
+                except (ValueError, TypeError):
+                    metrics["net_income_yoy"] = None
+                    metrics["net_income_yoy_fmt"] = "N/A"
+            else:
+                metrics["net_income_yoy"] = None
+                metrics["net_income_yoy_fmt"] = "N/A"
+
+            logger.info(
+                f"✅ [_parse_financial_data_with_stock_info] 财务指标: 营收={metrics.get('total_revenue_fmt', 'N/A')}, "
+                f"净利润={metrics.get('net_income_fmt', 'N/A')}, 归母净利润={metrics.get('net_profit_attr_fmt', 'N/A')}"
+            )
 
             # 其他指标
             metrics["dividend_yield"] = "N/A"
