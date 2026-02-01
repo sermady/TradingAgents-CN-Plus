@@ -7,6 +7,7 @@ import re
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.time_utils import get_chinese_date
+
 logger = get_logger("default")
 
 
@@ -33,16 +34,16 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
         "target_price_range": None,
         "confidence": None,
         "risk_score": None,
-        "warnings": []
+        "warnings": [],
     }
 
     # 1. 提取投资建议
     recommendation_patterns = [
-        r'最终交易建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
-        r'投资建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
-        r'建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
-        r'\*{2}(买入|持有|卖出)\*{2}',
-        r'决策[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
+        r"最终交易建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"投资建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"\*{2}(买入|持有|卖出)\*{2}",
+        r"决策[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
     ]
 
     for pattern in recommendation_patterns:
@@ -56,10 +57,10 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
 
     # 2. 提取目标价位
     price_patterns = [
-        r'目标价[位格]?[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)',
-        r'目标[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)',
-        r'价格目标[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)',
-        r'[¥\$￥]\s*(\d+\.?\d*)\s*[-~到至]\s*[¥\$￥]?\s*(\d+\.?\d*)',  # 价格区间
+        r"目标价[位格]?[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)",
+        r"目标[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)",
+        r"价格目标[：:\s]*[¥\$￥]?\s*(\d+\.?\d*)",
+        r"[¥\$￥]\s*(\d+\.?\d*)\s*[-~到至]\s*[¥\$￥]?\s*(\d+\.?\d*)",  # 价格区间
     ]
 
     for pattern in price_patterns:
@@ -73,27 +74,37 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
             break
 
     # 如果没有找到目标价但有当前股价，自动计算
-    if result["target_price"] is None and result["target_price_range"] is None and current_price:
+    if (
+        result["target_price"] is None
+        and result["target_price_range"] is None
+        and current_price
+    ):
         if result["recommendation"] == "买入":
             # 买入时，目标价通常比当前价高 10-30%
             result["target_price"] = round(current_price * 1.15, 2)
-            result["warnings"].append(f"自动计算目标价（买入）: {result['target_price']}")
+            result["warnings"].append(
+                f"自动计算目标价（买入）: {result['target_price']}"
+            )
         elif result["recommendation"] == "卖出":
             # 卖出时，目标价通常比当前价低 10-20%
             result["target_price"] = round(current_price * 0.9, 2)
-            result["warnings"].append(f"自动计算目标价（卖出）: {result['target_price']}")
+            result["warnings"].append(
+                f"自动计算目标价（卖出）: {result['target_price']}"
+            )
         elif result["recommendation"] == "持有":
             # 持有时，给出价格区间
             low = round(current_price * 0.95, 2)
             high = round(current_price * 1.05, 2)
             result["target_price_range"] = f"¥{low}-{high}"
-            result["warnings"].append(f"自动计算目标区间（持有）: {result['target_price_range']}")
+            result["warnings"].append(
+                f"自动计算目标区间（持有）: {result['target_price_range']}"
+            )
 
     # 3. 提取置信度
     confidence_patterns = [
-        r'置信度[：:\s]*(\d*\.?\d+)',
-        r'信心程度[：:\s]*(\d*\.?\d+)',
-        r'confidence[：:\s]*(\d*\.?\d+)',
+        r"置信度[：:\s]*(\d*\.?\d+)",
+        r"信心程度[：:\s]*(\d*\.?\d+)",
+        r"confidence[：:\s]*(\d*\.?\d+)",
     ]
 
     for pattern in confidence_patterns:
@@ -120,9 +131,9 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
 
     # 4. 提取风险评分
     risk_patterns = [
-        r'风险评分[：:\s]*(\d*\.?\d+)',
-        r'风险等级[：:\s]*(\d*\.?\d+)',
-        r'risk[：:\s]*(\d*\.?\d+)',
+        r"风险评分[：:\s]*(\d*\.?\d+)",
+        r"风险等级[：:\s]*(\d*\.?\d+)",
+        r"risk[：:\s]*(\d*\.?\d+)",
     ]
 
     for pattern in risk_patterns:
@@ -157,7 +168,7 @@ def _enhance_trading_decision(
     company_name: str,
     market_info: dict,
     fundamentals_report: str,
-    investment_plan: str
+    investment_plan: str,
 ) -> str:
     """
     增强交易决策内容，添加止损位、仓位建议、时间窗口等关键信息
@@ -253,7 +264,9 @@ def _enhance_trading_decision(
     return enhanced_report
 
 
-def _calculate_position_size(recommendation: str, confidence: float, risk_score: float) -> int:
+def _calculate_position_size(
+    recommendation: str, confidence: float, risk_score: float
+) -> int:
     """计算建议仓位百分比"""
     base_position = 10  # 基础仓位10%
 
@@ -284,7 +297,9 @@ def _determine_time_horizon(recommendation: str, confidence: float) -> str:
         return "观望期（1-2周后重新评估）"
 
 
-def _generate_entry_strategy(recommendation: str, current_price: float, confidence: float) -> str:
+def _generate_entry_strategy(
+    recommendation: str, current_price: float, confidence: float
+) -> str:
     """生成建仓策略"""
     if recommendation == "买入":
         if confidence >= 0.75:
@@ -309,7 +324,9 @@ def _risk_level_text(risk_score: float) -> str:
         return "高风险"
 
 
-def _generate_risk_warnings(recommendation: str, risk_score: float, market_info: dict) -> list:
+def _generate_risk_warnings(
+    recommendation: str, risk_score: float, market_info: dict
+) -> list:
     """生成风险提示列表"""
     warnings = []
 
@@ -328,17 +345,19 @@ def _generate_risk_warnings(recommendation: str, risk_score: float, market_info:
         warnings.append("卖出决策需结合个人持仓成本和投资目标综合考虑")
 
     # 市场特定提示
-    if market_info.get('is_china'):
+    if market_info.get("is_china"):
         warnings.append("A股市场受政策影响较大，需关注监管动态和宏观政策变化")
-    elif market_info.get('is_hk'):
+    elif market_info.get("is_hk"):
         warnings.append("港股市场流动性需关注，注意汇率风险")
-    elif market_info.get('is_us'):
+    elif market_info.get("is_us"):
         warnings.append("美股市场受美联储政策和地缘政治影响，注意时差和汇率风险")
 
     return warnings
 
 
-def validate_trading_decision(content: str, currency_symbol: str, company_name: str, current_price: float = None) -> dict:
+def validate_trading_decision(
+    content: str, currency_symbol: str, company_name: str, current_price: float = None
+) -> dict:
     """
     验证交易决策的有效性，并自动填充缺失字段
 
@@ -361,7 +380,7 @@ def validate_trading_decision(content: str, currency_symbol: str, company_name: 
         "warnings": [],
         "has_target_price": False,
         "recommendation": "未知",
-        "extracted": {}
+        "extracted": {},
     }
 
     # 先提取结构化信息
@@ -386,19 +405,23 @@ def validate_trading_decision(content: str, currency_symbol: str, company_name: 
     if currency_symbol == "¥":
         # A股应该使用人民币
         if "$" in content and "¥" not in content and "￥" not in content:
-            result["warnings"].append(f"A股 {company_name} 应使用人民币(¥)，但检测到使用美元($)")
+            result["warnings"].append(
+                f"A股 {company_name} 应使用人民币(¥)，但检测到使用美元($)"
+            )
     elif currency_symbol == "$":
         # 美股/港股应该使用美元
         if ("¥" in content or "￥" in content) and "$" not in content:
-            result["warnings"].append(f"美股/港股 {company_name} 应使用美元($)，但检测到使用人民币(¥)")
+            result["warnings"].append(
+                f"美股/港股 {company_name} 应使用美元($)，但检测到使用人民币(¥)"
+            )
 
     # 3. 检查是否有"无法确定"等回避语句
     evasive_patterns = [
-        r'无法确定',
-        r'需要更多信息',
-        r'无法提供',
-        r'不确定',
-        r'暂时无法',
+        r"无法确定",
+        r"需要更多信息",
+        r"无法提供",
+        r"不确定",
+        r"暂时无法",
     ]
 
     for pattern in evasive_patterns:
@@ -419,19 +442,24 @@ def create_trader(llm, memory):
 
         # 使用统一的股票类型检测
         from tradingagents.utils.stock_utils import StockUtils
+
         market_info = StockUtils.get_market_info(company_name)
-        is_china = market_info['is_china']
-        is_hk = market_info['is_hk']
-        is_us = market_info['is_us']
+        is_china = market_info["is_china"]
+        is_hk = market_info["is_hk"]
+        is_us = market_info["is_us"]
 
         # 根据股票类型确定货币单位
-        currency = market_info['currency_name']
-        currency_symbol = market_info['currency_symbol']
+        currency = market_info["currency_name"]
+        currency_symbol = market_info["currency_symbol"]
 
         logger.debug(f"[DEBUG] ===== 交易员节点开始 =====")
-        logger.debug(f"[DEBUG] 交易员检测股票类型: {company_name} -> {market_info['market_name']}, 货币: {currency}")
+        logger.debug(
+            f"[DEBUG] 交易员检测股票类型: {company_name} -> {market_info['market_name']}, 货币: {currency}"
+        )
         logger.debug(f"[DEBUG] 货币符号: {currency_symbol}")
-        logger.debug(f"[DEBUG] 市场详情: 中国A股={is_china}, 港股={is_hk}, 美股={is_us}")
+        logger.debug(
+            f"[DEBUG] 市场详情: 中国A股={is_china}, 港股={is_hk}, 美股={is_us}"
+        )
         logger.debug(f"[DEBUG] 基本面报告长度: {len(fundamentals_report)}")
         logger.debug(f"[DEBUG] 基本面报告前200字符: {fundamentals_report[:200]}...")
 
@@ -463,21 +491,36 @@ def create_trader(llm, memory):
 
 ⚠️ 重要提醒：当前分析的股票代码是 {company_name}，请使用正确的货币单位：{currency}（{currency_symbol}）
 
-🔴 严格要求：
+🔴 严格要求（违反将导致分析被判定为无效）：
 - 股票代码 {company_name} 的公司名称必须严格按照基本面报告中的真实数据
 - 绝对禁止使用错误的公司名称或混淆不同的股票
 - 所有分析必须基于提供的真实数据，不允许假设或编造
-- **必须提供具体的目标价位，不允许设置为null或空值**
+- ⚠️ **必须提供具体的目标价位，格式必须是: 目标价位: {currency_symbol}XX.XX**
 
 请在您的分析中包含以下关键信息：
 1. **投资建议**: 明确的买入/持有/卖出决策
-2. **目标价位**: 基于分析的合理目标价格({currency}) - 🚨 强制要求提供具体数值
-   - 买入建议：提供目标价位和预期涨幅
-   - 持有建议：提供合理价格区间（如：{currency_symbol}XX-XX）
-   - 卖出建议：提供止损价位和目标卖出价
+2. **目标价位** (🚨 强制要求 - 没有此项分析将被判定为无效):
+   - **格式要求**: 必须明确写出 "目标价位: {currency_symbol}XX.XX"
+   - 买入建议：目标价位应高于当前价格（如: 目标价位: {currency_symbol}35.50）
+   - 持有建议：提供合理价格区间（如: 目标价位: {currency_symbol}30.00-32.00）
+   - 卖出建议：提供目标卖出价（如: 目标价位: {currency_symbol}28.00）
 3. **置信度**: 对决策的信心程度(0-1之间)
 4. **风险评分**: 投资风险等级(0-1之间，0为低风险，1为高风险)
 5. **详细推理**: 支持决策的具体理由
+
+🚫 绝对禁止的表述（会导致分析失败）：
+- "无法确定目标价"
+- "需要更多信息"
+- "无法提供具体价格"
+- "目标价待确定"
+- "暂时无法给出"
+- "目标价: null"
+- "目标价: N/A"
+
+✅ 正确的目标价位表述示例：
+- "基于当前估值和技术分析，建议目标价位: {currency_symbol}35.50"
+- "考虑到行业平均PE水平，目标价位设定为: {currency_symbol}32.80"
+- "参考支撑位和阻力位，目标价位: {currency_symbol}30.00-33.00区间"
 
 🎯 目标价位计算指导：
 - 基于基本面分析中的估值数据（P/E、P/B、DCF等）
@@ -485,13 +528,14 @@ def create_trader(llm, memory):
 - 考虑行业平均估值水平
 - 结合市场情绪和新闻影响
 - 即使市场情绪过热，也要基于合理估值给出目标价
+- **当前股价为参考基准，买入建议目标价必须高于现价**
 
 特别注意：
 - 如果是中国A股（6位数字代码），请使用人民币（¥）作为价格单位
 - 如果是美股或港股，请使用美元（$）作为价格单位
 - 目标价位必须与当前股价的货币单位保持一致
 - 必须使用基本面报告中提供的正确公司名称
-- **绝对不允许说"无法确定目标价"或"需要更多信息"**
+- ⚠️ **如果你不写出"目标价位: {currency_symbol}XX.XX"格式的具体价格，此分析将被系统判定为无效并拒绝接受**
 
 请用中文撰写分析内容，并始终以'最终交易建议: **买入/持有/卖出**'结束您的回应以确认您的建议。
 
@@ -511,14 +555,16 @@ def create_trader(llm, memory):
 
         # 从基本面报告中提取当前股价
         current_price = None
-        price_pattern = r'当前股价[：:\s]*[¥￥]?\s*(\d+\.?\d*)'
+        price_pattern = r"当前股价[：:\s]*[¥￥]?\s*(\d+\.?\d*)"
         price_match = re.search(price_pattern, fundamentals_report)
         if price_match:
             current_price = float(price_match.group(1))
             logger.debug(f"[DEBUG] 从基本面报告提取当前股价: {current_price}")
 
         # 验证交易决策的有效性（传入当前股价用于自动计算）
-        validation = validate_trading_decision(result.content, currency_symbol, company_name, current_price)
+        validation = validate_trading_decision(
+            result.content, currency_symbol, company_name, current_price
+        )
 
         if validation["warnings"]:
             logger.warning(f"[Trader] 交易决策验证发现问题:")
@@ -527,8 +573,10 @@ def create_trader(llm, memory):
 
         # 不再将 is_valid 设为 False 而是继续处理，因为已经自动填充了默认值
 
-        logger.info(f"[Trader] 决策验证结果: 建议={validation['recommendation']}, "
-                   f"目标价={validation['has_target_price']}")
+        logger.info(
+            f"[Trader] 决策验证结果: 建议={validation['recommendation']}, "
+            f"目标价={validation['has_target_price']}"
+        )
 
         # 🔧 增强最终交易决策内容
         enhanced_decision = _enhance_trading_decision(
@@ -539,7 +587,7 @@ def create_trader(llm, memory):
             company_name=company_name,
             market_info=market_info,
             fundamentals_report=fundamentals_report,
-            investment_plan=investment_plan
+            investment_plan=investment_plan,
         )
 
         logger.debug(f"[DEBUG] ===== 交易员节点结束 =====")
