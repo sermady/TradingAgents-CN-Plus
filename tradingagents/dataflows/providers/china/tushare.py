@@ -196,13 +196,7 @@ class TushareProvider(BaseStockDataProvider):
                     )
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
-
-                    # 🔥 使用官方 API 地址 (强制 HTTPS)
-                    self.api._DataApi__token = env_token
-                    self.api._DataApi__http_url = "https://api.tushare.pro"
-                    self.logger.info(
-                        "✅ [步骤3.1] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
-                    )
+                    self.logger.info("✅ [步骤3.1] Tushare API 初始化完成")
 
                     # 测试连接 - 直接调用同步方法（不使用 asyncio.run）
                     try:
@@ -239,6 +233,9 @@ class TushareProvider(BaseStockDataProvider):
                     self.logger.info(
                         f"🔄 [步骤4] 尝试使用数据库中的 Tushare Token (超时: {test_timeout}秒)..."
                     )
+                    ts.set_token(db_token)
+                    self.api = ts.pro_api()
+                    self.logger.info("✅ [步骤3] Tushare API 初始化完成")
                     ts.set_token(db_token)
                     self.api = ts.pro_api()
 
@@ -308,13 +305,7 @@ class TushareProvider(BaseStockDataProvider):
                     )
                     ts.set_token(db_token)
                     self.api = ts.pro_api()
-
-                    # 🔥 使用官方 API 地址
-                    self.api._DataApi__token = db_token
-                    self.api._DataApi__http_url = "https://api.tushare.pro"
-                    self.logger.info(
-                        "✅ [步骤3] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
-                    )
+                    self.logger.info("✅ [步骤3] Tushare API 初始化完成")
 
                     # 测试连接 - 直接调用同步方法（不使用 asyncio.run）
                     try:
@@ -353,13 +344,7 @@ class TushareProvider(BaseStockDataProvider):
                     )
                     ts.set_token(env_token)
                     self.api = ts.pro_api()
-
-                    # 🔥 使用官方 API 地址
-                    self.api._DataApi__token = env_token
-                    self.api._DataApi__http_url = "https://api.tushare.pro"
-                    self.logger.info(
-                        "✅ [步骤4] 已设置 _DataApi__token 和 _DataApi__http_url (HTTPS) 属性"
-                    )
+                    self.logger.info("✅ [步骤4] Tushare API 初始化完成")
 
                     # 测试连接（异步）- 使用超时和重试机制
                     retry_count = 0
