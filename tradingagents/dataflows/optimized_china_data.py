@@ -686,9 +686,14 @@ class OptimizedChinaDataProvider:
 - **分析日期**: {datetime.now(ZoneInfo(get_timezone_name())).strftime("%Y年%m月%d日")}{data_source_note}
 
 ## 💰 核心财务指标
+- **营业收入**: {financial_estimates.get("total_revenue_fmt", "N/A")}
+- **净利润**: {financial_estimates.get("net_income_fmt", "N/A")}
+- **归母净利润**: {financial_estimates.get("net_profit_attr_fmt", "N/A")}
+- **经营性现金流**: {financial_estimates.get("n_cashflow_act_fmt", "N/A")}
+- **营收同比增速**: {financial_estimates.get("revenue_yoy_fmt", "N/A")}
+- **净利润同比增速**: {financial_estimates.get("net_income_yoy_fmt", "N/A")}
 - **总市值**: {financial_estimates.get("total_mv", "N/A")}
 - **市盈率(PE)**: {financial_estimates.get("pe", "N/A")}
-- **市盈率TTM(PE_TTM)**: {financial_estimates.get("pe_ttm", "N/A")}
 - **市净率(PB)**: {financial_estimates.get("pb", "N/A")}
 - **净资产收益率(ROE)**: {financial_estimates.get("roe", "N/A")}
 - **资产负债率**: {financial_estimates.get("debt_ratio", "N/A")}
@@ -717,6 +722,19 @@ class OptimizedChinaDataProvider:
 - **分析日期**: {datetime.now(ZoneInfo(get_timezone_name())).strftime("%Y年%m月%d日")}{data_source_note}
 
 ## 💰 财务数据分析
+
+### 核心财务指标（绝对值）
+- **营业收入**: {financial_estimates.get("total_revenue_fmt", "N/A")}
+- **营业利润**: {financial_estimates.get("operate_profit_fmt", "N/A")}
+- **净利润**: {financial_estimates.get("net_income_fmt", "N/A")}
+- **归母净利润**: {financial_estimates.get("net_profit_attr_fmt", "N/A")}
+- **经营性现金流净额**: {financial_estimates.get("n_cashflow_act_fmt", "N/A")}
+- **投资性现金流净额**: {financial_estimates.get("n_cashflow_inv_act_fmt", "N/A")}
+- **筹资性现金流净额**: {financial_estimates.get("n_cashflow_fin_act_fmt", "N/A")}
+
+### 成长性指标（同比增速）
+- **营收同比增速**: {financial_estimates.get("revenue_yoy_fmt", "N/A")}
+- **净利润同比增速**: {financial_estimates.get("net_income_yoy_fmt", "N/A")}
 
 ### 估值指标
 - **总市值**: {financial_estimates.get("total_mv", "N/A")}
@@ -776,6 +794,19 @@ class OptimizedChinaDataProvider:
 - **分析日期**: {datetime.now(ZoneInfo(get_timezone_name())).strftime("%Y年%m月%d日")}{data_source_note}
 
 ## 💰 财务数据分析
+
+### 核心财务指标（绝对值）
+- **营业收入**: {financial_estimates.get("total_revenue_fmt", "N/A")}
+- **营业利润**: {financial_estimates.get("operate_profit_fmt", "N/A")}
+- **净利润**: {financial_estimates.get("net_income_fmt", "N/A")}
+- **归母净利润**: {financial_estimates.get("net_profit_attr_fmt", "N/A")}
+- **经营性现金流净额**: {financial_estimates.get("n_cashflow_act_fmt", "N/A")}
+- **投资性现金流净额**: {financial_estimates.get("n_cashflow_inv_act_fmt", "N/A")}
+- **筹资性现金流净额**: {financial_estimates.get("n_cashflow_fin_act_fmt", "N/A")}
+
+### 成长性指标（同比增速）
+- **营收同比增速**: {financial_estimates.get("revenue_yoy_fmt", "N/A")}
+- **净利润同比增速**: {financial_estimates.get("net_income_yoy_fmt", "N/A")}
 
 ### 估值指标
 - **总市值**: {financial_estimates.get("total_mv", "N/A")}
@@ -2522,6 +2553,158 @@ class OptimizedChinaDataProvider:
                 metrics["debt_ratio"] = f"{debt_ratio:.1f}%"
             else:
                 metrics["debt_ratio"] = "N/A"
+
+            # 🔥 添加核心财务指标绝对值（万元）
+            # 营业收入
+            if total_revenue > 0:
+                metrics["total_revenue"] = total_revenue
+                metrics["total_revenue_fmt"] = f"{total_revenue / 10000:.2f}亿元"
+            else:
+                metrics["total_revenue"] = 0
+                metrics["total_revenue_fmt"] = "N/A"
+
+            # 净利润
+            if net_income > 0:
+                metrics["net_income"] = net_income
+                metrics["net_income_fmt"] = f"{net_income / 10000:.2f}亿元"
+            else:
+                metrics["net_income"] = 0
+                metrics["net_income_fmt"] = "N/A"
+
+            # 营业利润
+            if operate_profit > 0:
+                metrics["operate_profit"] = operate_profit
+                metrics["operate_profit_fmt"] = f"{operate_profit / 10000:.2f}亿元"
+            else:
+                metrics["operate_profit"] = 0
+                metrics["operate_profit_fmt"] = "N/A"
+
+            # 归母净利润（优先使用 n_income_attr_p）
+            if is_flattened:
+                net_profit_attr = financial_data.get(
+                    "n_income_attr_p", 0
+                ) or financial_data.get("net_profit", 0)
+            else:
+                net_profit_attr = latest_income.get(
+                    "n_income_attr_p", 0
+                ) or latest_income.get("net_profit", 0)
+
+            if net_profit_attr > 0:
+                metrics["net_profit_attr"] = net_profit_attr
+                metrics["net_profit_attr_fmt"] = f"{net_profit_attr / 10000:.2f}亿元"
+            else:
+                metrics["net_profit_attr"] = net_profit_attr if net_profit_attr else 0
+                metrics["net_profit_attr_fmt"] = "N/A"
+
+            # 现金流数据
+            if is_flattened:
+                n_cashflow_act = financial_data.get("n_cashflow_act", 0)
+                n_cashflow_inv_act = financial_data.get("n_cashflow_inv_act", 0)
+                n_cashflow_fin_act = financial_data.get("n_cashflow_fin_act", 0)
+            else:
+                cash_flow = financial_data.get("cash_flow", [])
+                latest_cash = cash_flow[0] if cash_flow else {}
+                n_cashflow_act = latest_cash.get("n_cashflow_act", 0)
+                n_cashflow_inv_act = latest_cash.get("n_cashflow_inv_act", 0)
+                n_cashflow_fin_act = latest_cash.get("n_cashflow_fin_act", 0)
+
+            # 经营性现金流净额
+            if n_cashflow_act:
+                metrics["n_cashflow_act"] = n_cashflow_act
+                metrics["n_cashflow_act_fmt"] = f"{n_cashflow_act / 10000:.2f}亿元"
+            else:
+                metrics["n_cashflow_act"] = 0
+                metrics["n_cashflow_act_fmt"] = "N/A"
+
+            # 投资性现金流
+            if n_cashflow_inv_act:
+                metrics["n_cashflow_inv_act"] = n_cashflow_inv_act
+                metrics["n_cashflow_inv_act_fmt"] = (
+                    f"{n_cashflow_inv_act / 10000:.2f}亿元"
+                )
+            else:
+                metrics["n_cashflow_inv_act"] = 0
+                metrics["n_cashflow_inv_act_fmt"] = "N/A"
+
+            # 筹资性现金流
+            if n_cashflow_fin_act:
+                metrics["n_cashflow_fin_act"] = n_cashflow_fin_act
+                metrics["n_cashflow_fin_act_fmt"] = (
+                    f"{n_cashflow_fin_act / 10000:.2f}亿元"
+                )
+            else:
+                metrics["n_cashflow_fin_act"] = 0
+                metrics["n_cashflow_fin_act_fmt"] = "N/A"
+
+            # 🔥 计算同比增速
+            revenue_yoy = None
+            net_income_yoy = None
+            try:
+                if len(income_statement) >= 4:
+                    # 获取最新一期和上年同期数据
+                    latest_stmt = income_statement[0]
+                    # 查找上年同期（4个季度前）
+                    last_year_stmt = (
+                        income_statement[3] if len(income_statement) >= 4 else None
+                    )
+
+                    if last_year_stmt:
+                        # 营收同比增速
+                        latest_revenue = latest_stmt.get(
+                            "total_revenue", 0
+                        ) or latest_stmt.get("revenue", 0)
+                        last_year_revenue = last_year_stmt.get(
+                            "total_revenue", 0
+                        ) or last_year_stmt.get("revenue", 0)
+                        if (
+                            latest_revenue
+                            and last_year_revenue
+                            and last_year_revenue > 0
+                        ):
+                            revenue_yoy = (
+                                (latest_revenue - last_year_revenue) / last_year_revenue
+                            ) * 100
+                            metrics["revenue_yoy"] = revenue_yoy
+                            metrics["revenue_yoy_fmt"] = f"{revenue_yoy:+.1f}%"
+                        else:
+                            metrics["revenue_yoy"] = None
+                            metrics["revenue_yoy_fmt"] = "N/A"
+
+                        # 净利润同比增速
+                        latest_profit = latest_stmt.get(
+                            "n_income", 0
+                        ) or latest_stmt.get("net_income", 0)
+                        last_year_profit = last_year_stmt.get(
+                            "n_income", 0
+                        ) or last_year_stmt.get("net_income", 0)
+                        if latest_profit and last_year_profit and last_year_profit != 0:
+                            net_income_yoy = (
+                                (latest_profit - last_year_profit)
+                                / abs(last_year_profit)
+                            ) * 100
+                            metrics["net_income_yoy"] = net_income_yoy
+                            metrics["net_income_yoy_fmt"] = f"{net_income_yoy:+.1f}%"
+                        else:
+                            metrics["net_income_yoy"] = None
+                            metrics["net_income_yoy_fmt"] = "N/A"
+
+                        logger.info(
+                            f"✅ 计算同比增速: 营收={metrics.get('revenue_yoy_fmt', 'N/A')}, 净利润={metrics.get('net_income_yoy_fmt', 'N/A')}"
+                        )
+                else:
+                    metrics["revenue_yoy"] = None
+                    metrics["revenue_yoy_fmt"] = "N/A"
+                    metrics["net_income_yoy"] = None
+                    metrics["net_income_yoy_fmt"] = "N/A"
+                    logger.info(
+                        f"⚠️ 历史数据不足({len(income_statement)}期)，无法计算同比增速"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ 计算同比增速失败: {e}")
+                metrics["revenue_yoy"] = None
+                metrics["revenue_yoy_fmt"] = "N/A"
+                metrics["net_income_yoy"] = None
+                metrics["net_income_yoy_fmt"] = "N/A"
 
             # 其他指标设为默认值
             metrics.update(
