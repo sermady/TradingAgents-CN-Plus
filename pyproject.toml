@@ -42,7 +42,7 @@ dependencies = [
     "baostock>=0.8.8",
     "eodhd>=1.0.32",
     "finnhub-python>=2.4.23",
-    "tushare>=1.4.21",
+    "tushare>=1.4.24",  # 2025-08-25 最新版本，支持 realtime_tick、realtime_list 等新接口
     "yfinance>=0.2.63",
     "stockstats>=0.6.5",
 
