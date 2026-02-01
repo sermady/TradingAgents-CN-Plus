@@ -2220,28 +2220,29 @@ class DataSourceManager:
 
         start_time = time.time()
         try:
-            # 1. 先尝试从缓存获取
-            cached_data = self._get_cached_data(
-                symbol, start_date, end_date, max_age_hours=24
+            # 🔥 检查是否跳过缓存
+            skip_cache = (
+                os.getenv("SKIP_MONGODB_CACHE_ON_QUERY", "true").lower() == "true"
             )
+
+            # 1. 先尝试从缓存获取（除非配置了跳过）
+            cached_data = None
+            if not skip_cache:
+                cached_data = self._get_cached_data(
+                    symbol, start_date, end_date, max_age_hours=24
+                )
+            else:
+                logger.info(
+                    f"🔄 [配置跳过缓存] SKIP_MONGODB_CACHE_ON_QUERY=true，跳过缓存检查: {symbol}"
+                )
+
             if cached_data is not None and not cached_data.empty:
                 logger.info(f"✅ [缓存命中] 从缓存获取{symbol}数据")
                 # 获取股票基本信息
                 provider = self._get_tushare_adapter()
                 if provider:
-                    import asyncio
-
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_closed():
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                    except RuntimeError:
-                        # 在线程池中没有事件循环，创建新的
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-
-                    stock_info = loop.run_until_complete(
+                    # 🔥 使用 _run_async_safe 避免事件循环冲突
+                    stock_info = self._run_async_safe(
                         provider.get_stock_basic_info(symbol)
                     )
                     stock_name = (
