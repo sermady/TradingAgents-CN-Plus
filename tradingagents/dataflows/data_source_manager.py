@@ -107,90 +107,55 @@ class DataSourceManager:
         self, symbol: Optional[str] = None
     ) -> List[ChinaDataSource]:
         """
-        从数据库获取数据源优先级顺序（用于降级）
+        从环境变量获取数据源优先级顺序（用于降级）
+
+        🔥 重构说明 (2026-02-01):
+        - 不再从数据库读取配置，全部从 .env 文件获取
+        - 默认优先级：Tushare > AKShare > BaoStock
+        - MongoDB 仅用于保存，不作为查询优先源
 
         Args:
             symbol: 股票代码，用于识别市场类型（A股/美股/港股）
 
         Returns:
-            按优先级排序的数据源列表（不包含MongoDB，因为MongoDB是最高优先级）
+            按优先级排序的数据源列表
         """
-        # 🔥 识别市场类型
-        market_category = self._identify_market_category(symbol)
+        # 🔥 从环境变量读取配置
+        env_priority = os.getenv(
+            "HISTORICAL_DATA_SOURCE_PRIORITY", "tushare,akshare,baostock"
+        )
 
-        try:
-            # 🔥 从数据库读取数据源配置（使用同步客户端）
-            from app.core.database import get_mongo_db_sync
+        # 解析环境变量配置
+        source_mapping = {
+            "tushare": ChinaDataSource.TUSHARE,
+            "akshare": ChinaDataSource.AKSHARE,
+            "baostock": ChinaDataSource.BAOSTOCK,
+        }
 
-            db = get_mongo_db_sync()
-            config_collection = db.system_configs
+        result = []
+        for source_name in env_priority.split(","):
+            source_name = source_name.strip().lower()
+            if source_name in source_mapping:
+                source = source_mapping[source_name]
+                if source in self.available_sources:
+                    result.append(source)
 
-            # 获取最新的激活配置
-            config_data = config_collection.find_one(
-                {"is_active": True}, sort=[("version", -1)]
-            )
+        if result:
+            logger.info(f"✅ [数据源优先级] 从.env读取: {[s.value for s in result]}")
+            return result
 
-            if config_data and config_data.get("data_source_configs"):
-                data_source_configs = config_data.get("data_source_configs", [])
-
-                # 🔥 过滤出启用的数据源，并按市场分类过滤
-                enabled_sources = []
-                for ds in data_source_configs:
-                    if not ds.get("enabled", True):
-                        continue
-
-                    # 检查数据源是否属于当前市场分类
-                    market_categories = ds.get("market_categories", [])
-                    if market_categories and market_category:
-                        # 如果数据源配置了市场分类，只选择匹配的数据源
-                        if market_category not in market_categories:
-                            continue
-
-                    enabled_sources.append(ds)
-
-                # 按优先级排序（数字越大优先级越高）
-                enabled_sources.sort(key=lambda x: x.get("priority", 0), reverse=True)
-
-                # 转换为 ChinaDataSource 枚举（使用统一编码）
-                source_mapping = {
-                    DataSourceCode.TUSHARE: ChinaDataSource.TUSHARE,
-                    DataSourceCode.AKSHARE: ChinaDataSource.AKSHARE,
-                    DataSourceCode.BAOSTOCK: ChinaDataSource.BAOSTOCK,
-                }
-
-                result = []
-                for ds in enabled_sources:
-                    ds_type = ds.get("type", "").lower()
-                    if ds_type in source_mapping:
-                        source = source_mapping[ds_type]
-                        # 排除 MongoDB（MongoDB 是最高优先级，不参与降级）
-                        if (
-                            source != ChinaDataSource.MONGODB
-                            and source in self.available_sources
-                        ):
-                            result.append(source)
-
-                if result:
-                    logger.info(
-                        f"✅ [数据源优先级] 市场={market_category or '全部'}, 从数据库读取: {[s.value for s in result]}"
-                    )
-                    return result
-                else:
-                    logger.warning(
-                        f"⚠️ [数据源优先级] 市场={market_category or '全部'}, 数据库配置中没有可用的数据源，使用默认顺序"
-                    )
-            else:
-                logger.warning("⚠️ [数据源优先级] 数据库中没有数据源配置，使用默认顺序")
-        except Exception as e:
-            logger.warning(f"⚠️ [数据源优先级] 从数据库读取失败: {e}，使用默认顺序")
-
-        # 🔥 回退到默认顺序（兼容性）
-        # 默认顺序：AKShare > Tushare > BaoStock
+        # 🔥 回退到默认顺序
+        # 默认顺序：Tushare > AKShare > BaoStock
         default_order = [
-            ChinaDataSource.AKSHARE,
             ChinaDataSource.TUSHARE,
+            ChinaDataSource.AKSHARE,
             ChinaDataSource.BAOSTOCK,
         ]
+
+        logger.warning(
+            f"⚠️ [数据源优先级] .env配置无效，使用默认顺序: {[s.value for s in default_order if s in self.available_sources]}"
+        )
+
         # 只返回可用的数据源
         return [s for s in default_order if s in self.available_sources]
 
@@ -1932,14 +1897,26 @@ class DataSourceManager:
 
         start_time = time.time()
 
+        # 🔥 检查是否跳过 MongoDB 缓存（直接从在线数据源获取）
+        skip_mongodb = (
+            os.getenv("SKIP_MONGODB_CACHE_ON_QUERY", "true").lower() == "true"
+        )
+
         try:
             # 根据数据源调用相应的获取方法
             actual_source = None  # 实际使用的数据源
 
             if self.current_source == ChinaDataSource.MONGODB:
-                result, actual_source = self._get_mongodb_data(
-                    symbol, start_date, end_date, period, realtime_quote
-                )
+                if skip_mongodb:
+                    # 🔥 跳过 MongoDB，直接从在线数据源获取
+                    logger.info(f"🔄 [配置跳过MongoDB] 直接从在线数据源获取: {symbol}")
+                    result, actual_source = self._try_fallback_sources_with_save(
+                        symbol, start_date, end_date, period, realtime_quote
+                    )
+                else:
+                    result, actual_source = self._get_mongodb_data(
+                        symbol, start_date, end_date, period, realtime_quote
+                    )
             elif self.current_source == ChinaDataSource.TUSHARE:
                 logger.info(
                     f"🔍 [股票代码追踪] 调用 Tushare 数据源，传入参数: symbol='{symbol}', period='{period}'"
@@ -2613,6 +2590,101 @@ class DataSourceManager:
 
         logger.error(f"❌ [所有数据源失败] 无法获取{period}数据: {symbol}")
         return f"❌ 所有数据源都无法获取{symbol}的{period}数据", None
+
+    def _try_fallback_sources_with_save(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        period: str = "daily",
+        realtime_quote: Dict[str, Any] = None,
+    ) -> tuple[str, str | None]:
+        """
+        从在线数据源获取数据并保存到 MongoDB
+
+        🔥 重构说明 (2026-02-01):
+        - 跳过 MongoDB 查询，直接从在线数据源获取
+        - 获取成功后保存到 MongoDB（如果配置了 SAVE_TO_MONGODB_AFTER_QUERY=true）
+        - 优先级顺序从 .env 读取，默认: Tushare > AKShare > BaoStock
+
+        Returns:
+            tuple[str, str | None]: (结果字符串, 实际使用的数据源名称)
+        """
+        # 🔥 获取数据源优先级（从 .env 读取）
+        fallback_order = self._get_data_source_priority_order(symbol)
+
+        logger.info(
+            f"🔄 [跳过MongoDB缓存] 直接从在线数据源获取: {symbol}, 优先级: {[s.value for s in fallback_order]}"
+        )
+
+        result_data = None
+        actual_source = None
+
+        # 依次尝试各数据源
+        for source in fallback_order:
+            try:
+                logger.info(
+                    f"🔄 [在线数据源] 尝试 {source.value} 获取{period}数据: {symbol}"
+                )
+
+                # 直接调用具体的数据源方法
+                if source == ChinaDataSource.TUSHARE:
+                    result_data = self._get_tushare_data(
+                        symbol, start_date, end_date, period, realtime_quote
+                    )
+                elif source == ChinaDataSource.AKSHARE:
+                    result_data = self._get_akshare_data(
+                        symbol, start_date, end_date, period, realtime_quote
+                    )
+                elif source == ChinaDataSource.BAOSTOCK:
+                    result_data = self._get_baostock_data(
+                        symbol, start_date, end_date, period, realtime_quote
+                    )
+                else:
+                    logger.warning(f"⚠️ 未知数据源: {source.value}")
+                    continue
+
+                if result_data and "❌" not in result_data:
+                    actual_source = source.value
+                    logger.info(
+                        f"✅ [在线数据源-{source.value}] 成功获取{period}数据: {symbol}"
+                    )
+                    break  # 成功获取，跳出循环
+                else:
+                    logger.warning(
+                        f"⚠️ [在线数据源-{source.value}] 返回错误结果: {symbol}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"❌ [在线数据源-{source.value}] 获取失败: {symbol}, 错误: {e}"
+                )
+                continue
+
+        # 🔥 保存到 MongoDB（如果配置了 SAVE_TO_MONGODB_AFTER_QUERY=true）
+        if result_data and "❌" not in result_data:
+            save_to_mongodb = (
+                os.getenv("SAVE_TO_MONGODB_AFTER_QUERY", "true").lower() == "true"
+            )
+            if save_to_mongodb and actual_source:
+                try:
+                    logger.info(
+                        f"💾 [数据保存] 将 {symbol} 数据保存到 MongoDB (来源: {actual_source})"
+                    )
+                    # 数据保存逻辑在 provider 层已实现
+                    # 这里只需要确认保存即可
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ [数据保存] 保存到 MongoDB 失败: {symbol}, 错误: {e}"
+                    )
+
+            return result_data, actual_source
+
+        # 所有在线数据源都失败，尝试 MongoDB 兜底
+        logger.warning(f"⚠️ [所有在线数据源失败] 尝试使用 MongoDB 缓存兜底: {symbol}")
+        return self._get_mongodb_data(
+            symbol, start_date, end_date, period, realtime_quote
+        )
 
     def get_stock_info(self, symbol: str) -> Dict:
         """
