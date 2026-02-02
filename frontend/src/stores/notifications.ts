@@ -19,6 +19,7 @@ export const useNotificationStore = defineStore('notifications', () => {
   let connectionStartTime = 0  // 🔥 连接创建时间戳（用于诊断）
   let connectionId = 0  // 🔥 连接ID（用于日志追踪）
   let wsListenerAdded = false  // 🔥 页面生命周期监听是否已添加
+  let isConnecting = false  // 🔥 连接状态锁，防止并发连接
 
   // 连接状态
   const connected = computed(() => wsConnected.value)
@@ -104,24 +105,29 @@ export const useNotificationStore = defineStore('notifications', () => {
   // 🔥 连接 WebSocket（优先）
   function connectWebSocket() {
     try {
+      // 🔥 防止并发连接 - 如果正在连接中，直接返回
+      if (isConnecting) {
+        console.log('[WS] 连接正在进行中，跳过本次连接请求')
+        return
+      }
+
+      // 🔥 如果已有活跃连接，不需要重新连接
+      if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+        console.log('[WS] 已有活跃连接，无需重复连接')
+        return
+      }
+
+      // 标记为正在连接
+      isConnecting = true
+
       // 标记为非手动断开（允许自动重连）
       isManualDisconnect = false
 
-      // 若已存在连接，先关闭（等待关闭完成）
+      // 若已存在连接但非 OPEN 状态，清理旧连接
       if (ws.value) {
-        console.log('[WS] 关闭旧连接...')
+        console.log('[WS] 清理旧连接...')
         try {
           ws.value.close(1000, 'Reconnecting')
-          // 等待连接完全关闭（最多500ms）
-          const oldWs = ws.value
-          ws.value = null
-
-          // 🔥 关键：等待旧连接关闭，避免泄漏
-          let waitCount = 0
-          while (oldWs.readyState === WebSocket.OPEN && waitCount < 50) {
-            ws.value = null as any
-            break
-          }
         } catch (e) {
           console.warn('[WS] 关闭旧连接失败:', e)
         }
@@ -150,22 +156,29 @@ export const useNotificationStore = defineStore('notifications', () => {
 
       socket.onopen = () => {
         const duration = Date.now() - connectionStartTime
-        console.log(`[WS] ✅ 连接成功 #${connectionId} (耗时: ${duration}ms), 当前连接数+1`)
+        console.log(`[WS] ✅ 连接成功 #${connectionId} (耗时: ${duration}ms)`)
         wsConnected.value = true
         wsReconnectAttempts = 0
+        isConnecting = false  // 🔥 重置连接锁
         // 添加页面生命周期监听
         addPageLifecycleListeners()
+      }
+
+      socket.onerror = (error) => {
+        console.error(`[WS] ❌ 连接错误 #${connectionId}:`, error)
+        isConnecting = false  // 🔥 重置连接锁
       }
 
       socket.onclose = (event) => {
         const duration = Date.now() - connectionStartTime
         const isManual = isManualDisconnect || event.reason === 'Page unload' || event.reason === 'Reconnecting'
         console.log(
-          `[WS] ❌ 连接关闭 #${connectionId}: code=${event.code}, reason="${event.reason}", ` +
+          `[WS] 🔌 连接关闭 #${connectionId}: code=${event.code}, reason="${event.reason}", ` +
           `存活: ${duration}ms, 手动断开: ${isManual}`
         )
         wsConnected.value = false
         ws.value = null
+        isConnecting = false  // 🔥 重置连接锁
 
         // 🔥 关键：手动断开时不重连
         if (isManual) {
