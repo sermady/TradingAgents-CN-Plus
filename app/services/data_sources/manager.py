@@ -258,7 +258,18 @@ class DataSourceManager:
 
             try:
                 logger.info(f"尝试从 {adapter.name} 获取实时行情...")
-                data = adapter.get_realtime_quotes()
+
+                # 🔥 AKShare 支持多个数据源，eastmoney 失败时自动尝试 sina
+                if adapter.name == "akshare":
+                    # 先尝试 eastmoney
+                    data = adapter.get_realtime_quotes(source="eastmoney")
+                    if not data:
+                        logger.info("东方财富接口失败，尝试新浪财经接口...")
+                        diagnostics["total_attempts"] += 1
+                        data = adapter.get_realtime_quotes(source="sina")
+                else:
+                    data = adapter.get_realtime_quotes()
+
                 duration = time.time() - attempt_start
 
                 if data:
