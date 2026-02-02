@@ -89,6 +89,17 @@ class AKShareProvider(BaseStockDataProvider):
         self.connected = False
         self._stock_list_cache = None  # 缓存股票列表，避免重复获取
         self._cache_time = None  # 缓存时间
+
+        # 🔥 检查 AKSHARE_UNIFIED_ENABLED 开关
+        import os
+        akshare_enabled_str = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower()
+        akshare_enabled = akshare_enabled_str in ("true", "1", "yes", "on")
+
+        if not akshare_enabled:
+            logger.info("⏸️ [AKShare] AKSHARE_UNIFIED_ENABLED=false，跳过 AKShare 数据源初始化")
+            self.connected = False
+            return
+
         self._initialize_akshare()
 
     def _initialize_akshare(self):

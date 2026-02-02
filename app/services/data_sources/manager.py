@@ -25,23 +25,38 @@ class DataSourceManager:
     """
 
     def __init__(self):
-        # 检查是否启用 BaoStock（默认禁用）
+        # 检查各数据源的启用状态
         import os
-        baostock_enabled = os.getenv("BAOSTOCK_UNIFIED_ENABLED", "false").lower() in ("true", "1", "yes")
+        tushare_enabled = os.getenv("TUSHARE_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+        akshare_enabled = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+        baostock_enabled = os.getenv("BAOSTOCK_UNIFIED_ENABLED", "false").lower() in ("true", "1", "yes", "on")
 
-        adapters_list = [
-            TushareAdapter(),
-            AKShareAdapter(),
-        ]
+        adapters_list = []
 
-        # 仅在明确启用时添加 BaoStock
+        # 仅在启用时添加各数据源适配器
+        if tushare_enabled:
+            adapters_list.append(TushareAdapter())
+            logger.info("✅ Tushare 数据源已启用")
+        else:
+            logger.info("⏸️ Tushare 数据源已禁用（通过 TUSHARE_ENABLED 配置）")
+
+        if akshare_enabled:
+            adapters_list.append(AKShareAdapter())
+            logger.info("✅ AKShare 数据源已启用")
+        else:
+            logger.info("⏸️ AKShare 数据源已禁用（通过 AKSHARE_UNIFIED_ENABLED 配置）")
+
         if baostock_enabled:
             adapters_list.append(BaoStockAdapter())
             logger.info("✅ BaoStock 数据源已启用")
         else:
-            logger.info("⏸️ BaoStock 数据源已禁用（通过配置）")
+            logger.info("⏸️ BaoStock 数据源已禁用（通过 BAOSTOCK_UNIFIED_ENABLED 配置）")
 
         self.adapters: List[DataSourceAdapter] = adapters_list
+
+        # 记录启用的数据源名称（用于数据库优先级查询过滤）
+        self._enabled_adapter_names = {adapter.name for adapter in adapters_list}
+        logger.info(f"📊 启用的数据源: {self._enabled_adapter_names}")
 
         # 从数据库加载优先级配置
         self._load_priority_from_database()
@@ -58,19 +73,27 @@ class DataSourceManager:
             self.consistency_checker = None
 
     def _load_priority_from_database(self):
-        """从数据库加载数据源优先级配置（从 datasource_groupings 集合读取 A股市场的优先级）"""
+        """从数据库加载数据源优先级配置（从 datasource_groupings 集合读取 A股市场的优先级）
+
+        优化：仅查询已启用的数据源配置，跳过禁用数据源的数据库查询
+        """
         try:
             from app.core.database import get_mongo_db_sync
 
             db = get_mongo_db_sync()
             groupings_collection = db.datasource_groupings
 
-            # 查询 A股市场的数据源分组配置
-            groupings = list(
-                groupings_collection.find(
-                    {"market_category_id": "a_shares", "enabled": True}
-                )
-            )
+            # 🔥 优化：构建查询条件，仅查询已启用的数据源
+            # 这样可以跳过禁用数据源的数据库查询
+            enabled_sources = list(self._enabled_adapter_names)
+            query_conditions = {
+                "market_category_id": "a_shares",
+                "enabled": True,
+                "data_source_name": {"$in": enabled_sources}  # 🔥 仅查询已启用的数据源
+            }
+
+            logger.info(f"🔍 [优先级加载] 查询已启用的数据源配置: {enabled_sources}")
+            groupings = list(groupings_collection.find(query_conditions))
 
             if groupings:
                 # 创建名称到优先级的映射（数据源名称需要转换为小写）

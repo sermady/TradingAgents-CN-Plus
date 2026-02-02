@@ -99,7 +99,17 @@ class TushareProvider(BaseStockDataProvider):
 
         优先级：数据库配置 > 环境变量
         这样用户在 Web 后台修改配置后可以立即生效
+
+        优化：检查 TUSHARE_ENABLED 开关，禁用时跳过数据库查询
         """
+        # 🔥 优化：检查 TUSHARE_ENABLED 开关，禁用时跳过数据库查询
+        tushare_enabled_str = os.getenv("TUSHARE_ENABLED", "true").lower()
+        tushare_enabled = tushare_enabled_str in ("true", "1", "yes", "on")
+
+        if not tushare_enabled:
+            self.logger.info("⏸️ [DB查询] TUSHARE_ENABLED=false，跳过数据库查询")
+            return None
+
         try:
             self.logger.info("🔍 [DB查询] 开始从数据库读取 Token...")
             from app.core.database import get_mongo_db_sync
