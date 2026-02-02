@@ -3,6 +3,7 @@
 股票数据模型 - 基于现有集合扩展
 采用方案B: 在现有集合基础上扩展字段，保持向后兼容
 """
+
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field
@@ -28,6 +29,7 @@ CurrencyType = Literal["CNY", "HKD", "USD"]  # 货币类型
 
 class MarketInfo(BaseModel):
     """市场信息结构 - 新增字段"""
+
     market: MarketType = Field(..., description="市场标识")
     exchange: ExchangeType = Field(..., description="交易所代码")
     exchange_name: str = Field(..., description="交易所名称")
@@ -38,9 +40,10 @@ class MarketInfo(BaseModel):
 
 class TechnicalIndicators(BaseModel):
     """技术指标结构 - 分类扩展设计"""
+
     # 趋势指标
     trend: Optional[Dict[str, float]] = Field(None, description="趋势指标")
-    # 震荡指标  
+    # 震荡指标
     oscillator: Optional[Dict[str, float]] = Field(None, description="震荡指标")
     # 通道指标
     channel: Optional[Dict[str, float]] = Field(None, description="通道指标")
@@ -57,6 +60,7 @@ class StockBasicInfoExtended(BaseModel):
     股票基础信息扩展模型 - 基于现有 stock_basic_info 集合
     统一使用 symbol 作为主要股票代码字段
     """
+
     # === 标准化字段 (主要字段) ===
     symbol: str = Field(..., description="6位股票代码", pattern=r"^\d{6}$")
     full_symbol: str = Field(..., description="完整标准化代码(如 000001.SZ)")
@@ -86,16 +90,23 @@ class StockBasicInfoExtended(BaseModel):
     pb_mrq: Optional[float] = Field(None, description="最新市净率")
     roe: Optional[float] = Field(None, description="净资产收益率")
 
+    # 每股指标 (2026-02-02 新增)
+    eps: Optional[float] = Field(None, description="每股收益(元)")
+    bps: Optional[float] = Field(None, description="每股净资产(元)")
+    ocfps: Optional[float] = Field(None, description="每股经营现金流(元)")
+    capital_rese_ps: Optional[float] = Field(None, description="每股公积金(元)")
+    undist_profit_ps: Optional[float] = Field(None, description="每股未分配利润(元)")
+
     # 交易指标
     turnover_rate: Optional[float] = Field(None, description="换手率%")
     volume_ratio: Optional[float] = Field(None, description="量比")
 
     # === 扩展字段 ===
     name_en: Optional[str] = Field(None, description="英文名称")
-    
+
     # 新增市场信息
     market_info: Optional[MarketInfo] = Field(None, description="市场信息")
-    
+
     # 新增标准化字段
     board: Optional[str] = Field(None, description="板块标准化")
     industry_code: Optional[str] = Field(None, description="行业代码")
@@ -113,10 +124,10 @@ class StockBasicInfoExtended(BaseModel):
 
     # 货币字段
     currency: Optional[CurrencyType] = Field(None, description="交易货币")
-    
+
     # 版本控制
     data_version: Optional[int] = Field(None, description="数据版本")
-    
+
     class Config:
         # 允许额外字段，保持向后兼容
         extra = "allow"
@@ -127,7 +138,6 @@ class StockBasicInfoExtended(BaseModel):
                 "symbol": "000001",
                 "full_symbol": "000001.SZ",
                 "name": "平安银行",
-
                 # 基础信息
                 "area": "深圳",
                 "industry": "银行",
@@ -136,17 +146,16 @@ class StockBasicInfoExtended(BaseModel):
                 "total_mv": 2500.0,
                 "pe": 5.2,
                 "pb": 0.8,
-
                 # 扩展字段
                 "market_info": {
                     "market": "CN",
                     "exchange": "SZSE",
                     "exchange_name": "深圳证券交易所",
                     "currency": "CNY",
-                    "timezone": "Asia/Shanghai"
+                    "timezone": "Asia/Shanghai",
                 },
                 "status": "L",
-                "data_version": 1
+                "data_version": 1,
             }
         }
 
@@ -156,6 +165,7 @@ class MarketQuotesExtended(BaseModel):
     实时行情扩展模型 - 基于现有 market_quotes 集合
     统一使用 symbol 作为主要股票代码字段
     """
+
     # === 标准化字段 (主要字段) ===
     symbol: str = Field(..., description="6位股票代码", pattern=r"^\d{6}$")
     full_symbol: Optional[str] = Field(None, description="完整标准化代码")
@@ -174,27 +184,27 @@ class MarketQuotesExtended(BaseModel):
     pre_close: Optional[float] = Field(None, description="前收盘价")
     trade_date: Optional[str] = Field(None, description="交易日期")
     updated_at: Optional[datetime] = Field(None, description="更新时间")
-    
+
     # 新增行情字段
     current_price: Optional[float] = Field(None, description="当前价格(与close相同)")
     change: Optional[float] = Field(None, description="涨跌额")
     volume: Optional[float] = Field(None, description="成交量")
     turnover_rate: Optional[float] = Field(None, description="换手率")
     volume_ratio: Optional[float] = Field(None, description="量比")
-    
+
     # 五档行情
     bid_prices: Optional[List[float]] = Field(None, description="买1-5价")
     bid_volumes: Optional[List[float]] = Field(None, description="买1-5量")
     ask_prices: Optional[List[float]] = Field(None, description="卖1-5价")
     ask_volumes: Optional[List[float]] = Field(None, description="卖1-5量")
-    
+
     # 时间戳
     timestamp: Optional[datetime] = Field(None, description="行情时间戳")
-    
+
     # 数据源和版本
     data_source: Optional[str] = Field(None, description="数据来源")
     data_version: Optional[int] = Field(None, description="数据版本")
-    
+
     class Config:
         extra = "allow"
         json_schema_extra = {
@@ -203,7 +213,6 @@ class MarketQuotesExtended(BaseModel):
                 "symbol": "000001",
                 "full_symbol": "000001.SZ",
                 "market": "CN",
-
                 # 行情字段
                 "close": 12.65,
                 "pct_chg": 1.61,
@@ -212,11 +221,10 @@ class MarketQuotesExtended(BaseModel):
                 "high": 12.80,
                 "low": 12.30,
                 "trade_date": "2024-01-15",
-
                 # 扩展字段
                 "current_price": 12.65,
                 "change": 0.20,
-                "volume": 125000000
+                "volume": 125000000,
             }
         }
 
@@ -224,6 +232,7 @@ class MarketQuotesExtended(BaseModel):
 # 数据库操作相关的响应模型
 class StockBasicInfoResponse(BaseModel):
     """股票基础信息API响应模型"""
+
     success: bool = True
     data: Optional[StockBasicInfoExtended] = None
     message: str = ""
@@ -231,6 +240,7 @@ class StockBasicInfoResponse(BaseModel):
 
 class MarketQuotesResponse(BaseModel):
     """实时行情API响应模型"""
+
     success: bool = True
     data: Optional[MarketQuotesExtended] = None
     message: str = ""
@@ -238,6 +248,7 @@ class MarketQuotesResponse(BaseModel):
 
 class StockListResponse(BaseModel):
     """股票列表API响应模型"""
+
     success: bool = True
     data: Optional[List[StockBasicInfoExtended]] = None
     total: int = 0

@@ -2762,6 +2762,16 @@ class DataSourceManager:
                         "pe_ttm": standardized_data.get("pe_ttm"),
                         "total_mv": standardized_data.get("total_mv"),
                         "circ_mv": standardized_data.get("circ_mv"),
+                        # 每股指标 (2026-02-02 新增)
+                        "eps": standardized_data.get("eps"),  # 每股收益
+                        "bps": standardized_data.get("bps"),  # 每股净资产
+                        "ocfps": standardized_data.get("ocfps"),  # 每股经营现金流
+                        "capital_rese_ps": standardized_data.get(
+                            "capital_rese_ps"
+                        ),  # 每股公积金
+                        "undist_profit_ps": standardized_data.get(
+                            "undist_profit_ps"
+                        ),  # 每股未分配利润
                         # 行情数据
                         "current_price": None,
                         "change_pct": None,
