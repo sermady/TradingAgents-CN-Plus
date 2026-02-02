@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-from typing import Annotated, Sequence
+from typing import Annotated
 from datetime import date, timedelta, datetime
 from typing_extensions import TypedDict, Optional
 from langchain_openai import ChatOpenAI
 from tradingagents.agents import *
-from langgraph.prebuilt import ToolNode
 from langgraph.graph import END, StateGraph, START, MessagesState
 
 # 导入统一日志系统

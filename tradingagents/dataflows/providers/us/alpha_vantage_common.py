@@ -138,8 +138,6 @@ def get_api_key() -> str:
         "获取 API Key: https://www.alphavantage.co/support/#api-key"
     )
 
-    return api_key
-
 
 def format_datetime_for_api(date_str: str) -> str:
     """

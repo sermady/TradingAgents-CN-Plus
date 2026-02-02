@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaoStockAdapter(DataSourceAdapter):
-    """BaoStockdata source adapter"""
+    """BaoStock data source adapter"""
 
     def __init__(self):
         super().__init__()  # 调用父类初始化
@@ -95,7 +95,7 @@ class BaoStockAdapter(DataSourceAdapter):
                     df['industry'] = ''
                     logger.warning(f"BaoStock: Failed to query industry info: {industry_rs.error_msg}")
 
-                df['market'] = '\u4e3b\u677f'
+                df['market'] = '主板'
                 df['list_date'] = ''
                 logger.info(f"BaoStock: Successfully fetched {len(df)} stocks")
                 return df[['symbol', 'name', 'ts_code', 'area', 'industry', 'market', 'list_date']]
@@ -336,12 +336,7 @@ class BaoStockAdapter(DataSourceAdapter):
             return None
         return None
 
-        """Placeholder: BaoStock  does not provide full-market realtime snapshot in our adapter.
-        Return None to allow fallback to higher-priority sources.
-        """
-
     def find_latest_trade_date(self) -> Optional[str]:
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
         logger.info(f"BaoStock: Using yesterday as trade date: {yesterday}")
         return yesterday
-

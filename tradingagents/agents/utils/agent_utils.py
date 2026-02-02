@@ -2,7 +2,6 @@
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
 from typing import List
 from typing import Annotated
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import RemoveMessage
 from langchain_core.tools import tool
 from datetime import date, timedelta, datetime
@@ -17,7 +16,7 @@ from langchain_core.messages import HumanMessage
 
 # 导入统一日志系统和工具日志装饰器
 from tradingagents.utils.logging_init import get_logger
-from tradingagents.utils.tool_logging import log_tool_call, log_analysis_step
+from tradingagents.utils.tool_logging import log_tool_call
 
 # 导入日志模块
 from tradingagents.utils.logging_manager import get_logger

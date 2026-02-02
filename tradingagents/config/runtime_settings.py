@@ -178,7 +178,6 @@ def use_app_cache_enabled(default: bool = False) -> bool:
 
 
 # --- Timezone access helpers -------------------------------------------------
-from typing import Optional as _Optional
 from zoneinfo import ZoneInfo as _ZoneInfo
 
 

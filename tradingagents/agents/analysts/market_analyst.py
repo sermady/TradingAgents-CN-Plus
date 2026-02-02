@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.tool_logging import log_analyst_module
 from tradingagents.utils.stock_utils import StockUtils

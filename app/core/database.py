@@ -12,7 +12,6 @@ from pymongo import MongoClient
 from pymongo.database import Database
 from redis.asyncio import Redis, ConnectionPool
 from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
-from redis.exceptions import ConnectionError as RedisConnectionError
 from .config import settings
 
 logger = logging.getLogger(__name__)

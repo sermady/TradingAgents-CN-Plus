@@ -1,0 +1,286 @@
+\src\api\analysis.ts:9 - AnalysisRequest (used in module)
+\src\api\analysis.ts:23 - SingleAnalysisRequest (used in module)
+\src\api\analysis.ts:40 - AnalysisProgress (used in module)
+\src\api\analysis.ts:52 - AnalysisStep (used in module)
+\src\api\analysis.ts:63 - AnalysisResult (used in module)
+\src\api\analysis.ts:111 - AnalysisHistory
+\src\api\analysis.ts:119 - analysisApi
+\src\api\analysis.ts:304 - MARKET_TYPES
+\src\api\analysis.ts:310 - ANALYSIS_TYPES
+\src\api\analysis.ts:324 - DATA_SOURCES
+\src\api\analysis.ts:350 - ANALYSIS_STATUS
+\src\api\analysis.ts:358 - STEP_STATUS
+\src\api\analysis.ts:366 - validateAnalysisRequest
+\src\api\analysis.ts:399 - formatAnalysisType
+\src\api\analysis.ts:410 - formatMarketType
+\src\api\analysis.ts:419 - formatDataSource
+\src\api\analysis.ts:432 - getAnalysisHistory
+\src\api\analysis.ts:444 - getAllTasks
+\src\api\analysis.ts:462 - getStockExamples
+\src\api\analysis.ts:471 - getStockPlaceholder
+\src\api\cache.ts:54 - getCacheStats
+\src\api\cache.ts:65 - cleanupOldCache
+\src\api\cache.ts:76 - clearAllCache
+\src\api\cache.ts:88 - getCacheDetails
+\src\api\cache.ts:99 - getCacheBackendInfo
+\src\api\cache.ts:9 - CacheStats (used in module)
+\src\api\cache.ts:21 - CacheDetailItem (used in module)
+\src\api\cache.ts:33 - CacheDetailsResponse (used in module)
+\src\api\cache.ts:43 - CacheBackendInfo (used in module)
+\src\api\config.ts:10 - LLMProvider (used in module)
+\src\api\config.ts:34 - LLMConfig (used in module)
+\src\api\config.ts:67 - DataSourceConfig (used in module)
+\src\api\config.ts:88 - MarketCategory (used in module)
+\src\api\config.ts:100 - DataSourceGrouping (used in module)
+\src\api\config.ts:109 - DatabaseConfig (used in module)
+\src\api\config.ts:124 - SystemConfig (used in module)
+\src\api\config.ts:139 - ConfigTestRequest (used in module)
+\src\api\config.ts:144 - ConfigTestResponse (used in module)
+\src\api\config.ts:152 - SettingMeta (used in module)
+\src\api\config.ts:161 - configApi
+\src\api\config.ts:470 - CONFIG_PROVIDERS
+\src\api\config.ts:484 - DATA_SOURCE_TYPES
+\src\api\config.ts:509 - DATABASE_TYPES
+\src\api\config.ts:517 - DEFAULT_LLM_CONFIG
+\src\api\config.ts:525 - DEFAULT_DATA_SOURCE_CONFIG
+\src\api\config.ts:535 - DEFAULT_MARKET_CATEGORIES
+\src\api\config.ts:578 - DEFAULT_DATABASE_CONFIG
+\src\api\config.ts:586 - validateLLMConfig
+\src\api\config.ts:600 - validateDataSourceConfig
+\src\api\config.ts:611 - validateDatabaseConfig
+\src\api\database.ts:8 - DatabaseStatus (used in module)
+\src\api\database.ts:37 - DatabaseStats (used in module)
+\src\api\database.ts:52 - BackupInfo
+\src\api\database.ts:63 - ConnectionTestResult
+\src\api\database.ts:80 - databaseApi
+\src\api\database.ts:179 - formatBytes
+\src\api\database.ts:187 - formatDateTime
+\src\api\database.ts:191 - formatUptime
+\src\api\favorites.ts:20 - AddFavoriteReq (used in module)
+\src\api\logs.ts:7 - LogFileInfo (used in module)
+\src\api\logs.ts:16 - LogContentResponse (used in module)
+\src\api\logs.ts:29 - LogStatistics (used in module)
+\src\api\logs.ts:37 - LogReadRequest (used in module)
+\src\api\logs.ts:46 - LogExportRequest (used in module)
+\src\api\logs.ts:54 - LogsApi
+\src\api\modelCapabilities.ts:76 - getDefaultModelConfigs
+\src\api\modelCapabilities.ts:86 - getDepthRequirements
+\src\api\modelCapabilities.ts:96 - getCapabilityDescriptions
+\src\api\modelCapabilities.ts:106 - getAllBadges
+\src\api\modelCapabilities.ts:117 - recommendModels
+\src\api\modelCapabilities.ts:133 - validateModels
+\src\api\modelCapabilities.ts:149 - batchInitCapabilities
+\src\api\modelCapabilities.ts:163 - getModelCapability
+\src\api\modelCapabilities.ts:10 - ModelCapabilityInfo (used in module)
+\src\api\modelCapabilities.ts:27 - ModelRecommendationResponse
+\src\api\modelCapabilities.ts:38 - ModelValidationResponse
+\src\api\modelCapabilities.ts:47 - BadgeStyle (used in module)
+\src\api\modelCapabilities.ts:56 - AllBadges
+\src\api\modelCapabilities.ts:65 - DepthRequirement
+\src\api\multiMarket.ts:61 - getSupportedMarkets
+\src\api\multiMarket.ts:71 - searchStocks
+\src\api\multiMarket.ts:82 - getStockInfo
+\src\api\multiMarket.ts:93 - getStockQuote
+\src\api\multiMarket.ts:103 - getStockDailyQuotes
+\src\api\multiMarket.ts:7 - Market (used in module)
+\src\api\multiMarket.ts:16 - StockInfo (used in module)
+\src\api\multiMarket.ts:33 - StockQuote (used in module)
+\src\api\multiMarket.ts:48 - DailyQuote (used in module)
+\src\api\news.ts:6 - NewsItem (used in module)
+\src\api\news.ts:24 - LatestNewsResponse (used in module)
+\src\api\news.ts:35 - NewsQueryResponse (used in module)
+\src\api\news.ts:45 - NewsSyncResponse (used in module)
+\src\api\news.ts:56 - newsApi
+\src\api\notifications.ts:14 - NotificationListResponse (used in module)
+\src\api\operationLogs.ts:8 - OperationLog (used in module)
+\src\api\operationLogs.ts:26 - OperationLogQuery (used in module)
+\src\api\operationLogs.ts:37 - OperationLogListResponse (used in module)
+\src\api\operationLogs.ts:50 - OperationLogStats (used in module)
+\src\api\operationLogs.ts:63 - OperationLogStatsResponse (used in module)
+\src\api\operationLogs.ts:70 - CreateOperationLogRequest (used in module)
+\src\api\operationLogs.ts:81 - ClearLogsRequest (used in module)
+\src\api\operationLogs.ts:87 - ClearLogsResponse (used in module)
+\src\api\operationLogs.ts:97 - OperationLogsApi (used in module)
+\src\api\operationLogs.ts:172 - ActionTypes (used in module)
+\src\api\operationLogs.ts:188 - ActionTypeNames (used in module)
+\src\api\operationLogs.ts:204 - ActionTypeTagColors (used in module)
+\src\api\operationLogs.ts:220 - getActionTypeName
+\src\api\operationLogs.ts:224 - getActionTypeTagColor
+\src\api\operationLogs.ts:231 - formatDateTime (used in module)
+\src\api\operationLogs.ts:236 - default
+\src\api\paper.ts:3 - CurrencyAmount (used in module)
+\src\api\paper.ts:9 - PaperAccountSummary (used in module)
+\src\api\paper.ts:17 - PaperPositionItem (used in module)
+\src\api\paper.ts:26 - PaperOrderItem (used in module)
+\src\api\paper.ts:38 - GetAccountResponse (used in module)
+\src\api\paper.ts:43 - PlaceOrderPayload (used in module)
+\src\api\paper.ts:50 - paperApi
+\src\api\realtime.ts:65 - getRealtimeQuote (used in module)
+\src\api\realtime.ts:79 - getRealtimeQuotesBatch (used in module)
+\src\api\realtime.ts:93 - getMarketStatus (used in module)
+\src\api\realtime.ts:106 - shouldUseRealtime (used in module)
+\src\api\realtime.ts:10 - RealtimeQuote (used in module)
+\src\api\realtime.ts:30 - MarketStatus (used in module)
+\src\api\realtime.ts:42 - BatchQuotesResponse (used in module)
+\src\api\realtime.ts:50 - ShouldUseRealtimeResponse (used in module)
+\src\api\realtime.ts:117 - default
+\src\api\request.ts:19 - RequestConfig (used in module)
+\src\api\request.ts:461 - testApiConnection
+\src\api\scheduler.ts:82 - getJobs
+\src\api\scheduler.ts:89 - getJobDetail
+\src\api\scheduler.ts:96 - pauseJob
+\src\api\scheduler.ts:103 - resumeJob
+\src\api\scheduler.ts:110 - triggerJob
+\src\api\scheduler.ts:117 - getJobHistory
+\src\api\scheduler.ts:129 - getAllHistory
+\src\api\scheduler.ts:146 - getSchedulerStats
+\src\api\scheduler.ts:153 - getSchedulerHealth
+\src\api\scheduler.ts:160 - updateJobMetadata
+\src\api\scheduler.ts:170 - getJobExecutions
+\src\api\scheduler.ts:188 - getSingleJobExecutions
+\src\api\scheduler.ts:208 - getJobExecutionStats
+\src\api\scheduler.ts:215 - cancelExecution
+\src\api\scheduler.ts:222 - markExecutionFailed
+\src\api\scheduler.ts:231 - deleteExecution
+\src\api\scheduler.ts:7 - Job (used in module)
+\src\api\scheduler.ts:22 - JobHistory (used in module)
+\src\api\scheduler.ts:30 - JobExecution (used in module)
+\src\api\scheduler.ts:51 - JobExecutionStats (used in module)
+\src\api\scheduler.ts:64 - SchedulerStats (used in module)
+\src\api\scheduler.ts:72 - SchedulerHealth (used in module)
+\src\api\screening.ts:3 - ScreeningOrderBy (used in module)
+\src\api\screening.ts:4 - ScreeningRunReq (used in module)
+\src\api\screening.ts:14 - ScreeningRunItem (used in module)
+\src\api\screening.ts:36 - ScreeningRunResp (used in module)
+\src\api\screening.ts:39 - FieldInfo (used in module)
+\src\api\screening.ts:48 - FieldConfigResponse (used in module)
+\src\api\screening.ts:54 - IndustryOption (used in module)
+\src\api\screening.ts:60 - IndustriesResponse (used in module)
+\src\api\screening.ts:65 - screeningApi
+\src\api\stocks.ts:3 - QuoteResponse (used in module)
+\src\api\stocks.ts:19 - FundamentalsResponse (used in module)
+\src\api\stocks.ts:45 - KlineBar (used in module)
+\src\api\stocks.ts:55 - KlineResponse (used in module)
+\src\api\stocks.ts:65 - NewsItem (used in module)
+\src\api\stocks.ts:73 - NewsResponse (used in module)
+\src\api\stocks.ts:83 - stocksApi
+\src\api\stockSync.ts:7 - SingleStockSyncRequest (used in module)
+\src\api\stockSync.ts:17 - BatchStockSyncRequest (used in module)
+\src\api\stockSync.ts:26 - SyncResult (used in module)
+\src\api\stockSync.ts:34 - SingleStockSyncResponse (used in module)
+\src\api\stockSync.ts:42 - BatchStockSyncResponse (used in module)
+\src\api\stockSync.ts:65 - StockSyncStatus (used in module)
+\src\api\stockSync.ts:79 - stockSyncApi
+\src\api\sync.ts:14 - DataSourceStatus (used in module)
+\src\api\sync.ts:23 - SyncStatus (used in module)
+\src\api\sync.ts:39 - SyncRequest
+\src\api\sync.ts:43 - BaseTestResult
+\src\api\sync.ts:51 - DataSourceTestResult
+\src\api\sync.ts:60 - SyncRecommendations (used in module)
+\src\api\sync.ts:77 - getDataSourcesStatus
+\src\api\sync.ts:84 - getCurrentDataSource
+\src\api\sync.ts:97 - getSyncStatus
+\src\api\sync.ts:104 - runStockBasicsSync
+\src\api\sync.ts:126 - testDataSources
+\src\api\sync.ts:136 - getSyncRecommendations
+\src\api\sync.ts:143 - getSyncHistory
+\src\api\sync.ts:166 - clearSyncCache
+\src\api\sync.ts:171 - runSingleSourceSync
+\src\api\sync.ts:175 - getSingleSourceSyncStatus
+\src\api\tags.ts:3 - TagItem (used in module)
+\src\api\tags.ts:12 - CreateTagDto (used in module)
+\src\api\tags.ts:18 - UpdateTagDto (used in module)
+\src\api\templates.ts:3 - TemplateItem (used in module)
+\src\api\templates.ts:13 - CreateTemplatePayload (used in module)
+\src\api\templates.ts:20 - UpdateTemplatePayload (used in module)
+\src\api\templates.ts:22 - TemplatesApi (used in module)
+\src\api\templates.ts:48 - default
+\src\api\usage.ts:34 - getUsageRecords
+\src\api\usage.ts:50 - getUsageStatistics
+\src\api\usage.ts:64 - getCostByProvider
+\src\api\usage.ts:75 - getCostByModel
+\src\api\usage.ts:86 - getDailyCost
+\src\api\usage.ts:97 - deleteOldRecords
+\src\api\usage.ts:7 - UsageRecord (used in module)
+\src\api\usage.ts:20 - UsageStatistics (used in module)
+\src\components\index.ts:6 - setupGlobalComponents (used in module)
+\src\components\index.ts:12 - default
+\src\constants\analysts.ts:5 - Analyst (used in module)
+\src\constants\analysts.ts:13 - ANALYSTS (used in module)
+\src\constants\analysts.ts:41 - ANALYST_NAMES (used in module)
+\src\constants\analysts.ts:44 - DEFAULT_ANALYSTS
+\src\constants\analysts.ts:47 - getAnalystByName
+\src\constants\analysts.ts:52 - getAnalystById
+\src\constants\analysts.ts:57 - isValidAnalyst
+\src\constants\analysts.ts:62 - ANALYST_NAME_TO_ID_MAP (used in module)
+\src\constants\analysts.ts:70 - convertAnalystNamesToIds
+\src\constants\analysts.ts:75 - convertAnalystIdsToNames
+\src\constants\analysts.ts:83 - MODEL_TO_PROVIDER_MAP (used in module)
+\src\constants\analysts.ts:114 - getProviderByModel
+\src\router\index.ts:488 - default
+\src\router\index.ts:491 - routes (used in module)
+\src\stores\auth.ts:6 - AuthState (used in module)
+\src\stores\favorites.ts:17 - useFavoritesStore
+\src\stores\notifications.ts:53 - useNotificationStore
+\src\types\analysis.ts:2 - AnalysisStatus (used in module)
+\src\types\analysis.ts:11 - BatchStatus (used in module)
+\src\types\analysis.ts:21 - AnalysisParameters (used in module)
+\src\types\analysis.ts:32 - AnalysisResult (used in module)
+\src\types\analysis.ts:47 - AnalysisTask (used in module)
+\src\types\analysis.ts:76 - AnalysisBatch (used in module)
+\src\types\analysis.ts:104 - StockInfo
+\src\types\analysis.ts:146 - SingleAnalysisRequest
+\src\types\analysis.ts:153 - BatchAnalysisRequest
+\src\types\analysis.ts:162 - AnalysisTaskResponse
+\src\types\analysis.ts:177 - AnalysisBatchResponse
+\src\types\analysis.ts:193 - AnalysisHistoryQuery
+\src\types\analysis.ts:205 - AnalysisHistoryResponse
+\src\types\analysis.ts:215 - TaskProgress
+\src\types\analysis.ts:224 - BatchProgress
+\src\types\analysis.ts:235 - AnalysisStats
+\src\types\analysis.ts:247 - QueueStatus
+\src\types\analysis.ts:256 - UserQueueStatus
+\src\types\analysis.ts:264 - AnalysisReport
+\src\types\auth.ts:28 - UserPreferences (used in module)
+\src\types\auth.ts:78 - ResetPasswordForm
+\src\types\auth.ts:84 - UserPermissions
+\src\types\auth.ts:106 - UserSession
+\src\types\auth.ts:117 - UserStats
+\src\types\auth.ts:129 - UserActivity
+\src\types\auth.ts:141 - UserConfigUpdate
+\src\types\auth.ts:148 - CaptchaInfo
+\src\types\auth.ts:155 - InvitationCode
+\src\types\config.ts:4 - LLMProvider
+\src\types\config.ts:29 - LLMConfig
+\src\types\config.ts:45 - DataSourceConfig
+\src\types\config.ts:56 - DatabaseConfig
+\src\types\config.ts:70 - SystemConfig
+\src\types\config.ts:82 - ConfigTestRequest
+\src\types\config.ts:88 - ConfigTestResponse
+\src\utils\datetime.ts:88 - formatDateTimeWithRelative
+\src\utils\datetime.ts:159 - formatDate
+\src\utils\datetime.ts:173 - formatTime
+\src\utils\datetime.ts:188 - formatRelativeTime
+\src\utils\market.ts:2 - normalizeMarketForAnalysis (used in module)
+\src\utils\market.ts:23 - exchangeCodeToMarket (used in module)
+\src\utils\market.ts:50 - getMarketByStockCode (used in module)
+\src\utils\market.ts:78 - default
+\src\utils\stock.ts:12 - getStockSymbol (used in module)
+\src\utils\stock.ts:21 - getFullSymbol
+\src\utils\stock.ts:31 - createSymbolObject
+\src\utils\stock.ts:45 - normalizeSymbols
+\src\utils\stock.ts:66 - validateSymbol
+\src\utils\stock.ts:94 - formatSymbol
+\src\utils\stock.ts:117 - extractSymbol
+\src\utils\stock.ts:129 - inferMarketCode (used in module)
+\src\utils\stock.ts:158 - buildFullSymbol
+\src\utils\stock.ts:175 - normalizeStockObject (used in module)
+\src\utils\stock.ts:197 - normalizeStockArray
+\src\utils\stockValidator.ts:22 - validateAStock (used in module)
+\src\utils\stockValidator.ts:57 - validateUSStock (used in module)
+\src\utils\stockValidator.ts:90 - validateHKStock (used in module)
+\src\utils\stockValidator.ts:117 - validateStockCode (used in module)
+\src\utils\stockValidator.ts:178 - getStockCodeFormatHelp
+\src\utils\stockValidator.ts:194 - getStockCodeExamples
+\src\utils\stockValidator.ts:212 - formatStockCode
+\src\utils\stockValidator.ts:6 - StockValidationResult (used in module)

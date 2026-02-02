@@ -6,10 +6,10 @@
 """
 
 import os
-from typing import Any, Dict, List, Optional, Union, Sequence
+from typing import Any, Dict, List, Optional, Union
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
-from pydantic import Field, SecretStr
+from pydantic import Field
 from ..config.config_manager import token_tracker
 
 # 导入日志模块

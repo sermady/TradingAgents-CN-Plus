@@ -6,7 +6,6 @@
 
 import streamlit as st
 import logging
-from urllib.parse import urlencode, parse_qs
 import json
 
 logger = logging.getLogger(__name__)

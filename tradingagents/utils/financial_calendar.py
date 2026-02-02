@@ -16,7 +16,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from zoneinfo import ZoneInfo
-import calendar
 
 
 class FinancialCalendar:

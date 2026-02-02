@@ -12,7 +12,7 @@ from app.routers.auth_db import get_current_user
 from app.models.user import User
 from app.models.config import (
     SystemConfigResponse, LLMConfigRequest, DataSourceConfigRequest,
-    DatabaseConfigRequest, ConfigTestRequest, ConfigTestResponse,
+    DatabaseConfigRequest, ConfigTestRequest,
     LLMConfig, DataSourceConfig, DatabaseConfig,
     LLMProvider, LLMProviderRequest, LLMProviderResponse,
     MarketCategory, MarketCategoryRequest, DataSourceGrouping,
@@ -80,8 +80,6 @@ async def reload_config(current_user: dict = Depends(get_current_user)):
 
 
 # ===== 方案A：敏感字段响应脱敏 & 请求清洗 =====
-from copy import deepcopy
-
 def _sanitize_llm_configs(items):
     try:
         return [LLMConfig(**{**i.model_dump(), "api_key": None}) for i in items]

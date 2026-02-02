@@ -36,8 +36,7 @@ from components.sidebar import render_sidebar
 from components.header import render_header
 from components.analysis_form import render_analysis_form
 from components.results_display import render_results
-from components.login import render_login_form, check_authentication, render_user_info, render_sidebar_user_info, render_sidebar_logout, require_permission
-from components.user_activity_dashboard import render_user_activity_dashboard, render_activity_summary_widget
+from components.login import render_login_form, render_sidebar_user_info, render_sidebar_logout, require_permission
 from utils.api_checker import check_api_keys
 from utils.analysis_runner import run_stock_analysis, validate_analysis_params, format_analysis_results
 from utils.progress_tracker import SmartStreamlitProgressDisplay, create_smart_progress_callback
