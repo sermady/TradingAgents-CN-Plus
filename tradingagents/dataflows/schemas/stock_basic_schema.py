@@ -368,6 +368,12 @@ class StockBasicData:
     circ_mv: Optional[float] = None
     turnover_rate: Optional[float] = None
     volume_ratio: Optional[float] = None
+    # 每股指标 (2026-02-02 新增)
+    eps: Optional[float] = None  # 每股收益
+    bps: Optional[float] = None  # 每股净资产
+    ocfps: Optional[float] = None  # 每股经营现金流
+    capital_rese_ps: Optional[float] = None  # 每股公积金
+    undist_profit_ps: Optional[float] = None  # 每股未分配利润
 
     last_sync: str = ""
     data_version: int = 1
@@ -434,6 +440,12 @@ class StockBasicData:
             circ_mv=convert_to_float(raw_data.get("circ_mv")),
             turnover_rate=convert_to_float(raw_data.get("turnover_rate")),
             volume_ratio=convert_to_float(raw_data.get("volume_ratio")),
+            # 每股指标 (2026-02-02 新增)
+            eps=convert_to_float(raw_data.get("eps")),
+            bps=convert_to_float(raw_data.get("bps")),
+            ocfps=convert_to_float(raw_data.get("ocfps")),
+            capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
+            undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
             last_sync=datetime.now().isoformat(),
             data_source=data_source,
             data_version=1,
