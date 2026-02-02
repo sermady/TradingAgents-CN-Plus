@@ -2883,10 +2883,25 @@ class OptimizedChinaDataProvider:
                 total_mv_yuan = stock_info_total_mv / 10000  # 万元转亿元
                 metrics["total_mv"] = f"{total_mv_yuan:.2f}亿元"
 
-            # PE_TTM（使用 stock_info 中的 pe_ttm）
-            pe_ttm = stock_info.get("pe_ttm") if stock_info else None
-            if pe_ttm is not None and pe_ttm > 0:
-                metrics["pe_ttm"] = f"{pe_ttm:.1f}倍"
+            # 🔥 PE_TTM 实时计算：总市值 / TTM净利润（而不是用Tushare静态数据）
+            # 从 financial_data 获取 TTM 净利润
+            net_profit_ttm = financial_data.get("net_profit_ttm")
+            if total_mv_yuan and net_profit_ttm and net_profit_ttm > 0:
+                # 转换净利润单位：元 -> 亿元
+                net_profit_ttm_yi = net_profit_ttm / 100000000
+                calculated_pe_ttm = total_mv_yuan / net_profit_ttm_yi
+                metrics["pe_ttm"] = f"{calculated_pe_ttm:.1f}倍"
+                logger.info(
+                    f"✅ [实时PE_TTM计算] 市值{total_mv_yuan:.2f}亿元 / TTM净利润{net_profit_ttm_yi:.2f}亿元 = {calculated_pe_ttm:.1f}倍"
+                )
+            else:
+                # 降级到 stock_info 中的 pe_ttm（静态数据）
+                pe_ttm = stock_info.get("pe_ttm") if stock_info else None
+                if pe_ttm is not None and pe_ttm > 0:
+                    metrics["pe_ttm"] = f"{pe_ttm:.1f}倍(静态)"
+                    logger.warning(
+                        f"⚠️ [PE_TTM降级] 使用Tushare静态PE_TTM: {pe_ttm:.1f}倍（无法实时计算）"
+                    )
 
             # ROE
             if roe is not None:
