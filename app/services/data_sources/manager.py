@@ -25,11 +25,23 @@ class DataSourceManager:
     """
 
     def __init__(self):
-        self.adapters: List[DataSourceAdapter] = [
+        # 检查是否启用 BaoStock（默认禁用）
+        import os
+        baostock_enabled = os.getenv("BAOSTOCK_UNIFIED_ENABLED", "false").lower() in ("true", "1", "yes")
+
+        adapters_list = [
             TushareAdapter(),
             AKShareAdapter(),
-            BaoStockAdapter(),
         ]
+
+        # 仅在明确启用时添加 BaoStock
+        if baostock_enabled:
+            adapters_list.append(BaoStockAdapter())
+            logger.info("✅ BaoStock 数据源已启用")
+        else:
+            logger.info("⏸️ BaoStock 数据源已禁用（通过配置）")
+
+        self.adapters: List[DataSourceAdapter] = adapters_list
 
         # 从数据库加载优先级配置
         self._load_priority_from_database()
