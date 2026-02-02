@@ -53,7 +53,7 @@ class ConnectionManager:
         self.connection_info: Dict[WebSocket, ConnectionInfo] = {}
         self._lock = asyncio.Lock()
         # 每个用户最多允许的WebSocket连接数
-        self.max_connections_per_user = 3
+        self.max_connections_per_user = 5  # 🔥 放宽连接数限制（原3个，现5个）
 
     async def connect(self, websocket: WebSocket, user_id: str):
         """连接 WebSocket"""
