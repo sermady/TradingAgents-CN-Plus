@@ -2,6 +2,53 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notificationsApi, type NotificationItem } from '@/api/notifications'
 import { useAuthStore } from '@/stores/auth'
+import * as DOMPurify from 'dompurify'
+
+// 🔒 安全消息类型定义
+type SafeWebSocketMessage = {
+  type: 'connected' | 'notification' | 'heartbeat'
+  data?: {
+    id?: string
+    title?: string
+    content?: string
+    type?: string
+    link?: string
+    source?: string
+    created_at?: string
+    status?: 'unread' | 'read'
+    user_id?: string
+    timestamp?: string
+    message?: string
+  }
+}
+
+/**
+ * 🔒 消息验证函数 - 防止XSS攻击
+ */
+function isValidMessage(msg: any): msg is SafeWebSocketMessage {
+  const validTypes = ['connected', 'notification', 'heartbeat']
+  if (!msg || typeof msg !== 'object') return false
+  if (!msg.type || !validTypes.includes(msg.type)) return false
+
+  if (msg.type === 'notification' && msg.data) {
+    // 验证通知字段
+    const hasTitle = msg.data.title !== undefined
+    const hasContent = msg.data.content !== undefined
+    const validTitle = !msg.data.title || (typeof msg.data.title === 'string' && msg.data.title.length < 200)
+    const validContent = !msg.data.content || (typeof msg.data.content === 'string' && msg.data.content.length < 2000)
+
+    return hasTitle && hasContent && validTitle && validContent
+  }
+  return true
+}
+
+/**
+ * 🔒 HTML净化函数 - 防止XSS攻击
+ */
+function sanitizeHtml(input: string | undefined): string | undefined {
+  if (!input) return input
+  return DOMPurify.sanitize(input, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+}
 
 export const useNotificationStore = defineStore('notifications', () => {
   const items = ref<NotificationItem[]>([])
@@ -20,6 +67,7 @@ export const useNotificationStore = defineStore('notifications', () => {
   let connectionId = 0  // 🔥 连接ID（用于日志追踪）
   let wsListenerAdded = false  // 🔥 页面生命周期监听是否已添加
   let isConnecting = false  // 🔥 连接状态锁，防止并发连接
+  let connectRequestCount = 0  // 🔥 连接请求计数器（原子操作）
 
   // 连接状态
   const connected = computed(() => wsConnected.value)
@@ -105,9 +153,9 @@ export const useNotificationStore = defineStore('notifications', () => {
   // 🔥 连接 WebSocket（优先）
   function connectWebSocket() {
     try {
-      // 🔥 防止并发连接 - 如果正在连接中，直接返回
-      if (isConnecting) {
-        console.log('[WS] 连接正在进行中，跳过本次连接请求')
+      // 🔥 原子检查：防止并发连接竞态条件
+      if (isConnecting || connectRequestCount > 0) {
+        console.log(`[WS] 连接请求进行中 (count: ${connectRequestCount})，跳过`)
         return
       }
 
@@ -117,7 +165,8 @@ export const useNotificationStore = defineStore('notifications', () => {
         return
       }
 
-      // 标记为正在连接
+      // 原子增加连接计数
+      connectRequestCount++
       isConnecting = true
 
       // 标记为非手动断开（允许自动重连）
@@ -139,19 +188,24 @@ export const useNotificationStore = defineStore('notifications', () => {
       const token = authStore.token || localStorage.getItem('auth-token') || ''
       if (!token) {
         console.warn('[WS] 未找到 token，无法连接 WebSocket')
+        connectRequestCount = 0
+        isConnecting = false
         return
       }
 
-      // WebSocket 连接地址
+      // 🔒 WebSocket 连接地址 - 不再在URL中传递token
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
-      const wsUrl = `${wsProtocol}//${host}/api/ws/notifications?token=${encodeURIComponent(token)}`
+      const wsUrl = `${wsProtocol}//${host}/api/ws/notifications`
 
       connectionId++
       connectionStartTime = Date.now()
-      console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl}`)
+      // 🔒 脱敏日志：隐藏完整 token
+      const safeToken = token.length > 10 ? `${token.slice(0, 10)}...` : '***'
+      console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl} (token: ${safeToken})`)
 
-      const socket = new WebSocket(wsUrl)
+      // 🔒 使用 WebSocket 子协议传递 token（更安全）
+      const socket = new WebSocket(wsUrl, ['auth-token', token])
       ws.value = socket
 
       socket.onopen = () => {
@@ -159,14 +213,16 @@ export const useNotificationStore = defineStore('notifications', () => {
         console.log(`[WS] ✅ 连接成功 #${connectionId} (耗时: ${duration}ms)`)
         wsConnected.value = true
         wsReconnectAttempts = 0
-        isConnecting = false  // 🔥 重置连接锁
+        connectRequestCount = 0  // 成功后重置
+        isConnecting = false
         // 添加页面生命周期监听
         addPageLifecycleListeners()
       }
 
       socket.onerror = (error) => {
         console.error(`[WS] ❌ 连接错误 #${connectionId}:`, error)
-        isConnecting = false  // 🔥 重置连接锁
+        connectRequestCount = 0  // 失败后重置
+        isConnecting = false
       }
 
       socket.onclose = (event) => {
@@ -178,7 +234,8 @@ export const useNotificationStore = defineStore('notifications', () => {
         )
         wsConnected.value = false
         ws.value = null
-        isConnecting = false  // 🔥 重置连接锁
+        connectRequestCount = 0  // 断开后重置
+        isConnecting = false
 
         // 🔥 关键：手动断开时不重连
         if (isManual) {
@@ -200,22 +257,34 @@ export const useNotificationStore = defineStore('notifications', () => {
         }
       }
 
-      socket.onerror = (error) => {
-        console.error(`[WS] ❌ 连接错误 #${connectionId}:`, error)
-        wsConnected.value = false
-      }
-
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
+
+          // 🔒 消息验证 - 防止XSS攻击
+          if (!isValidMessage(message)) {
+            console.error('[WS] 🚫 收到无效消息格式，已丢弃:', message)
+            return
+          }
+
+          // 🔒 净化HTML内容
+          if (message.data?.title) {
+            message.data.title = sanitizeHtml(message.data.title)
+          }
+          if (message.data?.content) {
+            message.data.content = sanitizeHtml(message.data.content)
+          }
+
           handleWebSocketMessage(message)
         } catch (error) {
-          console.error('[WS] 解析消息失败:', error)
+          console.error('[WS] 消息处理失败:', error)
         }
       }
     } catch (error) {
       console.error('[WS] 连接失败:', error)
       wsConnected.value = false
+      connectRequestCount = 0
+      isConnecting = false
     }
   }
 

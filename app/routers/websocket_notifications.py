@@ -2,12 +2,20 @@
 """
 WebSocket 通知系统
 替代 SSE + Redis PubSub，解决连接泄漏问题
+
+安全增强 (2026-02-02):
+- JWT Token 改用子协议传递，防止日志泄露
+- 添加全局连接限制防止 DoS
+- 添加 IP 级别连接限制
+- 修复心跳任务协程泄漏
 """
 
 import asyncio
 import json
 import logging
-from typing import Dict, Set
+import time
+from collections import defaultdict
+from typing import Dict, Set, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
 from datetime import datetime
 
@@ -19,11 +27,12 @@ logger = logging.getLogger("webapi.websocket")
 
 # 🔥 连接信息（用于诊断）
 class ConnectionInfo:
-    def __init__(self, websocket: WebSocket, user_id: str):
+    def __init__(self, websocket: WebSocket, user_id: str, client_ip: str = 'unknown'):
         self.websocket = websocket
         self.user_id = user_id
         self.created_at = datetime.utcnow()
         self.client_info = self._get_client_info(websocket)
+        self.client_ip = client_ip  # 🔒 存储客户端 IP
 
     def _get_client_info(self, websocket: WebSocket) -> str:
         try:
@@ -35,16 +44,37 @@ class ConnectionInfo:
                 )
                 return user_agent[:50] if user_agent else "Unknown"
             return "Unknown"
-        except:
+        except (KeyError, AttributeError, UnicodeDecodeError) as e:
+            logger.debug(f"获取客户端信息失败: {e}")
             return "Unknown"
 
     def get_lifetime_seconds(self) -> float:
         return (datetime.utcnow() - self.created_at).total_seconds()
 
 
+# 🔥 获取客户端 IP 地址（支持代理）
+def get_client_ip(websocket: WebSocket) -> str:
+    """从 WebSocket 请求中提取客户端 IP"""
+    try:
+        if hasattr(websocket, 'scope') and websocket.scope:
+            headers = dict(websocket.scope.get('headers', []))
+            # 检查代理头
+            for header in [b'x-forwarded-for', b'x-real-ip']:
+                if header in headers:
+                    ip_list = headers[header].decode('utf-8').split(',')
+                    return ip_list[0].strip() if ip_list else 'unknown'
+            # 回退到直接连接
+            client = websocket.scope.get('client')
+            if client:
+                return client[0]
+    except Exception as e:
+        logger.warning(f"获取客户端 IP 失败: {e}")
+    return 'unknown'
+
+
 # 🔥 全局 WebSocket 连接管理器
 class ConnectionManager:
-    """WebSocket 连接管理器"""
+    """WebSocket 连接管理器（含 DoS 防护）"""
 
     def __init__(self):
         # user_id -> Set[WebSocket]
@@ -52,15 +82,48 @@ class ConnectionManager:
         # 🔥 连接信息映射（用于诊断）
         self.connection_info: Dict[WebSocket, ConnectionInfo] = {}
         self._lock = asyncio.Lock()
-        # 每个用户最多允许的WebSocket连接数
-        self.max_connections_per_user = 5  # 🔥 放宽连接数限制（原3个，现5个）
 
-    async def connect(self, websocket: WebSocket, user_id: str):
-        """连接 WebSocket"""
+        # 每个用户最多允许的WebSocket连接数
+        self.max_connections_per_user = 5
+
+        # 🔒 DoS 防护配置
+        self.max_total_connections = 1000  # 全局最大连接数
+        self.ip_connections: Dict[str, int] = defaultdict(int)  # IP -> 连接数
+        self.max_connections_per_ip = 10  # 单IP最多10个连接
+        self.ip_connection_history: Dict[str, list] = defaultdict(list)  # IP连接历史
+
+    async def connect(self, websocket: WebSocket, user_id: str, client_ip: str):
+        """连接 WebSocket（含 DoS 防护）"""
+        # 🔒 DoS 防护：全局连接限制
+        total = sum(len(conns) for conns in self.active_connections.values())
+        if total >= self.max_total_connections:
+            await websocket.close(code=1013, reason="Server overload")
+            logger.warning(f"🚫 [WS] 拒绝连接：服务器连接数已达上限 ({total})")
+            raise HTTPException(status_code=429, detail="Too many connections")
+
+        # 🔒 DoS 防护：IP 级别限制
+        if self.ip_connections[client_ip] >= self.max_connections_per_ip:
+            await websocket.close(code=1013, reason="IP limit exceeded")
+            logger.warning(f"🚫 [WS] 拒绝连接：IP {client_ip} 连接数超限")
+            raise HTTPException(status_code=429, detail="Too many connections from this IP")
+
+        # 🔒 DoS 防护：连接频率限制（防止重放攻击）
+        now = time.time()
+        recent = [t for t in self.ip_connection_history[client_ip] if now - t < 60]
+        if len(recent) > 20:  # 1分钟内最多20次连接
+            await websocket.close(code=1013, reason="Too frequent reconnections")
+            logger.warning(f"🚫 [WS] 拒绝连接：IP {client_ip} 重连过于频繁")
+            raise HTTPException(status_code=429, detail="Too frequent connections")
+
+        # 记录连接
+        self.ip_connections[client_ip] += 1
+        self.ip_connection_history[client_ip].append(now)
+
         await websocket.accept()
 
-        # 🔥 创建连接信息
+        # 🔥 创建连接信息（包含客户端 IP）
         conn_info = ConnectionInfo(websocket, user_id)
+        conn_info.client_ip = client_ip  # 存储客户端 IP
 
         async with self._lock:
             # 检查用户当前连接数
@@ -107,17 +170,21 @@ class ConnectionManager:
                 len(conns) for conns in self.active_connections.values()
             )
             logger.info(
-                f"✅ [WS] 新连接: user={user_id}, "
+                f"✅ [WS] 新连接: user={user_id}, ip={client_ip}, "
                 f"该用户连接数={len(self.active_connections[user_id])}, "
                 f"总连接数={total_connections}, "
                 f"client={conn_info.client_info[:30]}"
             )
 
-    async def disconnect(self, websocket: WebSocket, user_id: str):
+    async def disconnect(self, websocket: WebSocket, user_id: str, client_ip: str):
         """断开 WebSocket"""
         # 🔥 获取连接存活时间
         conn_info = self.connection_info.pop(websocket, None)
         lifetime = conn_info.get_lifetime_seconds() if conn_info else 0
+
+        # 🔒 释放 IP 计数
+        if client_ip != 'unknown':
+            self.ip_connections[client_ip] = max(0, self.ip_connections[client_ip] - 1)
 
         async with self._lock:
             if user_id in self.active_connections:
@@ -129,7 +196,7 @@ class ConnectionManager:
                 len(conns) for conns in self.active_connections.values()
             )
             logger.info(
-                f"🔌 [WS] 断开连接: user={user_id}, "
+                f"🔌 [WS] 断开连接: user={user_id}, ip={client_ip}, "
                 f"存活: {lifetime:.1f}s, "
                 f"总连接数={total_connections}"
             )
@@ -198,13 +265,11 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws/notifications")
-async def websocket_notifications_endpoint(
-    websocket: WebSocket, token: str = Query(...)
-):
+async def websocket_notifications_endpoint(websocket: WebSocket):
     """
-    WebSocket 通知端点
+    WebSocket 通知端点（安全增强版）
 
-    客户端连接: ws://localhost:8000/api/ws/notifications?token=<jwt_token>
+    客户端连接: new WebSocket('ws://localhost:8000/api/ws/notifications', ['auth-token', '<jwt_token>'])
 
     消息格式:
     {
@@ -221,10 +286,22 @@ async def websocket_notifications_endpoint(
         }
     }
     """
+    # 🔒 从子协议获取 Token（更安全）
+    subprotocols = websocket.scope.get('subprotocols', [])
+    token = None
+    if len(subprotocols) >= 2 and subprotocols[0] == 'auth-token':
+        token = subprotocols[1]
+
+    if not token:
+        await websocket.close(code=1008, reason="Unauthorized: No token provided")
+        logger.warning("🚫 [WS] 拒绝连接：未提供 Token")
+        return
+
     # 验证 token
     token_data = AuthService.verify_token(token)
     if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized")
+        await websocket.close(code=1008, reason="Unauthorized: Invalid token")
+        logger.warning("🚫 [WS] 拒绝连接：Token 验证失败")
         return
 
     # 🔥 安全修复：从 token 中解析用户 ID，不再硬编码
@@ -245,8 +322,15 @@ async def websocket_notifications_endpoint(
         await websocket.close(code=1008, reason="Token parse error")
         return
 
-    # 连接 WebSocket
-    await manager.connect(websocket, user_id)
+    # 🔒 获取客户端 IP
+    client_ip = get_client_ip(websocket)
+
+    # 连接 WebSocket（含 DoS 防护）
+    try:
+        await manager.connect(websocket, user_id, client_ip)
+    except HTTPException:
+        # DoS 防护已关闭连接
+        return
 
     # 发送连接确认
     await websocket.send_json(
@@ -259,6 +343,9 @@ async def websocket_notifications_endpoint(
             },
         }
     )
+
+    # 🔒 显式声明心跳任务变量（修复协程泄漏）
+    heartbeat_task = None
 
     try:
         # 心跳任务
@@ -293,16 +380,19 @@ async def websocket_notifications_endpoint(
                 break
 
     finally:
-        # 取消心跳任务
-        if "heartbeat_task" in locals():
+        # 🔒 安全取消心跳任务（修复协程泄漏）
+        if heartbeat_task is not None:
             heartbeat_task.cancel()
             try:
-                await heartbeat_task
-            except asyncio.CancelledError:
+                # 添加超时防止永久挂起
+                await asyncio.wait_for(heartbeat_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
+            except Exception as e:
+                logger.warning(f"⚠️ [WS] 心跳任务清理异常: {e}")
 
         # 断开连接
-        await manager.disconnect(websocket, user_id)
+        await manager.disconnect(websocket, user_id, client_ip)
 
 
 @router.websocket("/ws/tasks/{task_id}")
