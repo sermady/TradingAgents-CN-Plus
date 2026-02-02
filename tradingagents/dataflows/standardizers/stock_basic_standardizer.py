@@ -147,7 +147,7 @@ class TushareBasicStandardizer(StockBasicStandardizer):
 
         # 添加调试日志
         if pe is not None and growth is not None:
-             logger.info(f"[PEG_CALC] pe={pe}, growth={growth}")
+            logger.info(f"[PEG_CALC] pe={pe}, growth={growth}")
 
         if pe is None or growth is None:
             return None
@@ -205,11 +205,19 @@ class TushareBasicStandardizer(StockBasicStandardizer):
             pb=convert_to_float(raw_data.get("pb")),
             ps=convert_to_float(raw_data.get("ps")),
             pcf=convert_to_float(raw_data.get("pcf")),
-            peg=self._calculate_peg(raw_data.get("pe_ttm"), raw_data.get("q_profit_yoy")),
+            peg=self._calculate_peg(
+                raw_data.get("pe_ttm"), raw_data.get("q_profit_yoy")
+            ),
             total_mv=self._convert_wan_to_yi(raw_data.get("total_mv")),
             circ_mv=self._convert_wan_to_yi(raw_data.get("circ_mv")),
             turnover_rate=convert_to_float(raw_data.get("turnover_rate")),
             volume_ratio=convert_to_float(raw_data.get("volume_ratio")),
+            # 每股指标 (2026-02-02 新增)
+            eps=convert_to_float(raw_data.get("eps")),
+            bps=convert_to_float(raw_data.get("bps")),
+            ocfps=convert_to_float(raw_data.get("ocfps")),
+            capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
+            undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
             data_source=self.PROVIDER_NAME,
             data_version=1,
         )

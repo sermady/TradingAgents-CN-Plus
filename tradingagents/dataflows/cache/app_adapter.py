@@ -62,6 +62,12 @@ def _standardize_cached_data(doc: Dict[str, Any]) -> Dict[str, Any]:
         "circ_mv": doc.get("circ_mv"),
         "turnover_rate": doc.get("turnover_rate"),
         "volume_ratio": doc.get("volume_ratio"),
+        # 每股指标 (2026-02-02 新增)
+        "eps": doc.get("eps"),
+        "bps": doc.get("bps"),
+        "ocfps": doc.get("ocfps"),
+        "capital_rese_ps": doc.get("capital_rese_ps"),
+        "undist_profit_ps": doc.get("undist_profit_ps"),
         "data_source": doc.get("data_source", "app_cache"),
         "data_version": doc.get("data_version", 1),
         "last_sync": doc.get("last_sync", datetime.now().isoformat()),
