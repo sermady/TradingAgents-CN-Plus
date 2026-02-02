@@ -525,16 +525,28 @@ class TushareProvider(BaseStockDataProvider):
                     self.logger.warning(f"获取 daily_basic 财务指标失败: {daily_e}")
 
                 try:
+                    # 获取每股指标数据（基本每股收益、每股净资产、每股现金流等）
                     fina_df = await asyncio.to_thread(
                         self.api.fina_indicator,
                         ts_code=ts_code,
-                        fields="ts_code,q_profit_yoy",
+                        fields="ts_code,q_profit_yoy,diluted2_eps,bps,ocfps,capital_rese_ps,undist_profit_ps",
                         limit=1,
                     )
                     if fina_df is not None and not fina_df.empty:
-                        basic_data["q_profit_yoy"] = fina_df.iloc[0]["q_profit_yoy"]
+                        row = fina_df.iloc[0]
+                        basic_data["q_profit_yoy"] = row.get("q_profit_yoy")
+                        # 每股指标数据
+                        basic_data["eps"] = row.get("diluted2_eps")  # 稀释每股收益
+                        basic_data["bps"] = row.get("bps")  # 每股净资产
+                        basic_data["ocfps"] = row.get("ocfps")  # 每股经营现金流
+                        basic_data["capital_rese_ps"] = row.get(
+                            "capital_rese_ps"
+                        )  # 每股公积金
+                        basic_data["undist_profit_ps"] = row.get(
+                            "undist_profit_ps"
+                        )  # 每股未分配利润
                         self.logger.info(
-                            f"🔍 [Tushare] 获取到 {ts_code} q_profit_yoy: {basic_data['q_profit_yoy']}, pe_ttm: {basic_data.get('pe_ttm')}"
+                            f"🔍 [Tushare] 获取到 {ts_code} 每股指标: EPS={basic_data.get('eps')}, BPS={basic_data.get('bps')}, OCFPS={basic_data.get('ocfps')}"
                         )
                     else:
                         self.logger.warning(
@@ -1744,6 +1756,16 @@ class TushareProvider(BaseStockDataProvider):
             "circ_mv": self._convert_to_float(raw_data.get("circ_mv")),
             "turnover_rate": self._convert_to_float(raw_data.get("turnover_rate")),
             "volume_ratio": self._convert_to_float(raw_data.get("volume_ratio")),
+            # 每股指标 (2026-02-02 新增: 基本每股收益、每股净资产、每股现金流等)
+            "eps": self._convert_to_float(raw_data.get("eps")),  # 稀释每股收益
+            "bps": self._convert_to_float(raw_data.get("bps")),  # 每股净资产
+            "ocfps": self._convert_to_float(raw_data.get("ocfps")),  # 每股经营现金流
+            "capital_rese_ps": self._convert_to_float(
+                raw_data.get("capital_rese_ps")
+            ),  # 每股公积金
+            "undist_profit_ps": self._convert_to_float(
+                raw_data.get("undist_profit_ps")
+            ),  # 每股未分配利润
             # 元数据
             "data_source": "tushare",
             "data_version": 1,
