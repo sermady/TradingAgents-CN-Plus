@@ -288,7 +288,7 @@ class MongoDBCacheAdapter:
     def get_financial_data(
         self, symbol: str, report_period: str = None
     ) -> Optional[Dict[str, Any]]:
-        """获取财务数据，按数据源优先级查询"""
+        """获取财务数据，按数据源优先级查询（排除BaoStock，仅使用Tushare/AKShare）"""
         if not self.use_app_cache or self.db is None:
             return None
 
@@ -296,8 +296,10 @@ class MongoDBCacheAdapter:
             code6 = str(symbol).zfill(6)
             collection = self.db.stock_financial_data
 
-            # 获取数据源优先级
+            # 获取数据源优先级并排除BaoStock
             priority_order = self._get_data_source_priority(symbol)
+            # 🔥 过滤掉BaoStock，财务数据只使用Tushare和AKShare
+            priority_order = [ds for ds in priority_order if ds != "baostock"]
 
             # 按优先级查询
             for data_source in priority_order:
