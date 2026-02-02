@@ -151,7 +151,7 @@ class TestFinancialMetricsExtraction:
         stock_info = {
             "code": "605589",
             "name": "圣泉集团",
-            "pe": 32.6,
+            "pe": 24.37,  # 修复：使用Tushare PE_TTM正确值（原32.6错误）
             "pb": 2.48,
             "total_mv": 255.10,  # 亿元
         }
@@ -359,7 +359,7 @@ class TestFinancialMetricsExtraction:
         # 模拟财务指标数据
         financial_estimates = {
             "total_mv": "255.10亿元",
-            "pe": "32.6倍",
+            "pe": "24.37倍",  # 修复：使用Tushare PE_TTM正确值（原32.6倍错误）
             "pb": "2.48倍",
             "roe": "7.5%",
             "debt_ratio": "34.4%",
