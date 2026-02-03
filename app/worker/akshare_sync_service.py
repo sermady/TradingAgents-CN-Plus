@@ -39,6 +39,15 @@ class AKShareSyncService:
     async def initialize(self):
         """初始化同步服务"""
         try:
+            # 🔥 检查 AKShare 是否启用
+            import os
+            akshare_enabled = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+
+            if not akshare_enabled:
+                logger.info("⏸️ AKShare 同步服务已禁用（AKSHARE_UNIFIED_ENABLED=false），跳过初始化")
+                self.provider = None
+                return
+
             # 初始化数据库连接
             self.db = get_mongo_db()
 
@@ -1236,12 +1245,37 @@ class AKShareSyncService:
 _akshare_sync_service = None
 
 
-async def get_akshare_sync_service() -> AKShareSyncService:
-    """获取AKShare同步服务实例"""
+class AKShareDisabledError(Exception):
+    """AKShare 被禁用时的异常"""
+    pass
+
+
+async def get_akshare_sync_service() -> Optional[AKShareSyncService]:
+    """获取AKShare同步服务实例
+
+    Returns:
+        AKShareSyncService: 服务实例（如果启用）
+        None: 如果 AKShare 被禁用
+    """
     global _akshare_sync_service
+
+    # 🔥 检查是否启用
+    import os
+    akshare_enabled = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower() in ("true", "1", "yes", "on")
+
+    if not akshare_enabled:
+        logger.debug("⏸️ AKShare 已禁用，跳过同步服务获取")
+        return None
+
     if _akshare_sync_service is None:
         _akshare_sync_service = AKShareSyncService()
         await _akshare_sync_service.initialize()
+
+        # 检查初始化结果
+        if _akshare_sync_service.provider is None:
+            # 初始化返回了 None（被禁用）
+            return None
+
     return _akshare_sync_service
 
 
@@ -1250,6 +1284,9 @@ async def run_akshare_basic_info_sync(force_update: bool = False):
     """APScheduler任务：同步股票基础信息"""
     try:
         service = await get_akshare_sync_service()
+        if service is None:
+            logger.info("⏸️ AKShare 已禁用，跳过基础信息同步")
+            return {"status": "skipped", "reason": "akshare_disabled"}
         result = await service.sync_stock_basic_info(force_update=force_update)
         logger.info(f"✅ AKShare基础信息同步完成: {result}")
         return result
@@ -1267,6 +1304,9 @@ async def run_akshare_quotes_sync(force: bool = False):
     """
     try:
         service = await get_akshare_sync_service()
+        if service is None:
+            logger.info("⏸️ AKShare 已禁用，跳过行情同步")
+            return {"status": "skipped", "reason": "akshare_disabled"}
         # 注意：AKShare 没有交易时间检查逻辑，force 参数仅用于接口一致性
         result = await service.sync_realtime_quotes(force=force)
         logger.info(f"✅ AKShare行情同步完成: {result}")
@@ -1280,6 +1320,9 @@ async def run_akshare_historical_sync(incremental: bool = True):
     """APScheduler任务：同步历史数据"""
     try:
         service = await get_akshare_sync_service()
+        if service is None:
+            logger.info("⏸️ AKShare 已禁用，跳过历史数据同步")
+            return {"status": "skipped", "reason": "akshare_disabled"}
         result = await service.sync_historical_data(incremental=incremental)
         logger.info(f"✅ AKShare历史数据同步完成: {result}")
         return result

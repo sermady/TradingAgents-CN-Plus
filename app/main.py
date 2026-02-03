@@ -774,6 +774,12 @@ async def lifespan(app: FastAPI):
             try:
                 logger.info("📰 开始新闻数据同步（AKShare - 仅自选股）...")
                 service = await get_akshare_sync_service()
+
+                # 🔥 检查 AKShare 是否被禁用
+                if service is None:
+                    logger.info("⏸️ AKShare 已禁用，跳过新闻数据同步")
+                    return
+
                 result = await service.sync_news_data(
                     symbols=None,  # None + favorites_only=True 表示只同步自选股
                     max_news_per_stock=settings.NEWS_SYNC_MAX_PER_SOURCE,
