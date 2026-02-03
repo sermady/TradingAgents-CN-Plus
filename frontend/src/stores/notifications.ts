@@ -6,7 +6,7 @@ import * as DOMPurify from 'dompurify'
 
 // 🔒 安全消息类型定义
 type SafeWebSocketMessage = {
-  type: 'connected' | 'notification' | 'heartbeat'
+  type: 'connected' | 'notification' | 'heartbeat' | 'pong'
   data?: {
     id?: string
     title?: string
@@ -69,6 +69,10 @@ export const useNotificationStore = defineStore('notifications', () => {
   let isConnecting = false  // 🔥 连接状态锁，防止并发连接
   let connectRequestCount = 0  // 🔥 连接请求计数器（原子操作）
 
+  // 🔥 客户端心跳
+  let heartbeatInterval: number | null = null  // 心跳定时器
+  const HEARTBEAT_INTERVAL = 15000  // 15秒发送一次心跳
+
   // 连接状态
   const connected = computed(() => wsConnected.value)
 
@@ -123,6 +127,46 @@ export const useNotificationStore = defineStore('notifications', () => {
     }
     items.value.unshift(item)
     if (item.status === 'unread') unreadCount.value += 1
+  }
+
+  // 🔥 客户端心跳函数
+  function startHeartbeat() {
+    // 清理旧的心跳
+    stopHeartbeat()
+
+    // 立即发送一个 ping，确认连接可用
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      try {
+        ws.value.send(JSON.stringify({ type: 'ping' }))
+        console.log('[WS] 💓 发送初始 ping')
+      } catch (e) {
+        console.warn('[WS] 发送初始 ping 失败:', e)
+      }
+    }
+
+    // 每 15 秒发送一次心跳
+    heartbeatInterval = window.setInterval(() => {
+      if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+        try {
+          ws.value.send(JSON.stringify({ type: 'ping' }))
+          console.log('[WS] 💓 发送心跳 ping')
+        } catch (e) {
+          console.warn('[WS] 发送心跳失败:', e)
+          stopHeartbeat()
+        }
+      } else {
+        // 连接已断开，停止心跳
+        stopHeartbeat()
+      }
+    }, HEARTBEAT_INTERVAL)
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval !== null) {
+      clearInterval(heartbeatInterval)
+      heartbeatInterval = null
+      console.log('[WS] 🛑 停止心跳')
+    }
   }
 
   // 🔥 添加页面生命周期监听（防止连接泄漏）
@@ -217,6 +261,8 @@ export const useNotificationStore = defineStore('notifications', () => {
         isConnecting = false
         // 添加页面生命周期监听
         addPageLifecycleListeners()
+        // 🔥 启动客户端心跳
+        startHeartbeat()
       }
 
       socket.onerror = (error) => {
@@ -236,6 +282,8 @@ export const useNotificationStore = defineStore('notifications', () => {
         ws.value = null
         connectRequestCount = 0  // 断开后重置
         isConnecting = false
+        // 🔥 停止心跳
+        stopHeartbeat()
 
         // 🔥 关键：手动断开时不重连
         if (isManual) {
@@ -297,6 +345,11 @@ export const useNotificationStore = defineStore('notifications', () => {
         console.log('[WS] 连接确认:', message.data)
         break
 
+      case 'pong':
+        // 服务端响应心跳，无需处理
+        console.log('[WS] 💓 收到 pong 响应')
+        break
+
       case 'notification':
         // 处理通知
         if (message.data && message.data.title && message.data.type) {
@@ -314,7 +367,7 @@ export const useNotificationStore = defineStore('notifications', () => {
         break
 
       case 'heartbeat':
-        // 心跳消息，无需处理
+        // 服务端心跳消息，无需处理
         break
 
       default:
@@ -327,13 +380,16 @@ export const useNotificationStore = defineStore('notifications', () => {
     console.log('[WS] 🔌 手动断开连接...')
     isManualDisconnect = true  // 🔥 标记为手动断开，避免自动重连
 
+    // 🔥 停止心跳
+    stopHeartbeat()
+
     if (wsReconnectTimer) {
       clearTimeout(wsReconnectTimer)
       wsReconnectTimer = null
     }
 
     if (ws.value) {
-      try { 
+      try {
         ws.value.close(1000, 'Manual disconnect')
         console.log('[WS] 已发送关闭信号')
       } catch (e) {

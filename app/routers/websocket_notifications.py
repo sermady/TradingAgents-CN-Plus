@@ -370,8 +370,29 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
-                # 可以处理客户端发送的消息（如 ping/pong）
-                logger.debug(f"📥 [WS] 收到客户端消息: user={user_id}, data={data}")
+                if not data:
+                    continue
+
+                # 🔥 解析并处理心跳消息
+                try:
+                    message = json.loads(data)
+                    msg_type = message.get('type')
+
+                    if msg_type == 'ping':
+                        # 响应客户端心跳
+                        await websocket.send_json({
+                            'type': 'pong',
+                            'timestamp': time.time()
+                        })
+                        logger.debug(f"📥 [WS] 收到 ping，已回复 pong: user={user_id}")
+                        continue
+
+                    # 处理其他消息类型
+                    logger.debug(f"📥 [WS] 收到客户端消息: user={user_id}, type={msg_type}")
+                except json.JSONDecodeError:
+                    # 非 JSON 消息，记录日志
+                    logger.debug(f"📥 [WS] 收到非JSON消息: user={user_id}, data={data[:50]}")
+
             except WebSocketDisconnect:
                 logger.info(f"🔌 [WS] 客户端主动断开: user={user_id}")
                 break

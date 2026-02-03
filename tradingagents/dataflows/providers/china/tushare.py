@@ -101,14 +101,26 @@ class TushareProvider(BaseStockDataProvider):
         这样用户在 Web 后台修改配置后可以立即生效
 
         优化：检查 TUSHARE_ENABLED 开关，禁用时跳过数据库查询
+        优化：检查 CONFIG_SOURCE，当设置为 env 时跳过数据库查询
         """
         # 🔥 优化：检查 TUSHARE_ENABLED 开关，禁用时跳过数据库查询
         tushare_enabled_str = os.getenv("TUSHARE_ENABLED", "true").lower()
         tushare_enabled = tushare_enabled_str in ("true", "1", "yes", "on")
 
         if not tushare_enabled:
-            self.logger.info("⏸️ [DB查询] TUSHARE_ENABLED=false，跳过数据库查询")
+            # 静默跳过，不打印日志（减少噪音）
             return None
+
+        # 🔥 新增：检查 CONFIG_SOURCE 参数，跳过数据库配置查询
+        try:
+            from app.core.config import settings
+
+            if settings.CONFIG_SOURCE == "env" or settings.SKIP_DATABASE_CONFIG:
+                # 静默跳过，不打印数据库查询日志
+                return None
+        except ImportError:
+            # 配置模块不可用时继续正常流程
+            pass
 
         try:
             self.logger.info("🔍 [DB查询] 开始从数据库读取 Token...")

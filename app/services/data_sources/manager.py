@@ -76,7 +76,22 @@ class DataSourceManager:
         """从数据库加载数据源优先级配置（从 datasource_groupings 集合读取 A股市场的优先级）
 
         优化：仅查询已启用的数据源配置，跳过禁用数据源的数据库查询
+        优化：检查 CONFIG_SOURCE 参数，当设置为 env 时跳过数据库查询
         """
+        # 🔥 新增：检查 CONFIG_SOURCE 参数，跳过数据库配置查询
+        try:
+            from app.core.config import settings
+
+            if settings.CONFIG_SOURCE == "env" or settings.SKIP_DATABASE_CONFIG:
+                logger.info("⚡ 跳过数据库优先级加载，使用默认优先级")
+                # 使用默认优先级
+                for adapter in self.adapters:
+                    adapter._priority = adapter._get_default_priority()
+                return
+        except ImportError:
+            # 配置模块不可用时继续正常流程
+            pass
+
         try:
             from app.core.database import get_mongo_db_sync
 

@@ -144,17 +144,28 @@ class Settings(BaseSettings):
     SSE_BATCH_POLL_INTERVAL_SECONDS: float = Field(default=2.0)
     SSE_BATCH_MAX_IDLE_SECONDS: int = Field(default=600)
 
+    # WebSocket 配置
+    WEBSOCKET_PING_INTERVAL: int = Field(default=30, description="服务端心跳间隔（秒）")
+    WEBSOCKET_PING_TIMEOUT: int = Field(default=10, description="服务端心跳超时（秒）")
+    WEBSOCKET_CLIENT_HEARTBEAT_INTERVAL: int = Field(
+        default=15, description="客户端心跳间隔（秒）"
+    )
+
     # 监控配置
     METRICS_ENABLED: bool = Field(default=True)
     HEALTH_CHECK_INTERVAL: int = Field(
         default=300
     )  # 300秒（5分钟），从60秒减少健康检查频率
 
-    # 配置真相来源（方案A）：file|db|hybrid
-    # - file：以文件/env 为准（推荐，生产缺省）
-    # - db：以数据库为准（仅兼容旧版，不推荐）
-    # - hybrid：文件/env 优先，DB 作为兜底
-    CONFIG_SOT: str = Field(default="file")
+    # 配置来源：env|db|hybrid
+    # - env：只从环境变量/.env 读取（推荐，跳过数据库查询）
+    # - db：只从数据库读取（仅兼容旧版，不推荐）
+    # - hybrid：环境变量优先，数据库作为兜底（默认）
+    CONFIG_SOURCE: str = Field(default="hybrid")
+
+    # 跳过数据库配置读取（CONFIG_SOURCE=env 的别名）
+    # 设置为 true 时，跳过所有数据库配置查询（Token、优先级等）
+    SKIP_DATABASE_CONFIG: bool = Field(default=False)
 
     # 基础信息同步任务配置（可配置调度）
     SYNC_STOCK_BASICS_ENABLED: bool = Field(default=True)
@@ -166,7 +177,8 @@ class Settings(BaseSettings):
     TIMEZONE: str = Field(default="Asia/Shanghai")
 
     # 实时行情入库任务
-    QUOTES_INGEST_ENABLED: bool = Field(default=True)
+    # 🔥 默认禁用（使用 AKShare 分析时按需获取，避免频繁同步）
+    QUOTES_INGEST_ENABLED: bool = Field(default=False)
     QUOTES_INGEST_INTERVAL_SECONDS: int = Field(
         default=360,
         description="实时行情采集间隔（秒）。默认360秒（6分钟），免费用户建议>=300秒，付费用户可设置5-60秒",
@@ -202,8 +214,9 @@ class Settings(BaseSettings):
 
     # 实时行情配置
     REALTIME_QUOTE_ENABLED: bool = Field(default=True, description="启用实时行情获取")
+    # 🔥 默认禁用 Tushare 实时行情（使用 AKShare 获取，节省积分）
     REALTIME_QUOTE_TUSHARE_ENABLED: bool = Field(
-        default=True, description="启用Tushare作为实时行情备选数据源"
+        default=False, description="启用Tushare作为实时行情备选数据源"
     )
     REALTIME_QUOTE_MAX_RETRIES: int = Field(
         default=3, ge=1, le=10, description="实时行情获取最大重试次数"

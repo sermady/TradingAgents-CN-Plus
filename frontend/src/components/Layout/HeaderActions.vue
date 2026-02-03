@@ -138,9 +138,18 @@ function go(n: any) { if (n.link) window.open(n.link, '_blank') }
     }
   })
   
-  // token 变化时重连
-  watch(() => authStore.token, () => {
-    notifStore.connect()
+  // 🔥 token 变化时重连（仅在从无到有时重连）
+  watch(() => authStore.token, (newToken, oldToken) => {
+    // 只有当 token 从无到有时才重连，避免频繁重连
+    if (!oldToken && newToken && !notifStore.wsConnected) {
+      console.log('[HeaderActions] Token 已设置，开始连接 WebSocket')
+      notifStore.connect()
+    }
+    // 如果 token 被清除，断开连接
+    else if (oldToken && !newToken) {
+      console.log('[HeaderActions] Token 已清除，断开 WebSocket')
+      notifStore.disconnect()
+    }
   })
 })
 
