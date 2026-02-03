@@ -1268,9 +1268,31 @@ class DataSourceManager:
             result += f"   最低价: ¥{display_data['low'].min():.2f}\n"
             result += f"   平均价: ¥{display_data['close'].mean():.2f}\n"
 
-            # 防御性获取成交量数据
-            volume_value = self._get_volume_safely(display_data)
-            result += f"   平均成交量: {volume_value:,.0f}手\n"
+            # ========== 成交量统计（增强）==========
+            # 单日成交量（最新一日）
+            volume_latest = self._get_volume_safely(display_data)
+
+            # 5日均量和10日均量
+            volume_avg_5 = display_data['volume'].tail(5).mean() if len(display_data) >= 5 else volume_latest
+            volume_avg_10 = display_data['volume'].tail(10).mean() if len(display_data) >= 10 else volume_latest
+
+            result += f"\n📊 成交量分析:\n"
+            result += f"   单日成交量: {volume_latest:,.0f}手\n"
+            result += f"   5日均量: {volume_avg_5:,.0f}手\n"
+            result += f"   10日均量: {volume_avg_10:,.0f}手\n"
+
+            # 量比分析（判断放量/缩量）
+            if volume_avg_5 > 0:
+                volume_ratio = volume_latest / volume_avg_5
+                if volume_ratio >= 2.0:
+                    level = "巨量"
+                elif volume_ratio >= 1.5:
+                    level = "放量"
+                elif volume_ratio >= 0.8:
+                    level = "平量"
+                else:
+                    level = "缩量"
+                result += f"   量比: {volume_ratio:.2f}倍 ({level})\n"
 
             return result
 
