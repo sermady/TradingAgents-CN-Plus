@@ -151,6 +151,31 @@ class Settings(BaseSettings):
         default=15, description="客户端心跳间隔（秒）"
     )
 
+    # ========== 分析/辩论配置 ==========
+    # 默认辩论轮次（可通过研究深度覆盖）
+    # 注意：实际辩论轮次由研究深度（research_depth）决定，此处仅为默认值
+    # - 快速/基础: 1 轮投资辩论, 1 轮风险讨论
+    # - 标准: 1 轮投资辩论, 2 轮风险讨论
+    # - 深度: 2 轮投资辩论, 2 轮风险讨论
+    # - 全面: 3 轮投资辩论, 3 轮风险讨论
+    DEFAULT_MAX_DEBATE_ROUNDS: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="默认投资辩论轮次（1-5轮），由研究深度覆盖"
+    )
+    DEFAULT_MAX_RISK_DISCUSS_ROUNDS: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="默认风险讨论轮次（1-5轮），由研究深度覆盖"
+    )
+    # 是否允许通过环境变量覆盖研究深度设置
+    ALLOW_DEBATE_ROUNDS_OVERRIDE: bool = Field(
+        default=False,
+        description="允许环境变量覆盖研究深度的辩论轮次设置（不推荐）"
+    )
+
     # 监控配置
     METRICS_ENABLED: bool = Field(default=True)
     HEALTH_CHECK_INTERVAL: int = Field(
@@ -276,18 +301,21 @@ class Settings(BaseSettings):
     AKSHARE_BASIC_INFO_SYNC_CRON: str = Field(
         default="0 3 * * *", description="基础信息同步CRON表达式"
     )  # 每日凌晨3点
-    AKSHARE_QUOTES_SYNC_ENABLED: bool = Field(default=True, description="启用行情同步")
+    # 🔥 默认禁用 AKShare 定时行情同步（分析时按需获取，避免交易时段频繁同步）
+    AKSHARE_QUOTES_SYNC_ENABLED: bool = Field(default=False, description="启用行情同步")
     AKSHARE_QUOTES_SYNC_CRON: str = Field(
         default="30 9 * * 1-5,0 15 * * 1-5", description="行情同步CRON表达式"
     )  # 开盘9:30和收盘15:00
+    # 🔥 默认禁用 AKShare 定时历史同步（使用 Tushare 作为主要历史数据源）
     AKSHARE_HISTORICAL_SYNC_ENABLED: bool = Field(
-        default=True, description="启用历史数据同步"
+        default=False, description="启用历史数据同步"
     )
     AKSHARE_HISTORICAL_SYNC_CRON: str = Field(
         default="0 17 * * 1-5", description="历史数据同步CRON表达式"
     )  # 工作日17点
+    # 🔥 默认禁用 AKShare 定时财务同步（使用 Tushare 作为主要财务数据源）
     AKSHARE_FINANCIAL_SYNC_ENABLED: bool = Field(
-        default=True, description="启用财务数据同步"
+        default=False, description="启用财务数据同步"
     )
     AKSHARE_FINANCIAL_SYNC_CRON: str = Field(
         default="0 4 * * 0", description="财务数据同步CRON表达式"
@@ -318,32 +346,35 @@ class Settings(BaseSettings):
 
     # ==================== BaoStock统一数据同步配置 ====================
 
+    # ⚠️ BaoStock 已禁用（Phase 1: 禁用同步功能）
+    # 禁用原因：财务数据为空且同步任务频繁报错
+    # 替代方案：使用 Tushare/AKShare 数据源
     # BaoStock统一数据同步总开关
     BAOSTOCK_UNIFIED_ENABLED: bool = Field(
-        default=True, description="启用BaoStock统一数据同步"
+        default=False, description="启用BaoStock统一数据同步"
     )
 
-    # BaoStock数据同步任务配置
+    # BaoStock数据同步任务配置（⚠️ 已禁用，全部设置为 false）
     BAOSTOCK_BASIC_INFO_SYNC_ENABLED: bool = Field(
-        default=True, description="启用基础信息同步"
+        default=False, description="启用基础信息同步"
     )
     BAOSTOCK_BASIC_INFO_SYNC_CRON: str = Field(
         default="0 4 * * *", description="基础信息同步CRON表达式"
     )  # 每日凌晨4点
     BAOSTOCK_DAILY_QUOTES_SYNC_ENABLED: bool = Field(
-        default=True, description="启用日K线同步（注意：BaoStock不支持实时行情）"
+        default=False, description="启用日K线同步（注意：BaoStock不支持实时行情）"
     )
     BAOSTOCK_DAILY_QUOTES_SYNC_CRON: str = Field(
         default="0 16 * * 1-5", description="日K线同步CRON表达式"
     )  # 工作日收盘后16:00
     BAOSTOCK_HISTORICAL_SYNC_ENABLED: bool = Field(
-        default=True, description="启用历史数据同步"
+        default=False, description="启用历史数据同步"
     )
     BAOSTOCK_HISTORICAL_SYNC_CRON: str = Field(
         default="0 18 * * 1-5", description="历史数据同步CRON表达式"
     )  # 工作日18点
     BAOSTOCK_STATUS_CHECK_ENABLED: bool = Field(
-        default=True, description="启用状态检查"
+        default=False, description="启用状态检查"
     )
     BAOSTOCK_STATUS_CHECK_CRON: str = Field(
         default="45 * * * *", description="状态检查CRON表达式"

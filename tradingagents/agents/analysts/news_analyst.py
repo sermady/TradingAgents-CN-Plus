@@ -60,10 +60,12 @@ def create_news_analyst(llm, toolkit=None):
                 )
 
         # 获取 metadata 信息（如有）
+        # data_metadata 可包含：PS修正标记、数据单位说明等
+        # 目前为空，保留结构以备将来扩展
         data_metadata = state.get("data_metadata", {})
 
-        # 构建 metadata 提示
-        metadata_info = ""
+        # 构建 metadata 提示（可扩展：成交量单位、数据修正说明等）
+        metadata_info = ""  # 新闻分析师暂无特殊 metadata
 
         # 舆情数据质量提示
         sentiment_section = ""
