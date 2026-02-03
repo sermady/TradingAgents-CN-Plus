@@ -58,14 +58,12 @@ def create_fundamentals_analyst(llm, toolkit=None):
                     f"[Fundamentals Analyst] Data issue for {ticker}: {issue.get('message', '')}"
                 )
 
-        # 获取 metadata 信息（PS修正等）
+        # 获取 metadata 信息（如有）
         data_metadata = state.get("data_metadata", {})
-        corrected_ps = data_metadata.get("corrected_ps")
 
         # 构建 metadata 提示
+        # 注意：PS修正信息已由 Data Coordinator 添加到 financial_data 中，这里不再重复添加
         metadata_info = "\n- **成交量单位**: 手 (1手=100股)"
-        if corrected_ps:
-            metadata_info += f"\n- **PS比率修正**: 数据源报告的PS可能有误，正确值约为 {corrected_ps:.2f}"
 
         system_message = f"""你是一位专业的股票基本面分析师。
 请基于以下**真实财务数据**对 {company_name} ({ticker}) 进行深度的基本面分析。
@@ -83,7 +81,7 @@ def create_fundamentals_analyst(llm, toolkit=None):
 1. **数据来源**：必须严格基于上述提供的财务数据进行分析，绝对禁止编造数据。
 2. **财务状况**：分析营收、利润、现金流等核心指标。
 3. **估值分析**：分析PE、PB、PS、PEG等估值指标，判断当前股价是否低估/高估。
-   - ⚠️ **特别注意PS比率**：如果提示中有PS修正值，请使用修正值进行分析。
+   - ⚠️ **特别注意PS比率**：如果财务数据中有PS修正标记（"⚠️ **PS比率修正**"），请使用修正后的PS值进行分析。
    - PS 正确计算公式: PS = 总市值 / 总营收
 4. **盈利能力**：分析毛利率、净利率、ROE等指标。
 5. **数据异常处理**：
