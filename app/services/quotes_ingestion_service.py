@@ -42,7 +42,9 @@ class QuotesIngestionService:
         self._tushare_call_times = deque()  # 记录调用时间的队列（用于限流）
 
         # 接口轮换相关属性
-        self._rotation_sources = ["tushare", "akshare_eastmoney", "akshare_sina"]
+        # 🔥 优化顺序：AKShare东方财富 > AKShare新浪 > Tushare
+        # 原因：Tushare免费用户每分钟限制1次，AKShare限制更宽松
+        self._rotation_sources = ["akshare_eastmoney", "akshare_sina", "tushare"]
         self._rotation_index = 0  # 当前轮换索引
 
     @staticmethod
@@ -291,16 +293,21 @@ class QuotesIngestionService:
         """
         获取下一个数据源（轮换机制）
 
+        优先级顺序（已优化）：
+        1. AKShare东方财富（限制宽松）
+        2. AKShare新浪财经（限制宽松）
+        3. Tushare（免费用户限制：每分钟1次）
+
         Returns:
             (source_type, akshare_api):
                 - source_type: "tushare" | "akshare"
                 - akshare_api: "eastmoney" | "sina" (仅当 source_type="akshare" 时有效)
         """
         if not settings.QUOTES_ROTATION_ENABLED:
-            # 未启用轮换，使用默认优先级
-            return "tushare", None
+            # 未启用轮换，使用默认优先级（AKShare东方财富优先）
+            return "akshare", "eastmoney"
 
-        # 轮换逻辑：0=Tushare, 1=AKShare东方财富, 2=AKShare新浪财经
+        # 轮换逻辑：0=AKShare东方财富, 1=AKShare新浪财经, 2=Tushare
         current_source = self._rotation_sources[self._rotation_index]
 
         # 更新轮换索引（下次使用下一个接口）
@@ -612,7 +619,9 @@ class QuotesIngestionService:
 
         核心逻辑：
         1. 检测 Tushare 权限（首次运行）
-        2. 按轮换顺序尝试获取行情：Tushare → AKShare东方财富 → AKShare新浪财经
+        2. 按轮换顺序尝试获取行情（已优化）：
+           AKShare东方财富 → AKShare新浪财经 → Tushare
+           原因：AKShare限制宽松，Tushare免费用户每分钟限制1次
         3. 任意一个接口成功即入库，失败则跳过本次采集
         """
         # 非交易时段处理
