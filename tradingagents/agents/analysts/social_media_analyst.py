@@ -14,34 +14,64 @@ def create_social_media_analyst(llm, toolkit):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
-        # Retrieve pre-fetched data
+        # Retrieve pre-fetched data and metadata
         sentiment_data = state.get("sentiment_data", "")
-        if not sentiment_data:
+        data_quality_score = state.get("data_quality_score", 0.0)
+        data_sources = state.get("data_sources", {})
+        data_issues = state.get("data_issues", {})
+
+        # 检查数据质量
+        sentiment_source = data_sources.get("sentiment", "unknown")
+        sentiment_issues = data_issues.get("sentiment", [])
+
+        if not sentiment_data or "❌" in sentiment_data:
             logger.warning(
-                f"[Social Media Analyst] No sentiment data found in state for {ticker}"
+                f"[Social Media Analyst] Sentiment data unavailable for {ticker} (source: {sentiment_source})"
             )
             sentiment_data = (
-                "Error: No sentiment data available. Please check DataCoordinator logs."
+                "警告：情绪数据不可用。已尝试从多个数据源获取但均失败。\n"
+                "请检查网络连接或稍后重试。"
             )
 
-        logger.info(f"[Social Media Analyst] Analyzing {ticker} on {current_date}")
+        logger.info(
+            f"[Social Media Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {sentiment_source})"
+        )
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
 
+        # 记录数据质量问题到日志（不在提示词中显示）
+        if sentiment_issues:
+            for issue in sentiment_issues[:3]:
+                logger.warning(
+                    f"[Social Media Analyst] Data issue for {ticker}: {issue.get('message', '')}"
+                )
+
+        # 获取 metadata 信息（如有）
+        data_metadata = state.get("data_metadata", {})
+
+        # 构建 metadata 提示
+        metadata_info = ""
+
         system_message = f"""你是一位专业的市场情绪分析师。
 请基于以下**社交媒体和投资者情绪数据**对 {company_name} ({ticker}) 进行详细的情绪面分析。
+
+=== 数据信息 ===
+- 数据来源: {sentiment_source}
+- 数据日期: {current_date}（历史数据）
+{metadata_info}
 
 === 情绪数据 ===
 {sentiment_data}
 ================
 
 **分析要求（必须严格遵守）：**
-1. **数据来源**：必须严格基于上述提供的即情绪数据进行分析。
+1. **数据来源**：必须严格基于上述提供的集情绪数据进行分析，绝对禁止编造数据。
 2. **情绪概况**：评估当前市场对该股票的整体情绪（贪婪/恐惧/中性）。
 3. **散户vs机构**：分析散户讨论热度与可能的机构动向。
 4. **舆情风险**：识别潜在的舆情风险点。
-5. **投资建议**：基于逆向思维或顺势交易策略给出建议。
+5. **数据异常处理**：如果情绪数据看起来异常，请在报告中指出。
+6. **投资建议**：基于逆向思维或顺势交易策略给出建议。
 
 **输出格式要求：**
 请使用Markdown格式，包含以下章节：
@@ -51,7 +81,7 @@ def create_social_media_analyst(llm, toolkit):
 ## 三、潜在舆情风险
 ## 四、情绪面投资建议
 
-⚠️ **重要**：所有分析必须基于提供的数据。如果数据缺失，请明确说明。
+⚠️ **重要**：所有分析必须基于提供的数据。如果数据缺失或异常，请明确说明。
 """
 
         messages = [
