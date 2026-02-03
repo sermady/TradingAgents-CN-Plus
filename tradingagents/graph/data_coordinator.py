@@ -10,7 +10,7 @@
 4. 并行数据获取: 使用 ThreadPoolExecutor 提升性能
 5. 统一缓存策略: 支持分析级缓存（5分钟TTL）
 6. PS比率验证: 在预取阶段验证并修正PS计算
-7. 成交量单位统一: 统一转换为"股"
+7. 成交量单位统一: 统一为"手"（1手=100股）
 8. 数据源超时与重试: 每个数据源独立超时和指数退避重试
 """
 
@@ -598,7 +598,7 @@ class DataCoordinator:
         self, data: Dict[str, Any], data_str: str
     ) -> Tuple[Dict[str, Any], str]:
         """
-        标准化成交量单位为"股"
+        标准化成交量单位为"股"（注意：当前实现转换为股，未来可能改为手）
 
         Returns:
             (updated_data, unit_info): 更新后的数据和单位信息
