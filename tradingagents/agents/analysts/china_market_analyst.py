@@ -39,10 +39,13 @@ def create_china_market_analyst(llm, toolkit=None):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
-        # Retrieve pre-fetched data
+        # Retrieve pre-fetched data and metadata
         china_market_data = state.get("china_market_data", "")
+        data_quality_score = state.get("data_quality_score", 0.0)
         data_sources = state.get("data_sources", {})
+        data_issues = state.get("data_issues", {})
         china_market_source = data_sources.get("china_market", "unknown")
+        china_market_issues = data_issues.get("china_market", [])
 
         if not china_market_data or "❌" in china_market_data:
             logger.warning(
@@ -54,11 +57,24 @@ def create_china_market_analyst(llm, toolkit=None):
             )
 
         logger.info(
-            f"[China Market Analyst] Analyzing {ticker} on {current_date} (source: {china_market_source})"
+            f"[China Market Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {china_market_source})"
         )
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
+
+        # 记录数据质量问题到日志（不在提示词中显示）
+        if china_market_issues:
+            for issue in china_market_issues[:3]:
+                logger.warning(
+                    f"[China Market Analyst] Data issue for {ticker}: {issue.get('message', '')}"
+                )
+
+        # 获取 metadata 信息（如有）
+        data_metadata = state.get("data_metadata", {})
+
+        # 构建 metadata 提示
+        metadata_info = ""
 
         system_message = f"""你是一位专业的中国股市分析师，专注于A股市场特色分析。
 请基于以下**A股特色数据**对 {company_name} ({ticker}) 进行详细的A股市场分析。
@@ -66,6 +82,7 @@ def create_china_market_analyst(llm, toolkit=None):
 === 数据信息 ===
 - 数据来源: {china_market_source}
 - 数据日期: {current_date}（历史数据）
+{metadata_info}
 
 === A股特色数据 ===
 {china_market_data}

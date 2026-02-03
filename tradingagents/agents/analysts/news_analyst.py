@@ -29,11 +29,13 @@ def create_news_analyst(llm, toolkit=None):
         news_data = state.get("news_data", "")
         data_quality_score = state.get("data_quality_score", 0.0)
         data_sources = state.get("data_sources", {})
+        data_issues = state.get("data_issues", {})
         sentiment_data = state.get("sentiment_data", "")
 
         # 检查数据质量
         news_source = data_sources.get("news", "unknown")
         sentiment_source = data_sources.get("sentiment", "unknown")
+        news_issues = data_issues.get("news", [])
 
         if not news_data or "❌" in news_data:
             logger.warning(
@@ -49,6 +51,19 @@ def create_news_analyst(llm, toolkit=None):
 
         market_info = StockUtils.get_market_info(ticker)
         company_name = get_company_name(ticker, market_info)
+
+        # 记录数据质量问题到日志（不在提示词中显示）
+        if news_issues:
+            for issue in news_issues[:3]:
+                logger.warning(
+                    f"[News Analyst] Data issue for {ticker}: {issue.get('message', '')}"
+                )
+
+        # 获取 metadata 信息（如有）
+        data_metadata = state.get("data_metadata", {})
+
+        # 构建 metadata 提示
+        metadata_info = ""
 
         # 舆情数据质量提示
         sentiment_section = ""
@@ -66,6 +81,7 @@ def create_news_analyst(llm, toolkit=None):
 === 数据信息 ===
 - 新闻来源: {news_source}
 - 数据日期: {current_date}（历史数据）
+{metadata_info}
 
 === 新闻数据 ===
 {news_data}
