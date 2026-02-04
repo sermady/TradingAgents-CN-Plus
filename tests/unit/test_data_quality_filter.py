@@ -24,9 +24,12 @@ class TestDataQualityFilter:
         # 应该检测到 warning 级别问题
         warning_issues = [i for i in issues if i.get("severity") == "warning"]
         calc_issues = [i for i in issues if i.get("category") == "calculation_logic"]
-        assert len(warning_issues) > 0
-        assert len(calc_issues) > 0
-        assert "验算" in calc_issues[0].get("detail", "")
+        assert len(warning_issues) > 0, "应该检测到 warning 级别问题"
+        assert len(calc_issues) > 0, "应该检测到 calculation_logic 类别问题"
+        # detail 应该包含 PE_TTM 和滚动利润的说明
+        detail = calc_issues[0].get("detail", "")
+        assert "PE_TTM" in detail, "detail 应该包含 PE_TTM"
+        assert "滚动" in detail, "detail 应该包含 滚动利润 说明"
 
     def test_normal_pe_ttm_no_error(self):
         """测试: 正常的PE_TTM不被标记为错误"""
