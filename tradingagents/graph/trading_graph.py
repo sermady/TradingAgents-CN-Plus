@@ -1174,14 +1174,18 @@ class TradingAgentsGraph:
         except Exception:
             model_info = "Unknown"
 
+        # ========== 报告质量检查集成 ==========
+        # 在处理决策之前执行质量检查，以便根据质量调整置信度
+        self._run_quality_checks(final_state)
+
         # 处理决策并添加模型信息
         decision = self.process_signal(
             final_state["final_trade_decision"], company_name
         )
         decision["model_info"] = model_info
 
-        # ========== 报告质量检查集成 ==========
-        self._run_quality_checks(final_state)
+        # 将质量检查结果添加到决策中
+        self._apply_quality_results_to_decision(final_state, decision)
 
         # Return decision and processed signal
         return final_state, decision
@@ -1221,8 +1225,8 @@ class TradingAgentsGraph:
                 logger.warning(f"[质量检查] 发现 {len(issues)} 个一致性问题")
                 for issue in issues:
                     logger.warning(
-                        f"[质量检查] {issue['severity']}: {issue['description']} "
-                        f"(涉及: {', '.join(issue['source_reports'])})"
+                        f"[质量检查] {issue.severity}: {issue.description} "
+                        f"(涉及: {', '.join(issue.source_reports)})"
                     )
                 # 将问题保存到状态中
                 final_state["quality_issues"] = issues
@@ -1258,6 +1262,64 @@ class TradingAgentsGraph:
 
         except Exception as e:
             logger.error(f"[质量检查] 执行失败: {e}", exc_info=True)
+
+    def _apply_quality_results_to_decision(self, final_state: dict, decision: dict):
+        """
+        将质量检查结果应用到最终决策中
+
+        Args:
+            final_state: 包含质量检查结果的最终状态
+            decision: 待更新的决策字典
+        """
+        # 获取质量检查结果
+        quality_issues = final_state.get("quality_issues", [])
+        data_issues = final_state.get("data_quality_issues", [])
+        consistency_summary = final_state.get("consistency_summary", "")
+        perspective_summary = final_state.get("perspective_summary", "")
+
+        # 统计严重程度
+        critical_count = sum(1 for i in quality_issues if getattr(i, 'severity', None) == 'critical')
+        warning_count = sum(1 for i in quality_issues if getattr(i, 'severity', None) == 'warning')
+        data_warning_count = sum(1 for i in data_issues if i.get('severity') == 'warning')
+
+        # 添加质量检查结果到决策中
+        decision["quality_issues"] = [
+            {
+                "severity": getattr(i, 'severity', 'info'),
+                "description": getattr(i, 'description', ''),
+                "source": ', '.join(getattr(i, 'source_reports', []))
+            }
+            for i in quality_issues
+        ]
+        decision["data_quality_issues"] = data_issues
+        decision["consistency_summary"] = consistency_summary
+        decision["perspective_summary"] = perspective_summary
+
+        # 根据严重程度调整置信度
+        original_confidence = decision.get("confidence", 0.7)
+        adjusted_confidence = original_confidence
+
+        if critical_count > 0:
+            # 严重问题：置信度减半
+            adjusted_confidence = original_confidence * 0.5
+            logger.warning(f"[质量检查] 存在{critical_count}个严重一致性问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+        elif warning_count >= 2:
+            # 多个警告：置信度降低20%
+            adjusted_confidence = original_confidence * 0.8
+            logger.warning(f"[质量检查] 存在{warning_count}个警告，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+        elif data_warning_count > 0:
+            # 数据质量问题：置信度降低10%
+            adjusted_confidence = original_confidence * 0.9
+            logger.warning(f"[质量检查] 存在{data_warning_count}个数据质量问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+
+        # 确保置信度不低于0.1
+        decision["confidence"] = max(adjusted_confidence, 0.1)
+
+        # 添加质量警告信息到决策理由中
+        if critical_count > 0 or warning_count > 0 or data_warning_count > 0:
+            original_reasoning = decision.get("reasoning", "")
+            quality_warning = f"\n\n⚠️ 质量提醒: 检测到{critical_count}个严重问题、{warning_count}个警告、{data_warning_count}个数据质量问题。"
+            decision["reasoning"] = original_reasoning + quality_warning
 
     def _send_progress_update(self, chunk, progress_callback):
         """发送进度更新到回调函数

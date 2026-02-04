@@ -122,8 +122,8 @@ class CrossReferenceGenerator:
         elif sell_count == total:
             return "- ✅ **共识**: 所有分析师均持看空观点\n"
         elif buy_count > 0 and sell_count > 0:
-            return "- ⚠️ **分歧**: 分析师观点存在分歧，请仔细阅读各报告详情\n"
-            f"  - 看多: {buy_count}位，看空: {sell_count}位"
+            return f"- ⚠️ **分歧**: 分析师观点存在分歧，请仔细阅读各报告详情\n" \
+                   f"  - 看多: {buy_count}位，看空: {sell_count}位"
         elif hold_count == total:
             return "- ➖ **中性**: 分析师普遍持观望态度\n"
         else:

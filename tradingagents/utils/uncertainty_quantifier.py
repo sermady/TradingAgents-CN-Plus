@@ -12,6 +12,32 @@ import re
 class UncertaintyQuantifier:
     """不确定性量化器"""
 
+    # 置信度推断常量
+    CONFIDENCE_STRONG = 0.75   # 强烈/确定语气
+    CONFIDENCE_CAUTIOUS = 0.55  # 谨慎/可能语气
+    CONFIDENCE_NEUTRAL = 0.5    # 观望/待定语气
+    CONFIDENCE_DEFAULT = 0.6    # 默认中等置信度
+
+    # 概率区间计算常量
+    CONFIDENCE_SMOOTHING = 0.1      # 置信度平滑因子，避免除零
+    OPTIMISTIC_MULTIPLIER = 1.2     # 乐观情景价格系数
+    PESSIMISTIC_MULTIPLIER = 0.6    # 谨慎情景价格系数
+    PRICE_DECIMAL_PLACES = 2        # 价格小数位数
+
+    # 概率计算常量
+    OPTIMISTIC_PROB_FACTOR = 0.3    # 乐观概率系数
+    MAX_OPTIMISTIC_PROB = 0.25      # 最大乐观概率
+    PESSIMISTIC_PROB_FACTOR = 0.5   # 谨慎概率系数
+    MAX_PESSIMISTIC_PROB = 0.35     # 最大谨慎概率
+    MIN_BASE_PROB = 0.4             # 最小基准概率
+
+    # 置信度关键词映射
+    CONFIDENCE_KEYWORDS = {
+        "strong": ("强烈", "确定"),
+        "cautious": ("谨慎", "可能"),
+        "neutral": ("观望", "待定"),
+    }
+
     @staticmethod
     def extract_confidence_from_report(report: str) -> float:
         """
@@ -36,14 +62,19 @@ class UncertaintyQuantifier:
                 return int(match.group(1)) / 100.0
 
         # 如果没有明确说明，根据报告内容推断
-        if "强烈" in report or "确定" in report:
-            return 0.75
-        elif "谨慎" in report or "可能" in report:
-            return 0.55
-        elif "观望" in report or "待定" in report:
-            return 0.5
+        for keyword in UncertaintyQuantifier.CONFIDENCE_KEYWORDS["strong"]:
+            if keyword in report:
+                return UncertaintyQuantifier.CONFIDENCE_STRONG
 
-        return 0.6  # 默认中等置信度
+        for keyword in UncertaintyQuantifier.CONFIDENCE_KEYWORDS["cautious"]:
+            if keyword in report:
+                return UncertaintyQuantifier.CONFIDENCE_CAUTIOUS
+
+        for keyword in UncertaintyQuantifier.CONFIDENCE_KEYWORDS["neutral"]:
+            if keyword in report:
+                return UncertaintyQuantifier.CONFIDENCE_NEUTRAL
+
+        return UncertaintyQuantifier.CONFIDENCE_DEFAULT
 
     @staticmethod
     def calculate_probability_range(
@@ -65,18 +96,14 @@ class UncertaintyQuantifier:
         # 价格变动幅度
         change_pct = (target_price - current_price) / current_price
 
-        # 根据置信度调整波动范围
-        # 置信度越低，波动越大
-        volatility_factor = 1.0 / (confidence + 0.1)
-
         base_price = target_price
-        optimistic_price = current_price * (1 + change_pct * 1.2)
-        pessimistic_price = current_price * (1 + change_pct * 0.6)
+        optimistic_price = current_price * (1 + change_pct * UncertaintyQuantifier.OPTIMISTIC_MULTIPLIER)
+        pessimistic_price = current_price * (1 + change_pct * UncertaintyQuantifier.PESSIMISTIC_MULTIPLIER)
 
         return {
-            "optimistic": round(optimistic_price, 2),
-            "base": round(base_price, 2),
-            "pessimistic": round(pessimistic_price, 2),
+            "optimistic": round(optimistic_price, UncertaintyQuantifier.PRICE_DECIMAL_PLACES),
+            "base": round(base_price, UncertaintyQuantifier.PRICE_DECIMAL_PLACES),
+            "pessimistic": round(pessimistic_price, UncertaintyQuantifier.PRICE_DECIMAL_PLACES),
         }
 
     @staticmethod
@@ -101,9 +128,15 @@ class UncertaintyQuantifier:
         )
 
         # 计算各情景概率
-        optimistic_prob = min(confidence * 0.3, 0.25)
-        pessimistic_prob = min((1 - confidence) * 0.5, 0.35)
-        base_prob = max(1 - optimistic_prob - pessimistic_prob, 0.4)
+        optimistic_prob = min(
+            confidence * UncertaintyQuantifier.OPTIMISTIC_PROB_FACTOR,
+            UncertaintyQuantifier.MAX_OPTIMISTIC_PROB
+        )
+        pessimistic_prob = min(
+            (1 - confidence) * UncertaintyQuantifier.PESSIMISTIC_PROB_FACTOR,
+            UncertaintyQuantifier.MAX_PESSIMISTIC_PROB
+        )
+        base_prob = max(1 - optimistic_prob - pessimistic_prob, UncertaintyQuantifier.MIN_BASE_PROB)
 
         section = "### 📊 概率评估\n\n"
         section += "| 情景 | 目标价 | 概率 |\n"
