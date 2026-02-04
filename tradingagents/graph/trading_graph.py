@@ -1180,8 +1180,84 @@ class TradingAgentsGraph:
         )
         decision["model_info"] = model_info
 
+        # ========== 报告质量检查集成 ==========
+        self._run_quality_checks(final_state)
+
         # Return decision and processed signal
         return final_state, decision
+
+    def _run_quality_checks(self, final_state: dict):
+        """
+        运行报告质量检查并记录结果
+
+        Args:
+            final_state: 最终状态字典，包含所有生成的报告
+        """
+        try:
+            # 收集所有报告
+            reports = {}
+            report_types = [
+                "market_report", "fundamentals_report", "news_report",
+                "sentiment_report", "china_market_report",
+                "investment_plan", "trader_investment_plan",
+                "final_trade_decision"
+            ]
+
+            for report_type in report_types:
+                content = final_state.get(report_type, "")
+                if content and isinstance(content, str):
+                    reports[report_type] = content
+
+            if not reports:
+                logger.debug("[质量检查] 无报告内容可检查")
+                return
+
+            # 1. 报告一致性检查
+            from tradingagents.utils.report_consistency_checker import ReportConsistencyChecker
+            checker = ReportConsistencyChecker()
+            issues = checker.check_all_reports(reports)
+
+            if issues:
+                logger.warning(f"[质量检查] 发现 {len(issues)} 个一致性问题")
+                for issue in issues:
+                    logger.warning(
+                        f"[质量检查] {issue['severity']}: {issue['description']} "
+                        f"(涉及: {', '.join(issue['source_reports'])})"
+                    )
+                # 将问题保存到状态中
+                final_state["quality_issues"] = issues
+                final_state["consistency_summary"] = checker.generate_consistency_summary()
+
+            # 2. 数据质量检查
+            from tradingagents.utils.data_quality_filter import DataQualityFilter
+            data_issues = []
+
+            # 检查基本面报告的数据质量
+            fundamentals_content = reports.get("fundamentals_report", "")
+            if fundamentals_content:
+                data_issues.extend(DataQualityFilter.check_financial_data_quality(fundamentals_content))
+
+            if data_issues:
+                logger.info(f"[质量检查] 发现 {len(data_issues)} 个数据质量问题")
+                for issue in data_issues:
+                    logger.info(
+                        f"[质量检查] {issue['severity']}: {issue['description']}"
+                    )
+                if "quality_issues" not in final_state:
+                    final_state["quality_issues"] = []
+                final_state["quality_issues"].extend(data_issues)
+
+            # 3. 生成交叉引用摘要
+            from tradingagents.utils.cross_reference_generator import CrossReferenceGenerator
+            perspective_summary = CrossReferenceGenerator.generate_perspective_summary(reports)
+            final_state["perspective_summary"] = perspective_summary
+
+            # 记录检查结果
+            total_issues = len(issues) + len(data_issues)
+            logger.info(f"[质量检查] 检查完成: {total_issues} 个问题")
+
+        except Exception as e:
+            logger.error(f"[质量检查] 执行失败: {e}", exc_info=True)
 
     def _send_progress_update(self, chunk, progress_callback):
         """发送进度更新到回调函数
