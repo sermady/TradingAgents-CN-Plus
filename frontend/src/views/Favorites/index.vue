@@ -131,7 +131,6 @@
 
     <!-- 添加自选股对话框 -->
     <AddStockDialog
-      ref="addDialogRef"
       v-model="addDialogVisible"
       :user-tags="userTags"
       :tag-color-map="tagColorMap"
@@ -238,7 +237,6 @@ const singleSyncLoading = ref(false)
 const syncRealtimeLoading = ref(false)
 
 // 对话框引用
-const addDialogRef = ref()
 const editDialogRef = ref()
 const batchSyncDialogRef = ref()
 const singleSyncDialogRef = ref()
@@ -358,12 +356,11 @@ const showAddDialog = () => {
 }
 
 // 处理添加自选股（使用 Store）
-const handleAddFavorite = async () => {
+const handleAddFavorite = async (formData: any) => {
   try {
-    const form = addDialogRef.value?.form
-    if (!form) return
+    if (!formData) return
 
-    const payload = { ...form }
+    const payload = { ...formData }
     await favoritesStore.addFavorite(payload as any)
     addDialogVisible.value = false
   } catch (error: any) {

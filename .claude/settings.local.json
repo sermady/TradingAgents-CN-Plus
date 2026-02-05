@@ -10,7 +10,9 @@
       "Bash(python:*)",
       "Bash(timeout /t 5 /nobreak)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote:*)"
     ]
   },
   "language": "Chinese"
