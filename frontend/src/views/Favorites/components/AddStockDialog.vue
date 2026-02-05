@@ -73,6 +73,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiClient } from '@/api/request'
+import type { StockInfo } from '@/types/analysis'
 
 // Props
 interface Props {
@@ -90,7 +91,7 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'success': []
+  'success': [data: typeof form.value]
 }>()
 
 // 响应式数据
@@ -201,20 +202,18 @@ const fetchStockInfo = async () => {
     const symbol = form.value.stock_code.trim()
     const market = form.value.market
 
-    // 只有A股支持自动获取股票名称
-    if (market === 'A股') {
-      const res = await ApiClient.get(`/api/stock-data/basic-info/${symbol}`)
+      // 只有A股支持自动获取股票名称
+      if (market === 'A股') {
+        // ApiClient.get 已经解包了 response.data，所以直接返回 StockInfo 对象
+        const stockInfo = await ApiClient.get<StockInfo>(`/api/stock-data/basic-info/${symbol}`)
 
-      if ((res as any)?.success && (res as any)?.data) {
-        const stockInfo = (res as any).data
-        if (stockInfo.name) {
+        if (stockInfo?.name) {
           form.value.stock_name = stockInfo.name
           ElMessage.success(`已自动填充股票名称: ${stockInfo.name}`)
+        } else {
+          ElMessage.warning('未找到该股票信息，请手动输入股票名称')
         }
-      } else {
-        ElMessage.warning('未找到该股票信息，请手动输入股票名称')
       }
-    }
   } catch (error: any) {
     console.error('获取股票信息失败:', error)
     ElMessage.warning('获取股票信息失败，请手动输入股票名称')
@@ -224,7 +223,8 @@ const fetchStockInfo = async () => {
 const handleSubmit = async () => {
   try {
     await formRef.value.validate()
-    emit('success')
+    // 传递表单数据给父组件
+    emit('success', { ...form.value })
   } catch (error) {
     console.error('表单验证失败:', error)
   }
@@ -255,11 +255,6 @@ watch(visible, (val) => {
       notes: ''
     }
   }
-})
-
-// 暴露给父组件
-defineExpose({
-  form
 })
 </script>
 
