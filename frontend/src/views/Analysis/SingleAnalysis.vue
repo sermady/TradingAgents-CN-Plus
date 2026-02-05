@@ -186,14 +186,14 @@
                   </div>
                 </div>
                 
-                <!-- A股提示 -->
-                <el-alert
-                  v-if="analysisForm.market === 'A股'"
-                  title="A股市场暂不支持社媒分析（国内数据源限制）"
-                  type="info"
-                  :closable="false"
-                  style="margin-top: 12px"
-                />
+              <!-- A股提示 -->
+              <el-alert
+                v-if="analysisForm.market === 'A股' && (analysisForm.selectedAnalysts.includes('社媒分析师') || analysisForm.selectedAnalysts.length === 0)"
+                title="提示：A股市场建议启用中国特色行情分析师，以获得更专业的A股市场特色分析（涨跌停、换手率、量比等）"
+                type="warning"
+                :closable="false"
+                style="margin-top: 12px"
+              />
               </div>
 
 
@@ -749,7 +749,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { configApi } from '@/api/config'
 import DeepModelSelector from '@/components/DeepModelSelector.vue'
-import { ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
+import { ANALYSTS, DEFAULT_ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
 import { marked } from 'marked'
 import { recommendModels, validateModels, type ModelRecommendationResponse } from '@/api/modelCapabilities'
 import { validateStockCode, getStockCodeFormatHelp, getStockCodeExamples } from '@/utils/stockValidator'
@@ -845,7 +845,7 @@ const analysisForm = reactive<AnalysisForm>({
   market: 'A股',
   analysisDate: new Date(),
   researchDepth: 3, // 默认选中3级标准分析（推荐），将在 onMounted 中从用户偏好加载
-  selectedAnalysts: ['市场分析师', '基本面分析师'], // 将在 onMounted 中从用户偏好加载
+  selectedAnalysts: [...DEFAULT_ANALYSTS], // 使用默认分析师配置
   includeSentiment: true,
   includeRisk: true,
   language: 'zh-CN',
