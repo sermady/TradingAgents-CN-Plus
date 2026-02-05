@@ -986,6 +986,42 @@ class TradingAgentsGraph:
         )
         logger.debug(f"🔍 [GRAPH DEBUG] 接收到的task_id: '{task_id}'")
 
+        # 🔧修复：从配置中读取selected_analysts，而不是使用默认值
+        config_selected_analysts = self.config.get(
+            "selected_analysts", self.selected_analysts
+        )
+        if config_selected_analysts != self.selected_analysts:
+            logger.info(
+                f"🔍 [GRAPH] 使用配置中的selected_analysts: {config_selected_analysts}"
+            )
+            logger.info(
+                f"🔍 [GRAPH] 覆盖默认的selected_analysts: {self.selected_analysts}"
+            )
+            self.selected_analysts = config_selected_analysts
+
+        # 🔧修复：同步日期到全局配置，确保所有工具都能获取正确的分析日期
+        if trade_date is not None:
+            Toolkit._config["trade_date"] = str(trade_date)
+            Toolkit._config["analysis_date"] = str(trade_date)
+            logger.info(f"📅 [GRAPH] 已同步分析日期到全局配置: {trade_date}")
+        else:
+            logger.warning(f"⚠️  [GRAPH] trade_date 为 None，跳过日期同步")
+
+        self.ticker = company_name
+        logger.debug(f"🔍 [GRAPH DEBUG] 设置self.ticker: '{self.ticker}'")
+
+        # Initialize state
+        logger.debug(
+            f"🔍 [GRAPH DEBUG] 创建初始状态，传递参数: company_name='{company_name}', trade_date='{trade_date}'"
+        )
+        logger.debug(
+            f"🔍 [GRAPH DEBUG] 接收到的company_name: '{company_name}' (类型: {type(company_name)})"
+        )
+        logger.debug(
+            f"🔍 [GRAPH DEBUG] 接收到的trade_date: '{trade_date}' (类型: {type(trade_date)})"
+        )
+        logger.debug(f"🔍 [GRAPH DEBUG] 接收到的task_id: '{task_id}'")
+
         # 🔧 修复：同步日期到全局配置，确保所有工具都能获取正确的分析日期
         if trade_date is not None:
             Toolkit._config["trade_date"] = str(trade_date)
