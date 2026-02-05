@@ -1020,118 +1020,52 @@ class TradingAgentsGraph:
         # 保存task_id用于后续保存性能数据
         self._current_task_id = task_id
 
-        # 根据是否有进度回调选择不同的stream_mode
+        # 统一的执行模式 - 简化并发处理逻辑
+        # 移除原来的3种模式（Debug/Standard/Invoke），统一为单一模式
         args = self.propagator.get_graph_args(
             use_progress_callback=bool(progress_callback)
         )
 
-        if self.debug:
-            # Debug mode with tracing and progress updates
-            trace = []
-            final_state = None
-            for chunk in self.graph.stream(init_agent_state, **args):
-                # 记录节点计时
-                for node_name in chunk.keys():
-                    if not node_name.startswith("__"):
-                        # 如果有上一个节点，记录其结束时间
-                        if current_node_name and current_node_start:
-                            elapsed = time.time() - current_node_start
-                            node_timings[current_node_name] = elapsed
+        final_state = None
+        for chunk in self.graph.stream(init_agent_state, **args):
+            # 记录节点计时（所有模式都需要）
+            for node_name in chunk.keys():
+                if not node_name.startswith("__"):
+                    if current_node_name and current_node_start:
+                        elapsed = time.time() - current_node_start
+                        node_timings[current_node_name] = elapsed
+                        if self.debug:
+                            logger.info(
+                                f"⏱️ [{current_node_name}] 耗时: {elapsed:.2f}秒"
+                            )
+                            logger.info(
+                                f"🔍 [TIMING] 节点切换: {current_node_name} → {node_name}"
+                            )
+                        else:
                             logger.info(
                                 f"⏱️ [{current_node_name}] 耗时: {elapsed:.2f}秒"
                             )
 
-                        # 开始新节点计时
-                        current_node_name = node_name
-                        current_node_start = time.time()
-                        break
+                    current_node_name = node_name
+                    current_node_start = time.time()
+                    if self.debug:
+                        logger.info(f"🔍 [TIMING] 开始计时: {node_name}")
+                    break
 
-                # 在 updates 模式下，chunk 格式为 {node_name: state_update}
-                # 在 values 模式下，chunk 格式为完整的状态
-                if progress_callback and args.get("stream_mode") == "updates":
-                    # updates 模式：chunk = {"Market Analyst": {...}}
-                    self._send_progress_update(chunk, progress_callback)
-                    # 累积状态更新
-                    if final_state is None:
-                        final_state = init_agent_state.copy()
-                    for node_name, node_update in chunk.items():
-                        if not node_name.startswith("__"):
-                            final_state.update(node_update)
-                else:
-                    # values 模式：chunk = {"messages": [...], ...}
-                    if len(chunk.get("messages", [])) > 0:
-                        chunk["messages"][-1].pretty_print()
-                    trace.append(chunk)
-                    final_state = chunk
-
-            if not trace and final_state:
-                # updates 模式下，使用累积的状态
-                pass
-            elif trace:
-                final_state = trace[-1]
-        else:
-            # Standard mode without tracing but with progress updates
+            # 发送进度更新（如果有回调）
             if progress_callback:
-                # 使用 updates 模式以便获取节点级别的进度
-                trace = []
-                final_state = None
-                for chunk in self.graph.stream(init_agent_state, **args):
-                    # 记录节点计时
-                    for node_name in chunk.keys():
-                        if not node_name.startswith("__"):
-                            # 如果有上一个节点，记录其结束时间
-                            if current_node_name and current_node_start:
-                                elapsed = time.time() - current_node_start
-                                node_timings[current_node_name] = elapsed
-                                logger.info(
-                                    f"⏱️ [{current_node_name}] 耗时: {elapsed:.2f}秒"
-                                )
-                                logger.info(
-                                    f"🔍 [TIMING] 节点切换: {current_node_name} → {node_name}"
-                                )
+                self._send_progress_update(chunk, progress_callback)
 
-                            # 开始新节点计时
-                            current_node_name = node_name
-                            current_node_start = time.time()
-                            logger.info(f"🔍 [TIMING] 开始计时: {node_name}")
-                            break
+            # 累积状态更新（所有模式都需要）
+            if final_state is None:
+                final_state = init_agent_state.copy()
+            for node_name, node_update in chunk.items():
+                if not node_name.startswith("__"):
+                    final_state.update(node_update)
 
-                    self._send_progress_update(chunk, progress_callback)
-                    # 累积状态更新
-                    if final_state is None:
-                        final_state = init_agent_state.copy()
-                    for node_name, node_update in chunk.items():
-                        if not node_name.startswith("__"):
-                            final_state.update(node_update)
-            else:
-                # 原有的invoke模式（也需要计时）
-                logger.info("⏱️ 使用 invoke 模式执行分析（无进度回调）")
-                # 使用stream模式以便计时，但不发送进度更新
-                trace = []
-                final_state = None
-                for chunk in self.graph.stream(init_agent_state, **args):
-                    # 记录节点计时
-                    for node_name in chunk.keys():
-                        if not node_name.startswith("__"):
-                            # 如果有上一个节点，记录其结束时间
-                            if current_node_name and current_node_start:
-                                elapsed = time.time() - current_node_start
-                                node_timings[current_node_name] = elapsed
-                                logger.info(
-                                    f"⏱️ [{current_node_name}] 耗时: {elapsed:.2f}秒"
-                                )
-
-                            # 开始新节点计时
-                            current_node_name = node_name
-                            current_node_start = time.time()
-                            break
-
-                    # 累积状态更新
-                    if final_state is None:
-                        final_state = init_agent_state.copy()
-                    for node_name, node_update in chunk.items():
-                        if not node_name.startswith("__"):
-                            final_state.update(node_update)
+            # Debug模式：打印消息
+            if self.debug and len(chunk.get("messages", [])) > 0:
+                chunk["messages"][-1].pretty_print()
 
         # 记录最后一个节点的时间
         if current_node_name and current_node_start:
@@ -1201,10 +1135,14 @@ class TradingAgentsGraph:
             # 收集所有报告
             reports = {}
             report_types = [
-                "market_report", "fundamentals_report", "news_report",
-                "sentiment_report", "china_market_report",
-                "investment_plan", "trader_investment_plan",
-                "final_trade_decision"
+                "market_report",
+                "fundamentals_report",
+                "news_report",
+                "sentiment_report",
+                "china_market_report",
+                "investment_plan",
+                "trader_investment_plan",
+                "final_trade_decision",
             ]
 
             for report_type in report_types:
@@ -1217,7 +1155,10 @@ class TradingAgentsGraph:
                 return
 
             # 1. 报告一致性检查
-            from tradingagents.utils.report_consistency_checker import ReportConsistencyChecker
+            from tradingagents.utils.report_consistency_checker import (
+                ReportConsistencyChecker,
+            )
+
             checker = ReportConsistencyChecker()
             issues = checker.check_all_reports(reports)
 
@@ -1230,16 +1171,21 @@ class TradingAgentsGraph:
                     )
                 # 将问题保存到状态中
                 final_state["quality_issues"] = issues
-                final_state["consistency_summary"] = checker.generate_consistency_summary()
+                final_state["consistency_summary"] = (
+                    checker.generate_consistency_summary()
+                )
 
             # 2. 数据质量检查
             from tradingagents.utils.data_quality_filter import DataQualityFilter
+
             data_issues = []
 
             # 检查基本面报告的数据质量
             fundamentals_content = reports.get("fundamentals_report", "")
             if fundamentals_content:
-                data_issues.extend(DataQualityFilter.check_financial_data_quality(fundamentals_content))
+                data_issues.extend(
+                    DataQualityFilter.check_financial_data_quality(fundamentals_content)
+                )
 
             if data_issues:
                 logger.info(f"[质量检查] 发现 {len(data_issues)} 个数据质量问题")
@@ -1252,8 +1198,13 @@ class TradingAgentsGraph:
                 final_state["quality_issues"].extend(data_issues)
 
             # 3. 生成交叉引用摘要
-            from tradingagents.utils.cross_reference_generator import CrossReferenceGenerator
-            perspective_summary = CrossReferenceGenerator.generate_perspective_summary(reports)
+            from tradingagents.utils.cross_reference_generator import (
+                CrossReferenceGenerator,
+            )
+
+            perspective_summary = CrossReferenceGenerator.generate_perspective_summary(
+                reports
+            )
             final_state["perspective_summary"] = perspective_summary
 
             # 记录检查结果
@@ -1278,16 +1229,22 @@ class TradingAgentsGraph:
         perspective_summary = final_state.get("perspective_summary", "")
 
         # 统计严重程度
-        critical_count = sum(1 for i in quality_issues if getattr(i, 'severity', None) == 'critical')
-        warning_count = sum(1 for i in quality_issues if getattr(i, 'severity', None) == 'warning')
-        data_warning_count = sum(1 for i in data_issues if i.get('severity') == 'warning')
+        critical_count = sum(
+            1 for i in quality_issues if getattr(i, "severity", None) == "critical"
+        )
+        warning_count = sum(
+            1 for i in quality_issues if getattr(i, "severity", None) == "warning"
+        )
+        data_warning_count = sum(
+            1 for i in data_issues if i.get("severity") == "warning"
+        )
 
         # 添加质量检查结果到决策中
         decision["quality_issues"] = [
             {
-                "severity": getattr(i, 'severity', 'info'),
-                "description": getattr(i, 'description', ''),
-                "source": ', '.join(getattr(i, 'source_reports', []))
+                "severity": getattr(i, "severity", "info"),
+                "description": getattr(i, "description", ""),
+                "source": ", ".join(getattr(i, "source_reports", [])),
             }
             for i in quality_issues
         ]
@@ -1302,15 +1259,21 @@ class TradingAgentsGraph:
         if critical_count > 0:
             # 严重问题：置信度减半
             adjusted_confidence = original_confidence * 0.5
-            logger.warning(f"[质量检查] 存在{critical_count}个严重一致性问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+            logger.warning(
+                f"[质量检查] 存在{critical_count}个严重一致性问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}"
+            )
         elif warning_count >= 2:
             # 多个警告：置信度降低20%
             adjusted_confidence = original_confidence * 0.8
-            logger.warning(f"[质量检查] 存在{warning_count}个警告，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+            logger.warning(
+                f"[质量检查] 存在{warning_count}个警告，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}"
+            )
         elif data_warning_count > 0:
             # 数据质量问题：置信度降低10%
             adjusted_confidence = original_confidence * 0.9
-            logger.warning(f"[质量检查] 存在{data_warning_count}个数据质量问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}")
+            logger.warning(
+                f"[质量检查] 存在{data_warning_count}个数据质量问题，置信度从{original_confidence:.2f}降至{adjusted_confidence:.2f}"
+            )
 
         # 确保置信度不低于0.1
         decision["confidence"] = max(adjusted_confidence, 0.1)

@@ -755,15 +755,6 @@ class TushareProvider(BaseStockDataProvider):
             self.logger.error(f"❌ 获取实时行情失败 symbol={symbol}: {e}")
             return None
 
-        except Exception as e:
-            # 检查是否为限流错误
-            if self._is_rate_limit_error(str(e)):
-                self.logger.error(f"❌ 获取实时行情失败（限流） symbol={symbol}: {e}")
-                raise  # 抛出限流错误，让上层处理
-
-            self.logger.error(f"❌ 获取实时行情失败 symbol={symbol}: {e}")
-            return None
-
     async def get_realtime_quotes_batch(
         self, force_refresh: bool = False
     ) -> Optional[Dict[str, Dict[str, Any]]]:
@@ -846,7 +837,7 @@ class TushareProvider(BaseStockDataProvider):
 
                 result[symbol] = quote_data
 
-            _set_cached_batch_quotes(result)
+            await _set_cached_batch_quotes(result)
             self.logger.info(f"[RT-K] 获取到 {len(result)} 只股票的实时行情")
 
             return result
@@ -920,9 +911,9 @@ class TushareProvider(BaseStockDataProvider):
             "is_valid": age < BATCH_CACHE_TTL_SECONDS,
         }
 
-    def invalidate_batch_cache(self) -> None:
+    async def invalidate_batch_cache(self) -> None:
         """使批量缓存失效"""
-        _invalidate_batch_cache()
+        await _invalidate_batch_cache()
 
     def _is_rate_limit_error(self, error_msg: str) -> bool:
         """检测是否为 API 限流错误"""
@@ -941,7 +932,7 @@ class TushareProvider(BaseStockDataProvider):
         self,
         symbol: str,
         start_date: Union[str, date],
-        end_date: Union[str, date] = None,
+        end_date: Optional[Union[str, date]] = None,
         period: str = "daily",
     ) -> Optional[pd.DataFrame]:
         """
@@ -1127,7 +1118,7 @@ class TushareProvider(BaseStockDataProvider):
         self,
         symbol: str,
         report_type: str = "quarterly",
-        period: str = None,
+        period: Optional[str] = None,
         limit: int = 8,
     ) -> Optional[Dict[str, Any]]:
         """
@@ -1279,7 +1270,11 @@ class TushareProvider(BaseStockDataProvider):
             return None
 
     async def get_stock_news(
-        self, symbol: str = None, limit: int = 10, hours_back: int = 24, src: str = None
+        self,
+        symbol: Optional[str] = None,
+        limit: int = 10,
+        hours_back: int = 24,
+        src: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """
         获取股票新闻（需要Tushare新闻权限）
@@ -1403,7 +1398,11 @@ class TushareProvider(BaseStockDataProvider):
             return None
 
     def _process_tushare_news(
-        self, news_df: pd.DataFrame, source: str, symbol: str = None, limit: int = 10
+        self,
+        news_df: pd.DataFrame,
+        source: str,
+        symbol: Optional[str] = None,
+        limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """处理Tushare新闻数据"""
         news_list = []
@@ -1412,28 +1411,30 @@ class TushareProvider(BaseStockDataProvider):
         df_limited = news_df.head(limit * 2)  # 多获取一些，用于过滤
 
         for _, row in df_limited.iterrows():
+            content_val = str(row.get("content", "") or "")
+            title_val = str(row.get("title", "") or "")
+            channels_val = str(row.get("channels", "") or "")
+            datetime_val = str(row.get("datetime", "") or "")
+
             news_item = {
                 "title": str(
-                    row.get("title", "") or row.get("content", "")[:50] + "..."
+                    title_val
+                    or (
+                        content_val[:50] + "..."
+                        if len(content_val) > 50
+                        else content_val
+                    )
                 ),
-                "content": str(row.get("content", "")),
-                "summary": self._generate_summary(row.get("content", "")),
+                "content": content_val,
+                "summary": self._generate_summary(content_val),
                 "url": "",  # Tushare新闻接口不提供URL
                 "source": self._get_source_name(source),
                 "author": "",
-                "publish_time": self._parse_tushare_news_time(row.get("datetime", "")),
-                "category": self._classify_tushare_news(
-                    row.get("channels", ""), row.get("content", "")
-                ),
-                "sentiment": self._analyze_news_sentiment(
-                    row.get("content", ""), row.get("title", "")
-                ),
-                "importance": self._assess_news_importance(
-                    row.get("content", ""), row.get("title", "")
-                ),
-                "keywords": self._extract_keywords(
-                    row.get("content", ""), row.get("title", "")
-                ),
+                "publish_time": self._parse_tushare_news_time(datetime_val),
+                "category": self._classify_tushare_news(channels_val, content_val),
+                "sentiment": self._analyze_news_sentiment(content_val, title_val),
+                "importance": self._assess_news_importance(content_val, title_val),
+                "keywords": self._extract_keywords(content_val, title_val),
                 "data_source": "tushare",
                 "original_source": source,
             }
@@ -1635,8 +1636,8 @@ class TushareProvider(BaseStockDataProvider):
     async def get_financial_data_by_period(
         self,
         symbol: str,
-        start_period: str = None,
-        end_period: str = None,
+        start_period: Optional[str] = None,
+        end_period: Optional[str] = None,
         report_type: str = "quarterly",
     ) -> Optional[List[Dict[str, Any]]]:
         """
@@ -1679,9 +1680,15 @@ class TushareProvider(BaseStockDataProvider):
             financial_data_list = []
 
             for _, income_row in income_df.iterrows():
-                period = income_row["end_date"]
+                period = (
+                    str(income_row["end_date"])
+                    if income_row["end_date"] is not None
+                    else None
+                )
 
                 # 获取该期间的完整财务数据
+                if period is None:
+                    continue
                 period_data = await self.get_financial_data(
                     symbol=symbol, period=period, limit=1
                 )
@@ -1965,7 +1972,7 @@ class TushareProvider(BaseStockDataProvider):
                 "ts_code": ts_code,
                 "report_period": report_period,
                 "ann_date": ann_date,
-                "report_type": self._determine_report_type(report_period),
+                "report_type": self._determine_report_type(report_period or ""),  # type: ignore
                 # 利润表核心指标
                 "revenue": self._safe_float(
                     latest_income.get("revenue")

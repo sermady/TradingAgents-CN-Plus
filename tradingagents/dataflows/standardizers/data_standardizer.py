@@ -170,8 +170,9 @@ class DataStandardizer:
             return result
 
         try:
-            market_cap = float(market_cap)
-            revenue = float(revenue)
+            # 修复类型错误：确保值不是 None
+            market_cap = float(market_cap) if market_cap is not None else 0.0
+            revenue = float(revenue) if revenue is not None else 0.0
         except (ValueError, TypeError):
             result["calculation_details"]["error"] = "市值或营收数据类型错误"
             result["is_valid"] = False
@@ -265,11 +266,12 @@ class DataStandardizer:
             return result
 
         try:
-            upper = float(upper)
-            lower = float(lower)
-            current_price = float(current_price)
+            # 修复类型错误：确保值不是 None
+            upper = float(upper) if upper is not None else 0.0
+            lower = float(lower) if lower is not None else 0.0
+            current_price = float(current_price) if current_price is not None else 0.0
             if middle:
-                middle = float(middle)
+                middle = float(middle) if middle is not None else 0.0
         except (ValueError, TypeError) as e:
             result["is_valid"] = False
             result["errors"].append(f"布林带数据类型错误: {e}")

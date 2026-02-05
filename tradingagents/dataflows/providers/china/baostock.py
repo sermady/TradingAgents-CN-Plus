@@ -104,6 +104,8 @@ class BaoStockProvider(BaseStockDataProvider):
 
                 # 只保留股票类型（type=1）
                 df = df[df["type"] == "1"]
+                if not isinstance(df, pd.DataFrame):
+                    return None
 
                 logger.info(f"✅ BaoStock股票列表获取成功: {len(df)}只股票")
                 return df

@@ -74,20 +74,22 @@ class AgentState(MessagesState):
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
     china_market_report: Annotated[str, "Report from the China Market Analyst"]
 
-    # 🔧 死循环修复: 工具调用计数器 (已废弃)
-    # 注：重构后分析师使用 Data Coordinator 预取数据，不再直接调用工具
-    # 保留这些字段以确保向后兼容性，但值为 0 且不再更新
-    # TODO: 未来版本可以移除这些字段
+    # 🔧 死循环防护: 工具调用计数器
+    # 注：虽然重构后分析师使用 Data Coordinator 预取数据，不再直接调用工具，
+    # 但保留这些字段作为安全防护机制，防止意外情况下的无限循环
+    # 这些字段由 conditional_logic.py 中的死循环检测逻辑使用
     market_tool_call_count: Annotated[
-        int, "Market analyst tool call counter (DEPRECATED)"
-    ]
-    news_tool_call_count: Annotated[int, "News analyst tool call counter (DEPRECATED)"]
+        int, "Market analyst tool call counter (safety mechanism)"
+    ] = 0
+    news_tool_call_count: Annotated[
+        int, "News analyst tool call counter (safety mechanism)"
+    ] = 0
     sentiment_tool_call_count: Annotated[
-        int, "Social media analyst tool call counter (DEPRECATED)"
-    ]
+        int, "Social media analyst tool call counter (safety mechanism)"
+    ] = 0
     fundamentals_tool_call_count: Annotated[
-        int, "Fundamentals analyst tool call counter (DEPRECATED)"
-    ]
+        int, "Fundamentals analyst tool call counter (safety mechanism)"
+    ] = 0
 
     # researcher team discussion step
     investment_debate_state: Annotated[

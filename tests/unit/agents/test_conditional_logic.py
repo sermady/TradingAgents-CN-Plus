@@ -28,8 +28,8 @@ def test_conditional_logic_initialization():
 
     # Assert
     assert logic is not None
-    assert logic.max_debate_rounds == 1
-    assert logic.max_risk_discuss_rounds == 1
+    assert logic.max_debate_rounds == 2
+    assert logic.max_risk_discuss_rounds == 2
 
 
 @pytest.mark.unit
@@ -363,7 +363,7 @@ def test_should_continue_debate_max_count():
     logic = ConditionalLogic()
     state = {
         "investment_debate_state": {
-            "count": 2,  # 最大次数
+            "count": 4,  # 最大次数 (2轮 * 2方)
             "current_response": "Bull Researcher: ...",
             "bull_history": "Argument 1\nArgument 2",
         }
@@ -399,7 +399,7 @@ def test_should_continue_risk_analysis_max_count():
     logic = ConditionalLogic()
     state = {
         "risk_debate_state": {
-            "count": 3,  # 最大次数
+            "count": 6,  # 最大次数 (2轮 * 3方)
             "latest_speaker": "Risky Analyst",
         }
     }

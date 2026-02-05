@@ -584,18 +584,20 @@ def get_reddit_global_news(
         str: A formatted dataframe containing the latest news articles posts on reddit and meta information in these columns: "created_utc", "id", "title", "selftext", "score", "num_comments", "url"
     """
 
-    start_date = datetime.strptime(start_date, "%Y-%m-%d")
-    before = start_date - relativedelta(days=look_back_days)
-    before = before.strftime("%Y-%m-%d")
+    start_date_dt = datetime.strptime(
+        start_date, "%Y-%m-%d"
+    )  # 修复类型错误：使用新变量名避免类型混淆
+    before = start_date_dt - relativedelta(days=look_back_days)
+    before_str = before.strftime("%Y-%m-%d")
 
     posts = []
     # iterate from start_date to end_date
-    curr_date = datetime.strptime(before, "%Y-%m-%d")
+    curr_date = datetime.strptime(before_str, "%Y-%m-%d")
 
-    total_iterations = (start_date - curr_date).days + 1
+    total_iterations = (start_date_dt - curr_date).days + 1
     pbar = tqdm(desc=f"Getting Global News on {start_date}", total=total_iterations)
 
-    while curr_date <= start_date:
+    while curr_date <= start_date_dt:
         curr_date_str = curr_date.strftime("%Y-%m-%d")
         fetch_result = fetch_top_from_category(
             "global_news",
@@ -638,21 +640,23 @@ def get_reddit_company_news(
         str: A formatted dataframe containing the latest news articles posts on reddit and meta information in these columns: "created_utc", "id", "title", "selftext", "score", "num_comments", "url"
     """
 
-    start_date = datetime.strptime(start_date, "%Y-%m-%d")
-    before = start_date - relativedelta(days=look_back_days)
-    before = before.strftime("%Y-%m-%d")
+    start_date_dt = datetime.strptime(
+        start_date, "%Y-%m-%d"
+    )  # 修复类型错误：使用新变量名
+    before = start_date_dt - relativedelta(days=look_back_days)
+    before_str = before.strftime("%Y-%m-%d")
 
     posts = []
     # iterate from start_date to end_date
-    curr_date = datetime.strptime(before, "%Y-%m-%d")
+    curr_date = datetime.strptime(before_str, "%Y-%m-%d")
 
-    total_iterations = (start_date - curr_date).days + 1
+    total_iterations = (start_date_dt - curr_date).days + 1
     pbar = tqdm(
         desc=f"Getting Company News for {ticker} on {start_date}",
         total=total_iterations,
     )
 
-    while curr_date <= start_date:
+    while curr_date <= start_date_dt:
         curr_date_str = curr_date.strftime("%Y-%m-%d")
         fetch_result = fetch_top_from_category(
             "company_news",
@@ -768,9 +772,11 @@ def get_stock_stats_indicators_window(
             f"Indicator {indicator} is not supported. Please choose from: {list(best_ind_params.keys())}"
         )
 
-    end_date = curr_date
-    curr_date = datetime.strptime(curr_date, "%Y-%m-%d")
-    before = curr_date - relativedelta(days=look_back_days)
+    end_date = curr_date  # 保存原始字符串
+    curr_date_dt = datetime.strptime(
+        curr_date, "%Y-%m-%d"
+    )  # 修复类型错误：使用新变量名
+    before = curr_date_dt - relativedelta(days=look_back_days)
 
     if not online:
         # read from YFin data
@@ -784,27 +790,31 @@ def get_stock_stats_indicators_window(
         dates_in_df = data["Date"].astype(str).str[:10]
 
         ind_string = ""
-        while curr_date >= before:
+        curr_date_loop = curr_date_dt  # 修复类型错误：使用新变量名避免类型混淆
+        while curr_date_loop >= before:
             # only do the trading dates
-            if curr_date.strftime("%Y-%m-%d") in dates_in_df.values:
+            if curr_date_loop.strftime("%Y-%m-%d") in dates_in_df.values:
                 indicator_value = get_stockstats_indicator(
-                    symbol, indicator, curr_date.strftime("%Y-%m-%d"), online
+                    symbol, indicator, curr_date_loop.strftime("%Y-%m-%d"), online
                 )
 
-                ind_string += f"{curr_date.strftime('%Y-%m-%d')}: {indicator_value}\n"
+                ind_string += (
+                    f"{curr_date_loop.strftime('%Y-%m-%d')}: {indicator_value}\n"
+                )
 
-            curr_date = curr_date - relativedelta(days=1)
+            curr_date_loop = curr_date_loop - relativedelta(days=1)
     else:
         # online gathering
         ind_string = ""
-        while curr_date >= before:
+        curr_date_loop = curr_date_dt  # 修复类型错误：使用新变量名避免类型混淆
+        while curr_date_loop >= before:
             indicator_value = get_stockstats_indicator(
-                symbol, indicator, curr_date.strftime("%Y-%m-%d"), online
+                symbol, indicator, curr_date_loop.strftime("%Y-%m-%d"), online
             )
 
-            ind_string += f"{curr_date.strftime('%Y-%m-%d')}: {indicator_value}\n"
+            ind_string += f"{curr_date_loop.strftime('%Y-%m-%d')}: {indicator_value}\n"
 
-            curr_date = curr_date - relativedelta(days=1)
+            curr_date_loop = curr_date_loop - relativedelta(days=1)
 
     result_str = (
         f"## {indicator} values from {before.strftime('%Y-%m-%d')} to {end_date}:\n\n"

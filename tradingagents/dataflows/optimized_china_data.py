@@ -2446,17 +2446,44 @@ class OptimizedChinaDataProvider:
                 logger.warning(f"⚠️ Tushare TTM 计算失败: {e}")
 
             # 降级到单期数据
-            total_revenue = (
-                ttm_revenue
-                if ttm_revenue
-                else (latest_income.get("total_revenue", 0) or 0)
-            )
-            net_income = (
-                ttm_net_income
-                if ttm_net_income
-                else (latest_income.get("n_income", 0) or 0)
-            )
-            operate_profit = latest_income.get("operate_profit", 0) or 0
+            if is_flattened:
+                # 扁平化结构：使用正确的字段名
+                total_revenue = (
+                    ttm_revenue
+                    if ttm_revenue
+                    else (
+                        latest_income.get("revenue", 0)
+                        or latest_income.get("oper_rev", 0)
+                        or 0
+                    )
+                )
+                net_income = (
+                    ttm_net_income
+                    if ttm_net_income
+                    else (
+                        latest_income.get("n_income", 0)
+                        or latest_income.get("net_income", 0)
+                        or 0
+                    )
+                )
+                operate_profit = (
+                    latest_income.get("oper_profit", 0)
+                    or latest_income.get("total_profit", 0)
+                    or 0
+                )
+            else:
+                # 嵌套结构
+                total_revenue = (
+                    ttm_revenue
+                    if ttm_revenue
+                    else (latest_income.get("total_revenue", 0) or 0)
+                )
+                net_income = (
+                    ttm_net_income
+                    if ttm_net_income
+                    else (latest_income.get("n_income", 0) or 0)
+                )
+                operate_profit = latest_income.get("operate_profit", 0) or 0
 
             revenue_type = "TTM" if ttm_revenue else "单期"
             profit_type = "TTM" if ttm_net_income else "单期"

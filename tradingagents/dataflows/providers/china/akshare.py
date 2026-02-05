@@ -92,11 +92,14 @@ class AKShareProvider(BaseStockDataProvider):
 
         # 🔥 检查 AKSHARE_UNIFIED_ENABLED 开关
         import os
+
         akshare_enabled_str = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower()
         akshare_enabled = akshare_enabled_str in ("true", "1", "yes", "on")
 
         if not akshare_enabled:
-            logger.info("⏸️ [AKShare] AKSHARE_UNIFIED_ENABLED=false，跳过 AKShare 数据源初始化")
+            logger.info(
+                "⏸️ [AKShare] AKSHARE_UNIFIED_ENABLED=false，跳过 AKShare 数据源初始化"
+            )
             self.connected = False
             return
 
@@ -569,22 +572,22 @@ class AKShareProvider(BaseStockDataProvider):
                     # 提取股票名称
                     name_row = stock_info[stock_info["item"] == "股票简称"]
                     if not name_row.empty:
-                        info["name"] = str(name_row["value"].iloc[0])
+                        info["name"] = str(name_row["value"].iloc[0])  # type: ignore
 
                     # 提取行业信息
                     industry_row = stock_info[stock_info["item"] == "所属行业"]
                     if not industry_row.empty:
-                        info["industry"] = str(industry_row["value"].iloc[0])
+                        info["industry"] = str(industry_row["value"].iloc[0])  # type: ignore
 
                     # 提取地区信息
                     area_row = stock_info[stock_info["item"] == "所属地区"]
                     if not area_row.empty:
-                        info["area"] = str(area_row["value"].iloc[0])
+                        info["area"] = str(area_row["value"].iloc[0])  # type: ignore
 
                     # 提取上市日期
                     list_date_row = stock_info[stock_info["item"] == "上市时间"]
                     if not list_date_row.empty:
-                        info["list_date"] = str(list_date_row["value"].iloc[0])
+                        info["list_date"] = str(list_date_row["value"].iloc[0])  # type: ignore
 
                     return info
             except Exception as e:
@@ -598,7 +601,7 @@ class AKShareProvider(BaseStockDataProvider):
                     if not stock_row.empty:
                         return {
                             "code": code,
-                            "name": str(stock_row["name"].iloc[0]),
+                            "name": str(stock_row["name"].iloc[0]),  # type: ignore
                             "industry": "未知",
                             "area": "未知",
                         }
@@ -912,6 +915,9 @@ class AKShareProvider(BaseStockDataProvider):
                         f"proxy_enabled={proxy_enabled}, error_type={error_type}, error={str(e)[:200]}"
                     )
                     return {}
+
+        # 如果循环结束仍未返回，返回空字典
+        return {}
 
     async def get_stock_quotes(self, code: str) -> Optional[Dict[str, Any]]:
         """
@@ -1295,7 +1301,7 @@ class AKShareProvider(BaseStockDataProvider):
             numeric_columns = ["open", "close", "high", "low", "volume", "amount"]
             for col in numeric_columns:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)  # type: ignore
 
             # 🔥 成交量单位：保持原始单位"手"（AKShare历史数据返回的是手）
             # 不再转换为股，直接使用原始单位
@@ -1654,7 +1660,9 @@ class AKShareProvider(BaseStockDataProvider):
                             ),
                             "author": str(row.get("作者", "") or ""),
                             "publish_time": self._parse_news_time(
-                                row.get("发布时间", "") or row.get("时间", "")
+                                str(
+                                    row.get("发布时间", "") or row.get("时间", "") or ""
+                                )
                             ),
                             "category": self._classify_news(content, title),
                             "sentiment": self._analyze_news_sentiment(content, title),
@@ -1683,7 +1691,7 @@ class AKShareProvider(BaseStockDataProvider):
 
                 try:
                     # 获取财经新闻
-                    news_df = await asyncio.to_thread(ak.news_cctv, limit=limit)
+                    news_df = await asyncio.to_thread(ak.news_cctv, limit=limit)  # type: ignore
 
                     if news_df is not None and not news_df.empty:
                         news_list = []
@@ -1705,7 +1713,9 @@ class AKShareProvider(BaseStockDataProvider):
                                 ),
                                 "author": str(row.get("author", "") or ""),
                                 "publish_time": self._parse_news_time(
-                                    row.get("time", "") or row.get("时间", "")
+                                    str(
+                                        row.get("time", "") or row.get("时间", "") or ""
+                                    )
                                 ),
                                 "category": self._classify_news(content, title),
                                 "sentiment": self._analyze_news_sentiment(

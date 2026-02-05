@@ -30,21 +30,106 @@ See **skills/SKILLS.md > Section 6** for commit message format.
 
 ## Development Commands
 
+### Backend (FastAPI)
+
 ```bash
-# Backend (FastAPI)
+# Start backend server
 python -m app
 
-# Frontend (Vue 3)
-cd frontend && npm run dev
+# Install dependencies
+pip install -e .
 
-# Docker Deployment
+# Using uv (faster)
+uv pip install -e .
+```
+
+### Frontend (Vue 3)
+
+```bash
+cd frontend
+
+# Development server
+npm run dev
+
+# Production build
+npm run build
+
+# Code linting
+npm run lint
+
+# Code formatting
+npm run format
+
+# Type checking
+npm run type-check
+```
+
+### Docker Deployment
+
+```bash
+# Windows
 scripts\docker\start_docker_services.bat
 
-# Run Tests
-python -m pytest tests/unit/ -v
+# Or using docker-compose directly
+docker-compose up -d
+```
 
-# Data Import
+### Testing
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run unit tests only (fast, no external dependencies)
+python -m pytest -m unit -v
+
+# Run integration tests (requires database/API)
+python -m pytest -m integration -v
+
+# Run specific test file
+python -m pytest tests/unit/test_data_manager.py -v
+
+# Run single test
+python -m pytest tests/unit/test_data_manager.py::TestDataManager::test_get_data -v
+
+# Run with coverage
+python -m pytest --cov=tradingagents --cov=app --cov-report=term-missing
+
+# Run slow tests
+python -m pytest -m slow -v
+
+# Run tests requiring database
+python -m pytest -m requires_db -v
+```
+
+### Code Quality
+
+```bash
+# Ruff linting (if configured)
+ruff check .
+ruff check . --fix
+
+# Ruff formatting
+ruff format .
+
+# Black formatting
+black .
+
+# Import sorting
+isort .
+```
+
+### Data Import
+
+```bash
+# Using Baostock (free)
 python scripts/import/import_a_stocks_unified.py --data-source baostock
+
+# Using Tushare (requires token)
+python scripts/import/import_a_stocks_unified.py --data-source tushare
+
+# Auto-select best available source
+python scripts/import/import_a_stocks_unified.py --data-source auto
 ```
 
 ## Architecture Overview
