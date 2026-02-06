@@ -246,19 +246,35 @@ export const useNotificationStore = defineStore('notifications', () => {
         return
       }
 
-      // 🔒 WebSocket 连接地址 - 不再在URL中传递token
+      // 🔒 WebSocket 连接地址
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
-      const wsUrl = `${wsProtocol}//${host}/api/ws/notifications`
 
       connectionId++
       connectionStartTime = Date.now()
       // 🔒 脱敏日志：隐藏完整 token
       const safeToken = token.length > 10 ? `${token.slice(0, 10)}...` : '***'
-      console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl} (token: ${safeToken})`)
 
-      // 🔒 使用 WebSocket 子协议传递 token（更安全）
-      const socket = new WebSocket(wsUrl, ['auth-token', token])
+      // 🔥 开发模式使用 query string 传递 token（Vite 代理兼容性更好）
+      // 生产环境使用子协议（更安全）
+      const isDev = import.meta.env.DEV
+      let wsUrl: string
+      let protocols: string[] | undefined
+
+      if (isDev) {
+        // 开发模式：使用 query string
+        wsUrl = `${wsProtocol}//${host}/api/ws/notifications?token=${encodeURIComponent(token)}`
+        protocols = undefined
+        console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl.split('?')[0]}?token=*** (开发模式)`)
+      } else {
+        // 生产模式：使用子协议（更安全）
+        wsUrl = `${wsProtocol}//${host}/api/ws/notifications`
+        protocols = ['auth-token', token]
+        console.log(`[WS] 🔌 创建新连接 #${connectionId} -> ${wsUrl} (生产模式，使用子协议)`)
+      }
+
+      // 🔒 创建 WebSocket 连接
+      const socket = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl)
       ws.value = socket
 
       socket.onopen = () => {

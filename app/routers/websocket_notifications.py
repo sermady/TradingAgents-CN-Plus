@@ -27,7 +27,7 @@ logger = logging.getLogger("webapi.websocket")
 
 # 🔥 连接信息（用于诊断）
 class ConnectionInfo:
-    def __init__(self, websocket: WebSocket, user_id: str, client_ip: str = 'unknown'):
+    def __init__(self, websocket: WebSocket, user_id: str, client_ip: str = "unknown"):
         self.websocket = websocket
         self.user_id = user_id
         self.created_at = datetime.utcnow()
@@ -56,20 +56,20 @@ class ConnectionInfo:
 def get_client_ip(websocket: WebSocket) -> str:
     """从 WebSocket 请求中提取客户端 IP"""
     try:
-        if hasattr(websocket, 'scope') and websocket.scope:
-            headers = dict(websocket.scope.get('headers', []))
+        if hasattr(websocket, "scope") and websocket.scope:
+            headers = dict(websocket.scope.get("headers", []))
             # 检查代理头
-            for header in [b'x-forwarded-for', b'x-real-ip']:
+            for header in [b"x-forwarded-for", b"x-real-ip"]:
                 if header in headers:
-                    ip_list = headers[header].decode('utf-8').split(',')
-                    return ip_list[0].strip() if ip_list else 'unknown'
+                    ip_list = headers[header].decode("utf-8").split(",")
+                    return ip_list[0].strip() if ip_list else "unknown"
             # 回退到直接连接
-            client = websocket.scope.get('client')
+            client = websocket.scope.get("client")
             if client:
                 return client[0]
     except Exception as e:
         logger.warning(f"获取客户端 IP 失败: {e}")
-    return 'unknown'
+    return "unknown"
 
 
 # 🔥 全局 WebSocket 连接管理器
@@ -105,7 +105,9 @@ class ConnectionManager:
         if self.ip_connections[client_ip] >= self.max_connections_per_ip:
             await websocket.close(code=1013, reason="IP limit exceeded")
             logger.warning(f"🚫 [WS] 拒绝连接：IP {client_ip} 连接数超限")
-            raise HTTPException(status_code=429, detail="Too many connections from this IP")
+            raise HTTPException(
+                status_code=429, detail="Too many connections from this IP"
+            )
 
         # 🔒 DoS 防护：连接频率限制（防止重放攻击）
         now = time.time()
@@ -183,7 +185,7 @@ class ConnectionManager:
         lifetime = conn_info.get_lifetime_seconds() if conn_info else 0
 
         # 🔒 释放 IP 计数
-        if client_ip != 'unknown':
+        if client_ip != "unknown":
             self.ip_connections[client_ip] = max(0, self.ip_connections[client_ip] - 1)
 
         async with self._lock:
@@ -286,11 +288,25 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         }
     }
     """
-    # 🔒 从子协议获取 Token（更安全）
-    subprotocols = websocket.scope.get('subprotocols', [])
+    # 🔒 从子协议或 query string 获取 Token
     token = None
-    if len(subprotocols) >= 2 and subprotocols[0] == 'auth-token':
+
+    # 方式1：从子协议获取（生产环境推荐）
+    subprotocols = websocket.scope.get("subprotocols", [])
+    if len(subprotocols) >= 2 and subprotocols[0] == "auth-token":
         token = subprotocols[1]
+        logger.debug("[WS] 从子协议获取 Token")
+
+    # 方式2：从 query string 获取（开发环境兼容性更好）
+    if not token:
+        query_string = websocket.scope.get("query_string", b"").decode("utf-8")
+        if query_string:
+            from urllib.parse import parse_qs
+
+            params = parse_qs(query_string)
+            if "token" in params:
+                token = params["token"][0]
+                logger.debug("[WS] 从 query string 获取 Token")
 
     if not token:
         await websocket.close(code=1008, reason="Unauthorized: No token provided")
@@ -376,22 +392,25 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
                 # 🔥 解析并处理心跳消息
                 try:
                     message = json.loads(data)
-                    msg_type = message.get('type')
+                    msg_type = message.get("type")
 
-                    if msg_type == 'ping':
+                    if msg_type == "ping":
                         # 响应客户端心跳
-                        await websocket.send_json({
-                            'type': 'pong',
-                            'timestamp': time.time()
-                        })
+                        await websocket.send_json(
+                            {"type": "pong", "timestamp": time.time()}
+                        )
                         logger.debug(f"📥 [WS] 收到 ping，已回复 pong: user={user_id}")
                         continue
 
                     # 处理其他消息类型
-                    logger.debug(f"📥 [WS] 收到客户端消息: user={user_id}, type={msg_type}")
+                    logger.debug(
+                        f"📥 [WS] 收到客户端消息: user={user_id}, type={msg_type}"
+                    )
                 except json.JSONDecodeError:
                     # 非 JSON 消息，记录日志
-                    logger.debug(f"📥 [WS] 收到非JSON消息: user={user_id}, data={data[:50]}")
+                    logger.debug(
+                        f"📥 [WS] 收到非JSON消息: user={user_id}, data={data[:50]}"
+                    )
 
             except WebSocketDisconnect:
                 logger.info(f"🔌 [WS] 客户端主动断开: user={user_id}")
