@@ -343,6 +343,16 @@ const routes: RouteRecordRaw[] = [
           title: '定时任务',
           requiresAuth: true
         }
+      },
+      {
+        path: 'data-quality',
+        name: 'DataQuality',
+        component: () => import('@/views/DataQuality/index.vue'),
+        meta: {
+          title: '数据质量监控',
+          icon: 'DataAnalysis',
+          requiresAuth: true
+        }
       }
     ]
   },

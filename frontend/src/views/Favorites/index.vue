@@ -195,12 +195,13 @@ import { favoritesApi } from '@/api/favorites'
 import { tagsApi } from '@/api/tags'
 import { stockSyncApi } from '@/api/stockSync'
 import { normalizeMarketForAnalysis } from '@/utils/market'
-import type { FavoriteItem } from '@/api/favorites'
+import type { FavoriteItem, AddFavoriteReq } from '@/api/favorites'
 import { useAuthStore } from '@/stores/auth'
 import { useFavoritesStore } from '@/stores/favorites'
 
 // 导入子组件
 import AddStockDialog from './components/AddStockDialog.vue'
+import type { FavoriteFormData } from './components/AddStockDialog.vue'
 import EditStockDialog from './components/EditStockDialog.vue'
 import TagManagerDialog from './components/TagManagerDialog.vue'
 import BatchSyncDialog from './components/BatchSyncDialog.vue'
@@ -356,16 +357,23 @@ const showAddDialog = () => {
 }
 
 // 处理添加自选股（使用 Store）
-const handleAddFavorite = async (formData: any) => {
+const handleAddFavorite = async (formData: FavoriteFormData) => {
   try {
     if (!formData) return
 
-    const payload = { ...formData }
-    await favoritesStore.addFavorite(payload as any)
+    const payload: AddFavoriteReq = {
+      stock_code: formData.stock_code,
+      stock_name: formData.stock_name,
+      market: formData.market,
+      tags: formData.tags,
+      notes: formData.notes
+    }
+    await favoritesStore.addFavorite(payload)
     addDialogVisible.value = false
-  } catch (error: any) {
-    console.error('添加自选股失败:', error)
+  } catch (error: unknown) {
     // Store 已经显示错误消息，这里不需要重复
+    const errorMessage = error instanceof Error ? error.message : '未知错误'
+    console.error('添加自选股失败:', errorMessage)
   }
 }
 

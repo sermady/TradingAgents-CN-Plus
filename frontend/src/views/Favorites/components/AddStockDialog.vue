@@ -74,6 +74,13 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiClient } from '@/api/request'
 import type { StockInfo } from '@/types/analysis'
+import type { AddFavoriteReq } from '@/api/favorites'
+
+// 表单数据类型（继承自 AddFavoriteReq，添加必填字段）
+export interface FavoriteFormData extends Required<Pick<AddFavoriteReq, 'stock_code' | 'stock_name' | 'market'>> {
+  tags: string[]
+  notes: string
+}
 
 // Props
 interface Props {
@@ -91,7 +98,7 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'success': [data: typeof form.value]
+  'success': [data: FavoriteFormData]
 }>()
 
 // 响应式数据
