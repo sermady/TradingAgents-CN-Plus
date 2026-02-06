@@ -27,6 +27,9 @@ import asyncio
 from pathlib import Path
 
 from app.core.config import settings
+
+# 模块级 logger 定义（需要在文件早期定义，以便在异常处理中使用）
+logger = logging.getLogger(__name__)
 from app.core.database import init_db, close_db
 from app.core.logging_config import setup_logging
 from app.routers import (
@@ -875,6 +878,23 @@ app.add_middleware(
 app.add_middleware(OperationLogMiddleware)
 
 
+# ========== Phase 1.3: 速率限制中间件 ==========
+try:
+    from app.middleware.rate_limit import RateLimitMiddleware, QuotaMiddleware
+
+    # 速率限制中间件（每分钟请求限制）
+    app.add_middleware(RateLimitMiddleware, default_rate_limit=100)
+    logger.info("✅ RateLimitMiddleware 已激活")
+
+    # 每日配额中间件
+    app.add_middleware(QuotaMiddleware, daily_quota=1000)
+    logger.info("✅ QuotaMiddleware 已激活")
+except ImportError as e:
+    logger.warning(f"⚠️ 速率限制中间件导入失败: {e}")
+except Exception as e:
+    logger.error(f"❌ 速率限制中间件激活失败: {e}")
+
+
 # 请求日志中间件
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -950,6 +970,11 @@ app.include_router(stock_data_router.router, tags=["stock-data"])
 app.include_router(stock_sync_router.router, tags=["stock-sync"])
 app.include_router(tags.router, prefix="/api", tags=["tags"])
 app.include_router(config.router, prefix="/api", tags=["config"])
+
+# Phase 2.3: 数据质量监控路由
+from app.routers import data_quality as data_quality_router
+
+app.include_router(data_quality_router.router, tags=["data-quality"])
 app.include_router(model_capabilities.router, tags=["model-capabilities"])
 app.include_router(usage_statistics.router, tags=["usage-statistics"])
 app.include_router(database.router, prefix="/api/system", tags=["database"])

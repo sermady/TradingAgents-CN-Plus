@@ -229,6 +229,7 @@ class TradingAgentsGraph:
         """
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
+        self.selected_analysts = selected_analysts  # 保存分析师选择列表
 
         # Update the interface's config
         set_config(self.config)
