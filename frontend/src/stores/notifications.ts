@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { notificationsApi, type NotificationItem } from '@/api/notifications'
 import { useAuthStore } from '@/stores/auth'
-import * as DOMPurify from 'dompurify'
+import DOMPurify from 'dompurify'
 
 // 🔒 安全消息类型定义
 type SafeWebSocketMessage = {
@@ -26,7 +26,7 @@ type SafeWebSocketMessage = {
  * 🔒 消息验证函数 - 防止XSS攻击
  */
 function isValidMessage(msg: any): msg is SafeWebSocketMessage {
-  const validTypes = ['connected', 'notification', 'heartbeat']
+  const validTypes = ['connected', 'notification', 'heartbeat', 'pong']
   if (!msg || typeof msg !== 'object') return false
   if (!msg.type || !validTypes.includes(msg.type)) return false
 

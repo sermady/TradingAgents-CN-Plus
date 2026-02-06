@@ -25,11 +25,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import NetworkStatus from '@/components/NetworkStatus.vue'
 import axios from 'axios'
 import { configApi } from '@/api/config'
+import { useNotificationStore } from '@/stores/notifications'
+import { useAuthStore } from '@/stores/auth'
 
 // 需要缓存的组件
 const keepAliveComponents = computed(() => [
@@ -166,10 +168,37 @@ const handleWizardComplete = async (data: any) => {
   }
 }
 
+// WebSocket 连接管理（在 App 级别管理，避免路由切换导致断开）
+const notifStore = useNotificationStore()
+const authStore = useAuthStore()
+
 // 生命周期
 onMounted(() => {
   // 检查是否需要显示配置向导
   checkFirstTimeSetup()
+
+  // 🔥 在应用级别建立 WebSocket 连接（避免路由切换导致断开）
+  // 只在用户已登录时连接
+  if (authStore.isAuthenticated && authStore.token) {
+    console.log('[App] 用户已登录，建立 WebSocket 连接')
+    notifStore.connect()
+  }
+
+  // 监听登录状态变化，自动连接/断开 WebSocket
+  watch(() => authStore.isAuthenticated, (isAuthenticated) => {
+    if (isAuthenticated && authStore.token) {
+      console.log('[App] 用户登录成功，建立 WebSocket 连接')
+      notifStore.connect()
+    } else {
+      console.log('[App] 用户登出，断开 WebSocket 连接')
+      notifStore.disconnect()
+    }
+  })
+})
+
+onUnmounted(() => {
+  // 🔥 应用卸载时断开 WebSocket（例如用户关闭浏览器标签）
+  notifStore.disconnect()
 })
 </script>
 

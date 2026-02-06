@@ -103,9 +103,9 @@ function go(n: any) { if (n.link) window.open(n.link, '_blank') }
  onMounted(() => {
   // 刷新未读数（一次性）
   notifStore.refreshUnreadCount()
-  // 🔥 建立 WebSocket 连接（优先），失败自动降级到 SSE
-  notifStore.connect()
-  
+  // 🔥 WebSocket 连接已在 App.vue 中管理，这里不再重复连接
+  // notifStore.connect() // 已由 App.vue 统一管理
+
   // 🔥 优化：只在 WebSocket 未连接时启用轮询作为降级方案
   // 当 WebSocket 连接正常时，完全依赖推送，不进行 HTTP 轮询
   timerCount = setInterval(() => {
@@ -114,7 +114,7 @@ function go(n: any) { if (n.link) window.open(n.link, '_blank') }
       notifStore.refreshUnreadCount()
     }
   }, 30000)
-  
+
   watch(drawerVisible, (v) => {
     if (v) {
       notifStore.loadList(filter.value)
@@ -135,20 +135,11 @@ function go(n: any) { if (n.link) window.open(n.link, '_blank') }
       console.log('[HeaderActions] WebSocket 已连接，禁用通知轮询，完全依赖推送')
     } else {
       console.log('[HeaderActions] WebSocket 已断开，启用通知轮询作为降级方案')
-    }
-  })
-  
-  // 🔥 token 变化时重连（仅在从无到有时重连）
-  watch(() => authStore.token, (newToken, oldToken) => {
-    // 只有当 token 从无到有时才重连，避免频繁重连
-    if (!oldToken && newToken && !notifStore.wsConnected) {
-      console.log('[HeaderActions] Token 已设置，开始连接 WebSocket')
-      notifStore.connect()
-    }
-    // 如果 token 被清除，断开连接
-    else if (oldToken && !newToken) {
-      console.log('[HeaderActions] Token 已清除，断开 WebSocket')
-      notifStore.disconnect()
+      // WebSocket 断开时，尝试重新连接（如果用户已登录）
+      if (authStore.isAuthenticated && !notifStore.wsConnected) {
+        console.log('[HeaderActions] 尝试重新连接 WebSocket')
+        notifStore.connect()
+      }
     }
   })
 })
@@ -156,8 +147,9 @@ function go(n: any) { if (n.link) window.open(n.link, '_blank') }
 onUnmounted(() => {
   if (timerCount) clearInterval(timerCount)
   if (timerList) clearInterval(timerList)
-  // 🔥 断开所有连接（WebSocket 和 SSE）
-  notifStore.disconnect()
+  // 🔥 WebSocket 连接由 App.vue 统一管理，这里不再断开
+  // 避免路由切换导致 WebSocket 断开
+  // notifStore.disconnect() // 已由 App.vue 统一管理
 })
 
 function showHelp() {
