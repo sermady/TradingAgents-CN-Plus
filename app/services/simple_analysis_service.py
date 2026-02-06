@@ -1064,6 +1064,45 @@ class SimpleAnalysisService:
             # 标记进度跟踪器完成（在线程中执行）
             await asyncio.to_thread(progress_tracker.mark_completed)
 
+            # ========== Phase 3.1: 执行层风险拦截网关 ==========
+            try:
+                from app.services.execution_risk_gateway import (
+                    get_execution_risk_gateway,
+                    ValidationResult,
+                )
+
+                logger.info(f"🔒 开始执行风控验证: {task_id}")
+                risk_gateway = get_execution_risk_gateway()
+
+                # 执行风险验证
+                risk_validation = risk_gateway.validate_from_analysis_result(result)
+
+                # 将风控结果添加到分析结果中
+                result["risk_validation"] = risk_validation.to_dict()
+
+                if risk_validation.blocked:
+                    logger.warning(
+                        f"🚫 交易决策被风控拦截: {task_id} - {risk_validation.summary}"
+                    )
+                    # 添加警告到结果中
+                    result["warnings"] = result.get("warnings", []) + [
+                        f"风控拦截: {risk_validation.summary}"
+                    ]
+                elif not risk_validation.passed:
+                    logger.warning(
+                        f"⚠️ 交易决策存在风险警告: {task_id} - {risk_validation.summary}"
+                    )
+                    # 添加警告到结果中
+                    result["warnings"] = result.get("warnings", []) + [
+                        f"风险提示: {risk_validation.summary}"
+                    ]
+                else:
+                    logger.info(f"✅ 风控验证通过: {task_id}")
+
+            except Exception as risk_error:
+                logger.error(f"❌ 风控验证失败(继续保存结果): {task_id} - {risk_error}")
+                # 风控失败不影响分析结果保存
+
             # 保存分析结果到文件和数据库
             try:
                 logger.info(f"💾 开始保存分析结果: {task_id}")
