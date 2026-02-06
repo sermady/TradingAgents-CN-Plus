@@ -174,23 +174,31 @@ const authStore = useAuthStore()
 
 // 生命周期
 onMounted(() => {
+  console.log('[App] 🚀 应用挂载，初始化 WebSocket 管理...')
+
   // 检查是否需要显示配置向导
   checkFirstTimeSetup()
 
   // 🔥 在应用级别建立 WebSocket 连接（避免路由切换导致断开）
   // 只在用户已登录时连接
   if (authStore.isAuthenticated && authStore.token) {
-    console.log('[App] 用户已登录，建立 WebSocket 连接')
-    notifStore.connect()
+    console.log('[App] ✅ 用户已登录，准备建立 WebSocket 连接')
+    // 延迟一点执行，确保其他初始化完成
+    setTimeout(() => {
+      notifStore.connect()
+    }, 100)
+  } else {
+    console.log('[App] ⏳ 用户未登录，跳过 WebSocket 连接')
   }
 
   // 监听登录状态变化，自动连接/断开 WebSocket
-  watch(() => authStore.isAuthenticated, (isAuthenticated) => {
+  watch(() => authStore.isAuthenticated, (isAuthenticated, wasAuthenticated) => {
+    console.log(`[App] 👤 登录状态变化: ${wasAuthenticated} -> ${isAuthenticated}`)
     if (isAuthenticated && authStore.token) {
-      console.log('[App] 用户登录成功，建立 WebSocket 连接')
+      console.log('[App] ✅ 用户登录成功，建立 WebSocket 连接')
       notifStore.connect()
-    } else {
-      console.log('[App] 用户登出，断开 WebSocket 连接')
+    } else if (wasAuthenticated && !isAuthenticated) {
+      console.log('[App] 👋 用户登出，断开 WebSocket 连接')
       notifStore.disconnect()
     }
   })

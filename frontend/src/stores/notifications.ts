@@ -175,15 +175,24 @@ export const useNotificationStore = defineStore('notifications', () => {
     wsListenerAdded = true
 
     // 页面刷新/关闭前发送关闭信号
-    window.addEventListener('beforeunload', () => {
+    window.addEventListener('beforeunload', (event) => {
+      // 🔥 检查是否真正要离开页面（不是路由切换）
+      // 在单页应用中，beforeunload 只在真正离开页面时触发
+      console.log('[WS] 🚪 beforeunload 事件触发，准备关闭连接')
       isManualDisconnect = true
       if (ws.value) {
-        try { ws.value.close(1000, 'Page unload') } catch {}
+        try {
+          ws.value.close(1000, 'Page unload')
+          console.log('[WS] ✅ 连接已优雅关闭')
+        } catch (e) {
+          console.warn('[WS] 关闭连接失败:', e)
+        }
       }
     })
 
     // 页面可见性变化监听（处理休眠场景）
     document.addEventListener('visibilitychange', () => {
+      console.log(`[WS] 👁️ 页面可见性变化: ${document.visibilityState}`)
       if (document.visibilityState === 'visible' && !ws.value && !isManualDisconnect) {
         // 页面从后台恢复，且连接已断开，尝试重连
         console.log('[WS] 页面恢复可见，尝试重连...')
