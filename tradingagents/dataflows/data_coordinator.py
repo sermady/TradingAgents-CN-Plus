@@ -40,6 +40,11 @@ class PreloadedData:
     depth: str = ""
     loaded_at: datetime = field(default_factory=datetime.now)
 
+    # ========== 数据质量风控字段 (Phase 1.1) ==========
+    data_quality_score: float = 100.0  # 数据质量评分 (0-100)
+    data_quality_grade: str = "A"  # 数据质量等级 (A/B/C/D/F)
+    data_quality_issues: List[str] = field(default_factory=list)  # 数据质量问题列表
+
 
 class DataCoordinator:
     """Data Coordinator (Singleton)
@@ -373,6 +378,22 @@ class DataCoordinator:
                     f"## Sentiment Data: (unavailable - {str(e)[:100]})"
                 )
 
+            # 7. 计算数据质量评分 (Phase 1.1)
+            try:
+                preloaded = self._calculate_data_quality(
+                    ticker, preloaded, market_info
+                )
+                logger.info(
+                    f"[DataCoordinator] 数据质量评分: {preloaded.data_quality_grade} "
+                    f"({preloaded.data_quality_score:.1f}/100)"
+                )
+            except Exception as e:
+                logger.warning(f"[DataCoordinator] 数据质量评分计算失败: {e}")
+                # 使用默认值
+                preloaded.data_quality_score = 100.0
+                preloaded.data_quality_grade = "A"
+                preloaded.data_quality_issues = []
+
             logger.info(f"[DataCoordinator] Data preload completed: {cache_key}")
 
         except Exception as e:
@@ -702,6 +723,133 @@ class DataCoordinator:
             "preloaded_entries": total_entries,
             "price_cache_stats": price_stats,
         }
+
+    def _calculate_data_quality(
+        self, ticker: str, preloaded: PreloadedData, market_info: Dict[str, Any]
+    ) -> PreloadedData:
+        """
+        计算数据质量评分 (Phase 1.1)
+
+        Args:
+            ticker: 股票代码
+            preloaded: 预加载的数据
+            market_info: 市场信息
+
+        Returns:
+            PreloadedData: 更新后的预加载数据（包含质量评分）
+        """
+        try:
+            from tradingagents.dataflows.data_source_manager import (
+                DataSourceManager,
+                ValidatedDataResult,
+            )
+
+            # 创建数据源管理器
+            data_manager = DataSourceManager()
+
+            # 从市场数据中提取关键指标
+            extracted_data = self._extract_metrics_from_data(
+                preloaded.market_data, preloaded.fundamentals_data
+            )
+
+            # 获取验证结果
+            validated_result = data_manager.get_data_with_validation(
+                ticker, extracted_data
+            )
+
+            # 更新预加载数据
+            preloaded.data_quality_score = validated_result.quality_score
+            preloaded.data_quality_grade = validated_result.quality_grade
+            preloaded.data_quality_issues = validated_result.quality_issues
+
+        except Exception as e:
+            logger.warning(f"[_calculate_data_quality] 质量评分计算失败: {e}")
+            # 使用默认值
+            preloaded.data_quality_score = 100.0
+            preloaded.data_quality_grade = "A"
+            preloaded.data_quality_issues = []
+
+        return preloaded
+
+    def _extract_metrics_from_data(
+        self, market_data: str, fundamentals_data: str
+    ) -> Dict[str, Any]:
+        """
+        从文本数据中提取关键指标
+
+        Args:
+            market_data: 市场数据文本
+            fundamentals_data: 基本面数据文本
+
+        Returns:
+            Dict[str, Any]: 提取的指标字典
+        """
+        import re
+
+        metrics = {}
+
+        # 从市场数据中提取价格信息
+        price_patterns = {
+            "current_price": r"(?:Current Price|Latest Price|Close|current_price)[.:]?\s*[\u00a5\uffe5$]?\s*([\d.]+)",
+            "open": r"(?:Open|open)[.:]?\s*[\u00a5\uffe5$]?\s*([\d.]+)",
+            "high": r"(?:High|high|Highest)[.:]?\s*[\u00a5\uffe5$]?\s*([\d.]+)",
+            "low": r"(?:Low|low|Lowest)[.:]?\s*[\u00a5\uffe5$]?\s*([\d.]+)",
+            "volume": r"(?:Volume|volume|成交量)[.:]?\s*([\d,]+)",
+        }
+
+        combined_text = f"{market_data}\n{fundamentals_data}"
+
+        for key, pattern in price_patterns.items():
+            matches = re.findall(pattern, combined_text, re.IGNORECASE)
+            if matches:
+                try:
+                    # 取最后一个匹配值（通常是最新的）
+                    value = matches[-1].replace(",", "")
+                    metrics[key] = float(value)
+                except (ValueError, IndexError):
+                    pass
+
+        # 从基本面数据中提取估值指标
+        valuation_patterns = {
+            "PE": r"(?:P/E|PE|市盈率)[.:]?\s*([\d.]+)",
+            "PB": r"(?:P/B|PB|市净率)[.:]?\s*([\d.]+)",
+            "PS": r"(?:P/S|PS|市销率)[.:]?\s*([\d.]+)",
+            "ROE": r"(?:ROE|净资产收益率)[.:]?\s*([\d.]+)",
+            "ROA": r"(?:ROA|总资产收益率)[.:]?\s*([\d.]+)",
+            "market_cap": r"(?:Market Cap|市值|market_cap)[.:]?\s*[\u00a5\uffe5$]?\s*([\d.]+)",
+        }
+
+        for key, pattern in valuation_patterns.items():
+            matches = re.findall(pattern, fundamentals_data, re.IGNORECASE)
+            if matches:
+                try:
+                    value = matches[-1].replace(",", "")
+                    # 处理可能的单位（亿/万）
+                    if "\u4ebf" in fundamentals_data[: fundamentals_data.find(matches[-1]) + 100]:
+                        value = float(value)
+                    else:
+                        value = float(value)
+                    metrics[key] = value
+                except (ValueError, IndexError):
+                    pass
+
+        # 提取移动平均线
+        ma_patterns = {
+            "MA5": r"MA5[.:]?\s*([\d.]+)",
+            "MA10": r"MA10[.:]?\s*([\d.]+)",
+            "MA20": r"MA20[.:]?\s*([\d.]+)",
+            "MA60": r"MA60[.:]?\s*([\d.]+)",
+        }
+
+        for key, pattern in ma_patterns.items():
+            matches = re.findall(pattern, market_data, re.IGNORECASE)
+            if matches:
+                try:
+                    metrics[key] = float(matches[-1])
+                except (ValueError, IndexError):
+                    pass
+
+        return metrics
 
 
 # Global singleton getter

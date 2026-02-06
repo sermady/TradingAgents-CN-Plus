@@ -8,6 +8,7 @@
 import os
 import time
 import warnings
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -61,6 +62,45 @@ class USDataSource(Enum):
     YFINANCE = DataSourceCode.YFINANCE  # Yahoo Finance（免费，股票价格和技术指标）
     ALPHA_VANTAGE = DataSourceCode.ALPHA_VANTAGE  # Alpha Vantage（基本面和新闻）
     FINNHUB = DataSourceCode.FINNHUB  # Finnhub（备用数据源）
+
+
+@dataclass
+class ValidatedDataResult:
+    """
+    带验证的数据结果 (Phase 1.1)
+
+    包含原始数据以及数据质量评分和验证信息
+
+    Attributes:
+        data: 原始数据字典
+        quality_score: 数据质量评分 (0-100)
+        quality_grade: 数据质量等级 (A/B/C/D/F)
+        quality_issues: 数据质量问题列表
+        validation_timestamp: 验证时间戳
+        data_source: 数据来源
+    """
+
+    data: Dict[str, Any] = field(default_factory=dict)
+    quality_score: float = 100.0
+    quality_grade: str = "A"
+    quality_issues: List[str] = field(default_factory=list)
+    validation_timestamp: datetime = field(default_factory=datetime.now)
+    data_source: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "data": self.data,
+            "quality_score": self.quality_score,
+            "quality_grade": self.quality_grade,
+            "quality_issues": self.quality_issues,
+            "validation_timestamp": self.validation_timestamp.isoformat(),
+            "data_source": self.data_source,
+        }
+
+    def is_valid(self, min_score: float = 60.0) -> bool:
+        """检查数据是否有效（默认要求>=60分）"""
+        return self.quality_score >= min_score
 
 
 class DataSourceManager:
@@ -4342,6 +4382,124 @@ class DataSourceManager:
         score = reliability_scores.get(self.current_source, 60)
         return float(score)
 
+    def _score_to_grade(self, score: float) -> str:
+        """
+        将质量评分转换为等级 (Phase 1.1)
+
+        等级划分:
+        - A (>=90): 优秀 - 数据完整可靠
+        - B (>=80): 良好 - 数据基本完整
+        - C (>=70): 合格 - 数据可用但有小问题
+        - D (>=60): 边缘 - 数据勉强可用
+        - F (<60): 不合格 - 数据质量差，需要重新获取
+
+        Args:
+            score: 质量评分 (0-100)
+
+        Returns:
+            str: 质量等级 A/B/C/D/F
+        """
+        if score >= 90:
+            return "A"
+        elif score >= 80:
+            return "B"
+        elif score >= 70:
+            return "C"
+        elif score >= 60:
+            return "D"
+        else:
+            return "F"
+
+    def _collect_quality_issues(self, symbol: str, data: Dict[str, Any]) -> List[str]:
+        """
+        收集数据质量问题 (Phase 1.1)
+
+        Args:
+            symbol: 股票代码
+            data: 数据字典
+
+        Returns:
+            List[str]: 问题列表
+        """
+        issues = []
+
+        # 检查必需字段缺失
+        required_fields = ["current_price", "volume", "market_cap", "PE", "PB"]
+        missing_fields = [
+            f for f in required_fields if f not in data or data[f] is None
+        ]
+        if missing_fields:
+            issues.append(f"缺失字段: {', '.join(missing_fields)}")
+
+        # 检查数据异常值
+        if "current_price" in data and data["current_price"] is not None:
+            price = data["current_price"]
+            if price <= 0:
+                issues.append(f"当前价格异常: {price}")
+
+        if "volume" in data and data["volume"] is not None:
+            volume = data["volume"]
+            if volume < 0:
+                issues.append(f"成交量异常: {volume}")
+
+        # 检查数据一致性
+        if all(k in data for k in ["high", "low"]):
+            if data["high"] < data["low"]:
+                issues.append("最高价低于最低价")
+
+        if all(k in data for k in ["current_price", "high", "low"]):
+            price = data["current_price"]
+            if not (data["low"] <= price <= data["high"]):
+                issues.append("当前价不在最高最低价范围内")
+
+        return issues
+
+    def get_data_with_validation(
+        self, symbol: str, data: Optional[Dict[str, Any]] = None
+    ) -> ValidatedDataResult:
+        """
+        获取带验证的数据结果 (Phase 1.1)
+
+        计算数据质量评分并返回 ValidatedDataResult 对象
+
+        Args:
+            symbol: 股票代码
+            data: 数据字典（如果为None则自动获取）
+
+        Returns:
+            ValidatedDataResult: 带验证的数据结果
+        """
+        # 如果没有提供数据，尝试获取
+        if data is None:
+            try:
+                data = self.get_stock_data(symbol)
+            except Exception as e:
+                logger.error(f"获取数据失败 {symbol}: {e}")
+                return ValidatedDataResult(
+                    data={},
+                    quality_score=0.0,
+                    quality_grade="F",
+                    quality_issues=[f"数据获取失败: {e}"],
+                    data_source=self.current_source.value,
+                )
+
+        # 计算质量评分
+        quality_score = self.get_data_quality_score(symbol, data)
+
+        # 转换为等级
+        quality_grade = self._score_to_grade(quality_score)
+
+        # 收集质量问题
+        quality_issues = self._collect_quality_issues(symbol, data)
+
+        return ValidatedDataResult(
+            data=data,
+            quality_score=quality_score,
+            quality_grade=quality_grade,
+            quality_issues=quality_issues,
+            data_source=self.current_source.value,
+        )
+
     def get_best_source_for_metric(self, metric: str) -> str:
         """
         获取指定指标的最佳数据源
@@ -4478,6 +4636,268 @@ class DataSourceManager:
         except Exception as e:
             logger.warning(f"判断交易时间失败: {e}, 默认为非交易时间")
             return False
+
+    # ========== Phase 2.1: 数据源可靠性跟踪系统 ==========
+
+    def record_source_reliability(
+        self,
+        source: str,
+        success: bool,
+        metric: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """
+        记录数据源可靠性 (Phase 2.1)
+
+        将数据源的成功/失败记录到 Redis，用于后续自动降级决策
+
+        🔒 安全注意：
+        - Redis 键使用标准化前缀，避免键名冲突
+        - 错误信息可能包含敏感细节，仅存储脱敏后的错误类型
+        - 日志中不记录 Redis 连接信息或敏感配置
+
+        Args:
+            source: 数据源名称 (tushare/akshare/baostock)
+            success: 是否成功
+            metric: 指标名称 (current_price/volume/MA5等)
+            error: 错误信息（如果失败）
+        """
+        if not self.cache_enabled or not self.cache_manager:
+            return
+
+        try:
+            import time
+
+            # 获取 Redis 客户端（安全：不记录连接信息）
+            redis_client = None
+            if hasattr(self.cache_manager, 'db_manager'):
+                redis_client = self.cache_manager.db_manager.get_redis_client()
+            elif hasattr(self.cache_manager, 'redis_client'):
+                redis_client = self.cache_manager.redis_client
+
+            if not redis_client:
+                return
+
+            # 使用 Redis 记录可靠性（安全：使用标准化键名）
+            redis_key = f"source_reliability:{source}:{metric}"
+            timestamp = int(time.time())
+
+            # 记录最近100次调用（安全：错误信息脱敏）
+            record = {
+                "timestamp": timestamp,
+                "success": success,
+                # 🔒 安全：仅记录错误类型，不记录完整错误消息
+                "error_type": type(error).__name__ if error else None,
+            }
+
+            # 使用 Redis List 存储历史记录（最多100条）
+            redis_client.lpush(
+                redis_key, str(record)
+            )
+            redis_client.ltrim(
+                redis_key, 0, 99  # 只保留最近100条
+            )
+
+            # 设置过期时间（7天）
+            redis_client.expire(redis_key, 7 * 24 * 3600)
+
+            # 记录总体统计
+            stats_key = f"source_stats:{source}"
+            if success:
+                redis_client.hincrby(stats_key, "success_count", 1)
+            else:
+                redis_client.hincrby(stats_key, "failure_count", 1)
+
+            redis_client.expire(stats_key, 30 * 24 * 3600)  # 30天
+
+        except Exception as e:
+            # 🔒 安全：不记录 Redis 错误详情，可能暴露连接信息
+            logger.debug(f"记录数据源可靠性失败 (已抑制)")
+
+    def get_source_reliability_score(self, source: str) -> float:
+        """
+        获取数据源可靠性评分 (Phase 2.1)
+
+        基于历史成功率计算动态可靠性评分 (0-100)
+
+        Args:
+            source: 数据源名称
+
+        Returns:
+            float: 可靠性评分 (0-100)
+        """
+        # 默认静态评分
+        default_scores = {
+            "tushare": 90.0,
+            "akshare": 70.0,
+            "baostock": 75.0,
+        }
+
+        if not self.cache_enabled or not self.cache_manager:
+            return default_scores.get(source.lower(), 60.0)
+
+        try:
+            # 获取 Redis 客户端
+            redis_client = None
+            if hasattr(self.cache_manager, 'db_manager'):
+                redis_client = self.cache_manager.db_manager.get_redis_client()
+            elif hasattr(self.cache_manager, 'redis_client'):
+                redis_client = self.cache_manager.redis_client
+
+            if not redis_client:
+                return default_scores.get(source.lower(), 60.0)
+
+            stats_key = f"source_stats:{source}"
+            stats = redis_client.hgetall(stats_key)
+
+            if not stats:
+                # 无历史记录，返回默认评分
+                return default_scores.get(source.lower(), 60.0)
+
+            success_count = int(stats.get(b"success_count", 0))
+            failure_count = int(stats.get(b"failure_count", 0))
+            total = success_count + failure_count
+
+            if total == 0:
+                # 无统计数据，返回默认评分
+                return default_scores.get(source.lower(), 60.0)
+
+            success_rate = success_count / total
+
+            # 转换为0-100评分
+            # 成功率 100% -> 评分 100
+            # 成功率 50% -> 评分 40
+            # 成功率 0% -> 评分 0
+            if success_rate >= 0.5:
+                score = 40 + (success_rate - 0.5) * 120  # 50%->40分, 100%->100分
+            else:
+                score = success_rate * 80  # 0%->0分, 50%->40分
+
+            return min(max(score, 0), 100)
+
+        except Exception as e:
+            logger.debug(f"获取数据源可靠性评分失败: {e}")
+            return default_scores.get(source.lower(), 60.0)
+
+    def should_degrade_source(
+        self,
+        source: str,
+        metric: Optional[str] = None,
+    ) -> bool:
+        """
+        判断是否应该降级数据源 (Phase 2.1)
+
+        基于最近失败率判断是否需要自动降级
+
+        降级条件:
+        1. 可靠性评分 < 40
+        2. 最近10次调用失败率 > 70%
+
+        Args:
+            source: 数据源名称
+            metric: 指标名称（可选，用于更精细的判断）
+
+        Returns:
+            bool: True表示应该降级
+        """
+        # 检查总体可靠性评分
+        reliability_score = self.get_source_reliability_score(source)
+        if reliability_score < 40:
+            logger.warning(
+                f"⚠️ [数据源降级] {source} 可靠性评分过低 ({reliability_score:.1f}/100)"
+            )
+            return True
+
+        # 检查最近调用情况（如果提供了metric）
+        if metric and self.cache_enabled and self.cache_manager:
+            try:
+                # 获取 Redis 客户端
+                redis_client = None
+                if hasattr(self.cache_manager, 'db_manager'):
+                    redis_client = self.cache_manager.db_manager.get_redis_client()
+                elif hasattr(self.cache_manager, 'redis_client'):
+                    redis_client = self.cache_manager.redis_client
+
+                if not redis_client:
+                    return False
+
+                redis_key = f"source_reliability:{source}:{metric}"
+                records = redis_client.lrange(
+                    redis_key, 0, 9  # 最近10次
+                )
+
+                if records and len(records) >= 5:  # 至少5次记录
+                    import ast
+
+                    failure_count = 0
+                    for record in records:
+                        try:
+                            data = ast.literal_eval(record.decode())
+                            if not data.get("success", True):
+                                failure_count += 1
+                        except:
+                            pass
+
+                    failure_rate = failure_count / len(records)
+                    if failure_rate > 0.7:  # 70%失败率
+                        logger.warning(
+                            f"⚠️ [数据源降级] {source} 最近{len(records)}次调用失败率过高 "
+                            f"({failure_rate*100:.1f}%)"
+                        )
+                        return True
+
+            except Exception as e:
+                logger.debug(f"检查最近调用情况失败: {e}")
+
+        return False
+
+    def auto_degrade_source(
+        self,
+        failed_source: str,
+        available_sources: List[ChinaDataSource],
+        metric: Optional[str] = None,
+    ) -> Optional[ChinaDataSource]:
+        """
+        自动降级到备用数据源 (Phase 2.1)
+
+        根据可靠性评分自动选择最佳备用数据源
+
+        Args:
+            failed_source: 失败的数据源名称
+            available_sources: 可用的数据源列表
+            metric: 指标名称（可选）
+
+        Returns:
+            ChinaDataSource: 推荐的备用数据源，如果没有合适的则返回None
+        """
+        # 排除失败的数据源
+        candidates = [
+            s for s in available_sources
+            if s.value.lower() != failed_source.lower()
+        ]
+
+        if not candidates:
+            logger.warning("⚠️ [数据源降级] 没有可用的备用数据源")
+            return None
+
+        # 根据可靠性评分排序
+        scored_candidates = []
+        for source in candidates:
+            score = self.get_source_reliability_score(source.value)
+            scored_candidates.append((score, source))
+
+        # 按评分降序排序
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+
+        # 选择评分最高的
+        best_score, best_source = scored_candidates[0]
+
+        logger.info(
+            f"🔄 [数据源降级] 从 {failed_source} 自动降级到 {best_source.value} "
+            f"(可靠性评分: {best_score:.1f}/100)"
+        )
+
+        return best_source
 
     def is_realtime_capable(self, source: ChinaDataSource) -> Dict[str, bool]:
         """

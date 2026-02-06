@@ -91,7 +91,7 @@ class PriceValidator(BaseDataValidator):
     async def cross_validate(self, symbol: str, sources: List[str],
                             metric: str) -> ValidationResult:
         """
-        多源交叉验证价格数据
+        多源交叉验证价格数据 (Phase 2.1)
 
         Args:
             symbol: 股票代码
@@ -108,15 +108,32 @@ class PriceValidator(BaseDataValidator):
             metadata={'metric': metric, 'sources_checked': sources}
         )
 
-        # 从多个数据源获取数据
-        values = {}
-        for source in sources:
+        # ========== Phase 2.1: 多源并行获取数据 ==========
+        import asyncio
+
+        async def fetch_from_source(source: str) -> tuple[str, Optional[float]]:
+            """从单个数据源获取数据"""
             try:
                 data = await self._get_data_from_source(symbol, source, metric)
-                if data is not None:
-                    values[source] = data
+                return (source, data)
             except Exception as e:
                 self.logger.warning(f"从 {source} 获取 {metric} 数据失败: {e}")
+                return (source, None)
+
+        # 并行获取所有数据源
+        tasks = [fetch_from_source(s) for s in sources]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        values = {}
+        sources_with_data = []
+
+        for item in results:
+            if isinstance(item, Exception):
+                continue
+            source, data = item
+            if data is not None:
+                values[source] = data
+                sources_with_data.append(source)
 
         if not values:
             result.is_valid = False
@@ -129,6 +146,7 @@ class PriceValidator(BaseDataValidator):
 
         result.alternative_sources = values
 
+        # ========== Phase 2.1: 调整阈值为0.5% ==========
         # 计算置信度
         result.confidence = self.calculate_confidence(list(values.values()))
 
@@ -141,28 +159,34 @@ class PriceValidator(BaseDataValidator):
             if avg_value != 0:
                 diff_pct = (max_diff / avg_value) * 100
 
-                # 差异超过10%则警告
-                if diff_pct > 10:
+                # ⚠️ Phase 2.1: 调整阈值为0.5%
+                # 差异超过0.5%则警告
+                if diff_pct > 0.5:
                     result.add_issue(
                         ValidationSeverity.WARNING,
-                        f"多源 {metric} 数据差异较大: {diff_pct:.2f}%",
+                        f"多源 {metric} 数据差异{diff_pct:.2f}% (阈值0.5%)",
                         field=metric,
-                        actual=f"min={min(value_list):.2f}, max={max(value_list):.2f}"
+                        actual=f"min={min(value_list):.4f}, max={max(value_list):.4f}"
                     )
 
-                # 差异超过30%则标记为错误
-                if diff_pct > 30:
+                # 差异超过1%则标记为错误
+                if diff_pct > 1.0:
                     result.is_valid = False
                     result.add_issue(
                         ValidationSeverity.ERROR,
-                        f"多源 {metric} 数据严重不一致: {diff_pct:.2f}%",
+                        f"多源 {metric} 数据严重不一致: {diff_pct:.2f}% (阈值1%)",
                         field=metric,
-                        actual=f"min={min(value_list):.2f}, max={max(value_list):.2f}"
+                        actual=f"min={min(value_list):.4f}, max={max(value_list):.4f}"
                     )
 
-        # 使用中位数作为建议值
-        if len(values) >= 3:
+        # ========== Phase 2.1: 使用中位数作为建议值 ==========
+        if len(values) >= 2:
             result.suggested_value = self.find_median_value(list(values.values()))
+
+        # ========== Phase 2.1: 记录数据源可靠性 ==========
+        result.metadata['sources_count'] = len(sources_with_data)
+        result.metadata['sources_available'] = sources_with_data
+        result.metadata['sources_failed'] = [s for s in sources if s not in sources_with_data]
 
         return result
 
@@ -341,11 +365,67 @@ class PriceValidator(BaseDataValidator):
 
     async def _get_data_from_source(self, symbol: str, source: str,
                                     metric: str) -> Optional[float]:
-        """从指定数据源获取指标数据"""
+        """
+        从指定数据源获取指标数据 (Phase 2.1)
+
+        集成数据源可靠性跟踪系统
+
+        Args:
+            symbol: 股票代码
+            source: 数据源名称 (tushare/akshare/baostock)
+            metric: 指标名称
+
+        Returns:
+            float: 指标值，失败返回None
+        """
         try:
-            # 这里需要调用实际的数据源获取逻辑
-            # 暂时返回None,实际实现时需要连接data_source_manager
-            return None
+            from tradingagents.dataflows.data_source_manager import DataSourceManager
+
+            manager = DataSourceManager()
+            data = manager.get_stock_data(symbol)
+
+            if not data or metric not in data:
+                # 记录失败
+                manager.record_source_reliability(
+                    source=source,
+                    success=False,
+                    metric=metric,
+                    error=f"数据或指标不存在: metric={metric}"
+                )
+                return None
+
+            value = self.to_float(data.get(metric))
+
+            if value is not None:
+                # 记录成功
+                manager.record_source_reliability(
+                    source=source,
+                    success=True,
+                    metric=metric
+                )
+            else:
+                # 记录失败
+                manager.record_source_reliability(
+                    source=source,
+                    success=False,
+                    metric=metric,
+                    error="指标值为None"
+                )
+
+            return value
+
         except Exception as e:
-            self.logger.error(f"从 {source} 获取数据失败: {e}")
+            self.logger.error(f"从 {source} 获取 {metric} 数据失败: {e}")
+            # 记录失败
+            try:
+                from tradingagents.dataflows.data_source_manager import DataSourceManager
+                manager = DataSourceManager()
+                manager.record_source_reliability(
+                    source=source,
+                    success=False,
+                    metric=metric,
+                    error=str(e)
+                )
+            except:
+                pass
             return None

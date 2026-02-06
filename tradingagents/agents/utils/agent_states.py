@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Annotated
+from typing import Annotated, List
 from datetime import date, timedelta, datetime
 from typing_extensions import TypedDict, Optional
 from langchain_openai import ChatOpenAI
@@ -24,6 +24,11 @@ class InvestDebateState(TypedDict):
     current_response: Annotated[str, "Latest response"]  # Last response
     judge_decision: Annotated[str, "Final judge decision"]  # Last response
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
+    # Phase 2.2: 证据强度和数据引用跟踪
+    evidence_strength: Annotated[float, "Overall evidence strength (0-1)"]  # 证据强度评分
+    citations: Annotated[
+        list, "List of data citations with source and confidence"
+    ]  # 数据引用列表
 
 
 # Risk management team state
@@ -104,3 +109,14 @@ class AgentState(MessagesState):
         RiskDebateState, "Current state of the debate on evaluating risk"
     ]
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
+
+    # ========== 数据质量风控字段 (Phase 1.1/1.4) ==========
+    data_quality_score: Annotated[
+        float, "Data quality score (0-100)"
+    ] = 100.0  # 默认满分
+    data_quality_grade: Annotated[
+        str, "Data quality grade (A/B/C/D/F)"
+    ] = "A"  # 默认A级
+    data_quality_issues: Annotated[
+        List[str], "List of data quality issues"
+    ] = []  # 默认无问题

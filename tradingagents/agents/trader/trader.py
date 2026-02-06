@@ -11,13 +11,16 @@ from tradingagents.utils.time_utils import get_chinese_date
 logger = get_logger("default")
 
 
-def extract_trading_decision(content: str, current_price: float = None) -> dict:
+def extract_trading_decision(
+    content: str, current_price: float = None, data_quality_score: float = 100.0
+) -> dict:
     """
     从交易决策内容中提取结构化信息，并自动填充缺失字段
 
     Args:
         content: LLM返回的交易决策内容
         current_price: 当前股价（用于自动计算目标价）
+        data_quality_score: 数据质量评分 (0-100)，低质量数据会降低置信度 (Phase 1.1)
 
     Returns:
         dict: 包含提取的结构化信息
@@ -128,6 +131,22 @@ def extract_trading_decision(content: str, current_price: float = None) -> dict:
         else:
             result["confidence"] = 0.5
         result["warnings"].append(f"使用默认置信度: {result['confidence']}")
+
+    # ========== Phase 1.1: 根据数据质量评分调整置信度 ==========
+    original_confidence = result["confidence"]
+    if data_quality_score < 60:  # F级
+        result["confidence"] = result["confidence"] * 0.8  # 降低20%
+        result["warnings"].append(
+            f"数据质量评分低({data_quality_score:.1f}分，F级)，置信度从{original_confidence:.2f}调整为{result['confidence']:.2f}"
+        )
+    elif data_quality_score < 70:  # D级
+        result["confidence"] = result["confidence"] * 0.9  # 降低10%
+        result["warnings"].append(
+            f"数据质量评分边缘({data_quality_score:.1f}分，D级)，置信度从{original_confidence:.2f}调整为{result['confidence']:.2f}"
+        )
+    elif data_quality_score >= 90:  # A级
+        # 高质量数据可以略微提升置信度，但不超过0.95
+        result["confidence"] = min(result["confidence"] * 1.05, 0.95)
 
     # 4. 提取风险评分
     risk_patterns = [
@@ -356,7 +375,11 @@ def _generate_risk_warnings(
 
 
 def validate_trading_decision(
-    content: str, currency_symbol: str, company_name: str, current_price: float = None
+    content: str,
+    currency_symbol: str,
+    company_name: str,
+    current_price: float = None,
+    data_quality_score: float = 100.0,
 ) -> dict:
     """
     验证交易决策的有效性，并自动填充缺失字段
@@ -366,6 +389,7 @@ def validate_trading_decision(
         currency_symbol: 期望的货币符号（如 ¥ 或 $）
         company_name: 股票代码
         current_price: 当前股价（用于自动计算目标价）
+        data_quality_score: 数据质量评分 (0-100)，低质量数据会降低置信度 (Phase 1.1)
 
     Returns:
         dict: 包含验证结果和警告信息
@@ -383,8 +407,8 @@ def validate_trading_decision(
         "extracted": {},
     }
 
-    # 先提取结构化信息
-    extracted = extract_trading_decision(content, current_price)
+    # 先提取结构化信息（传入数据质量评分以调整置信度）
+    extracted = extract_trading_decision(content, current_price, data_quality_score)
     result["extracted"] = extracted
     result["recommendation"] = extracted["recommendation"]
     result["warnings"] = extracted["warnings"]
@@ -561,9 +585,16 @@ def create_trader(llm, memory):
             current_price = float(price_match.group(1))
             logger.debug(f"[DEBUG] 从基本面报告提取当前股价: {current_price}")
 
-        # 验证交易决策的有效性（传入当前股价用于自动计算）
+        # 从 state 中获取数据质量评分 (Phase 1.1)
+        data_quality_score = state.get("data_quality_score", 100.0)
+
+        # 验证交易决策的有效性（传入当前股价和数据质量评分）
         validation = validate_trading_decision(
-            result.content, currency_symbol, company_name, current_price
+            result.content,
+            currency_symbol,
+            company_name,
+            current_price,
+            data_quality_score,
         )
 
         if validation["warnings"]:

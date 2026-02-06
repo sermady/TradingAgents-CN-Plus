@@ -55,6 +55,10 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            # ========== 数据质量风控字段 (Phase 1.1) ==========
+            "data_quality_score": 100.0,  # 默认满分
+            "data_quality_grade": "A",  # 默认A级
+            "data_quality_issues": [],  # 默认无问题
         }
 
     def get_graph_args(self, use_progress_callback: bool = False) -> Dict[str, Any]:

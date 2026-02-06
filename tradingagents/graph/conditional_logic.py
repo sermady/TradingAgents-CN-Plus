@@ -200,7 +200,13 @@ class ConditionalLogic:
         return "Msg Clear Fundamentals"
 
     def should_continue_debate(self, state: AgentState) -> str:
-        """Determine if debate should continue."""
+        """
+        Determine if debate should continue.
+
+        Phase 2.2 增强版:
+        - 添加证据强度检查
+        - 高证据强度时可提前收敛（>=0.8 且已过2轮）
+        """
         current_count = state["investment_debate_state"]["count"]
         max_count = 2 * self.max_debate_rounds
         current_speaker = state["investment_debate_state"]["current_response"]
@@ -209,6 +215,20 @@ class ConditionalLogic:
         logger.info(f"🔍 [投资辩论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_debate_rounds})")
         logger.info(f"🔍 [投资辩论控制] 当前发言者: {current_speaker}")
 
+        # ========== Phase 2.2: 证据强度检查 ==========
+        evidence_strength = state["investment_debate_state"].get("evidence_strength", 0.0)
+
+        # 高证据强度且已过2轮时可提前收敛（提高效率）
+        if evidence_strength >= 0.8 and current_count >= 4:
+            logger.info(
+                f"⚡ [投资辩论控制] 证据强度高 ({evidence_strength:.2f} >= 0.8) 且已过2轮，提前收敛 -> Research Manager"
+            )
+            return "Research Manager"
+
+        if evidence_strength > 0:
+            logger.info(f"📊 [投资辩论控制] 当前证据强度: {evidence_strength:.2f}/1.0")
+
+        # 原有的次数检查
         if current_count >= max_count:
             logger.info(f"✅ [投资辩论控制] 达到最大次数，结束辩论 -> Research Manager")
             return "Research Manager"
