@@ -10,7 +10,7 @@ class TestExtractTradingDecision:
     """测试交易决策提取功能"""
 
     def test_extract_buy_recommendation(self):
-        """测试提取买入建议"""
+        """测试提取买入建议（包含数据质量评分调整）"""
         from tradingagents.agents.trader.trader import extract_trading_decision
 
         content = "建议买入，目标价21元，置信度0.8，风险评分0.3"
@@ -18,7 +18,8 @@ class TestExtractTradingDecision:
 
         assert result["recommendation"] == "买入"
         assert result["target_price"] == 21.0
-        assert abs(result["confidence"] - 0.8) < 0.01  # 允许浮点数精度误差
+        # Phase 1.1: 数据质量评分默认100.0（A级），置信度提升5%: 0.8 * 1.05 = 0.84
+        assert abs(result["confidence"] - 0.84) < 0.01
         assert result["risk_score"] == 0.3
 
     def test_extract_hold_recommendation_with_range(self):
@@ -69,13 +70,14 @@ class TestExtractTradingDecision:
         assert any("自动计算" in w for w in result["warnings"])
 
     def test_default_confidence_for_buy(self):
-        """测试买入时默认置信度"""
+        """测试买入时默认置信度（包含数据质量评分调整）"""
         from tradingagents.agents.trader.trader import extract_trading_decision
 
         content = "建议买入"
         result = extract_trading_decision(content)
 
-        assert abs(result["confidence"] - 0.7) < 0.01  # 允许浮点数精度误差
+        # Phase 1.1: 数据质量评分默认100.0（A级），置信度提升5%: 0.7 * 1.05 = 0.735
+        assert abs(result["confidence"] - 0.735) < 0.01
 
     def test_default_risk_for_sell(self):
         """测试卖出时默认风险评分"""

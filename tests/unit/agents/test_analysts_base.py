@@ -10,7 +10,7 @@
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from langchain_core.messages import AIMessage
 
 
@@ -36,13 +36,15 @@ class TestSocialMediaAnalyst:
         assert callable(analyst_node)
 
     @pytest.mark.unit
-    def test_social_media_analyst_data_unavailable(self):
-        """测试情绪数据不可用时生成默认报告"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_data_unavailable(self, mock_get_company_name):
+        """测试情绪数据不可用时生成默认报告 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_llm = Mock()
         mock_toolkit = Mock()
         analyst_node = create_social_media_analyst(mock_llm, mock_toolkit)
@@ -67,13 +69,15 @@ class TestSocialMediaAnalyst:
         mock_llm.invoke.assert_not_called()
 
     @pytest.mark.unit
-    def test_social_media_analyst_with_valid_data(self):
-        """测试情绪数据可用时调用LLM生成报告"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_with_valid_data(self, mock_get_company_name):
+        """测试情绪数据可用时调用LLM生成报告 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = (
             "# 市场情绪分析报告\n\n## 投资者情绪概览\n市场情绪中性。"

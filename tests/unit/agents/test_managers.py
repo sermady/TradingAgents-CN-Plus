@@ -73,7 +73,7 @@ class TestResearchManager:
 
         # Assert
         assert "investment_plan" in result
-        assert "messages" in result
+        # Research manager 返回投资计划，不返回 messages (L2修复)
         mock_llm.invoke.assert_called_once()
 
     @pytest.mark.unit
@@ -376,6 +376,12 @@ class TestRiskManager:
             "risk_debate_state": {
                 "history": "",
                 "count": 0,
+                "risky_history": "",
+                "safe_history": "",
+                "neutral_history": "",
+                "current_risky_response": "",
+                "current_safe_response": "",
+                "current_neutral_response": "",
             },
         }
 
@@ -412,6 +418,9 @@ class TestManagerEdgeCases:
             "fundamentals_report": "报告",
             "investment_debate_state": {
                 "history": "辩论",
+                "count": 0,  # 添加缺少的字段
+                "bull_history": "",
+                "bear_history": "",
             },
         }
 
@@ -444,6 +453,13 @@ class TestManagerEdgeCases:
             "investment_plan": "计划",
             "risk_debate_state": {
                 "history": "辩论",
+                "count": 0,  # 添加缺少的字段
+                "risky_history": "",
+                "safe_history": "",
+                "neutral_history": "",
+                "current_risky_response": "",
+                "current_safe_response": "",
+                "current_neutral_response": "",
             },
         }
 

@@ -335,11 +335,24 @@ class UnifiedConfigManager:
             "currency": "CNY",
         }
 
+        # 追踪provider是否被显式配置（用于后续推断）
+        provider_explicitly_set = False
+
         # 从MongoDB获取
         db_config = self._get_mongodb_config(force_refresh=False)
-        if db_config and "llm_configs" in db_config:
+        if db_config and isinstance(db_config, dict) and "llm_configs" in db_config:
             llm_configs = db_config["llm_configs"]
+            # 类型检查：确保 llm_configs 是列表 (M3修复)
+            if not isinstance(llm_configs, list):
+                logger.error(f"❌ llm_configs 应该是列表，实际类型: {type(llm_configs)}")
+                llm_configs = []
+
             for llm_cfg in llm_configs:
+                # 跳过无效的配置项 (M3修复)
+                # 修复：isinstance(x, object) 总是返回 True，改为检查 None 和基本类型
+                if llm_cfg is None or isinstance(llm_cfg, (str, int, float, bool)):
+                    logger.warning(f"⚠️ 跳过无效配置项（类型错误）: {type(llm_cfg)}")
+                    continue
                 cfg_name = (
                     llm_cfg.get("model_name")
                     if isinstance(llm_cfg, dict)
@@ -351,6 +364,9 @@ class UnifiedConfigManager:
                         config.update(
                             {k: v for k, v in llm_cfg.items() if v is not None}
                         )
+                        # 检查provider是否被显式配置（非默认值）
+                        if "provider" in llm_cfg and llm_cfg["provider"] != "dashscope":
+                            provider_explicitly_set = True
                     else:
                         # Pydantic模型
                         if hasattr(llm_cfg, "max_tokens") and llm_cfg.max_tokens:
@@ -363,6 +379,7 @@ class UnifiedConfigManager:
                             config["api_base"] = llm_cfg.api_base
                         if hasattr(llm_cfg, "provider") and llm_cfg.provider:
                             config["provider"] = llm_cfg.provider
+                            provider_explicitly_set = True
                         if (
                             hasattr(llm_cfg, "input_price_per_1k")
                             and llm_cfg.input_price_per_1k
@@ -377,30 +394,51 @@ class UnifiedConfigManager:
                     break
 
         # 如果MongoDB没有配置，尝试从文件获取
-        if config.get("api_base") is None:
+        # 修复：只有当配置完全未从MongoDB加载时，才从文件获取（避免覆盖）
+        if config.get("api_base") is None and not provider_explicitly_set:
             file_models = self._get_file_config("models")
             if file_models:
                 for model in file_models:
                     if model.get("model_name") == model_name:
                         config["api_base"] = model.get("base_url")
-                        config["max_tokens"] = model.get(
-                            "max_tokens", config["max_tokens"]
-                        )
-                        config["temperature"] = model.get(
-                            "temperature", config["temperature"]
-                        )
+                        # 只有在MongoDB没有提供这些值时，才从文件获取
+                        if config["max_tokens"] == 4000:  # 默认值
+                            config["max_tokens"] = model.get("max_tokens", config["max_tokens"])
+                        if config["temperature"] == 0.7:  # 默认值
+                            config["temperature"] = model.get("temperature", config["temperature"])
                         logger.info(f"✅ 从文件加载模型配置: {model_name}")
                         break
 
-        # 推断provider
-        if config.get("provider") == "dashscope":
+        # 推断provider - 只有在provider未被显式配置时，才根据模型名称推断 (M2修复)
+        if not provider_explicitly_set:
+            model_name_lower = model_name.lower()
+            known_providers = {
+                "openai": ["gpt"],
+                "google": ["gemini"],
+                "deepseek": ["deepseek"],
+                "anthropic": ["claude"],
+            }
+
+            provider_matched = False
+            for provider, keywords in known_providers.items():
+                if any(keyword in model_name_lower for keyword in keywords):
+                    config["provider"] = provider
+                    provider_matched = True
+                    break
+
+            # 未知模型保持默认，但记录警告
+            if not provider_matched:
+                logger.warning(
+                    f"⚠️ 无法从模型名推断provider: {model_name}，使用默认dashscope"
+                )
+
+        # 验证provider有效性 (M2修复)
+        valid_providers = {"dashscope", "openai", "google", "deepseek", "anthropic"}
+        if config.get("provider") not in valid_providers:
+            logger.error(
+                f"❌ 无效的provider: {config.get('provider')}，使用默认dashscope"
+            )
             config["provider"] = "dashscope"
-        elif "gpt" in model_name:
-            config["provider"] = "openai"
-        elif "gemini" in model_name:
-            config["provider"] = "google"
-        elif "deepseek" in model_name:
-            config["provider"] = "deepseek"
 
         return config
 
@@ -733,6 +771,5 @@ def get_config_manager() -> UnifiedConfigManager:
     return _config_manager
 
 
-# 为了向后兼容，保留UnifiedConfigManager类名
-# 使用get_config_manager()获取实例
-UnifiedConfigManager = UnifiedConfigManager  # 警告：这不是真正的类，只是函数别名
+# 为了向后兼容，导出 UnifiedConfigManager 类和 get_config_manager 函数
+# 使用 get_config_manager() 获取单例实例

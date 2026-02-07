@@ -32,20 +32,37 @@ class TestMarketAnalyst:
             "boll_lower": 14.80,
         }
 
-    def test_market_analyst_initialization(self):
-        """测试市场分析师初始化"""
-        from tradingagents.agents.analysts.market_analyst import MarketAnalyst
+    @patch("tradingagents.agents.analysts.market_analyst.get_company_name")
+    def test_market_analyst_node_creation(self, mock_get_company_name):
+        """测试市场分析师节点创建（函数模式）(M2修复)"""
+        from tradingagents.agents.analysts.market_analyst import create_market_analyst
+
+        # Mock get_company_name 避免数据库连接
+        mock_get_company_name.return_value = "平安银行"
 
         mock_llm = Mock()
-        mock_memory = Mock()
-
-        analyst = MarketAnalyst(
-            llm=mock_llm, memory=mock_memory, config={"ticker": "000001"}
+        mock_llm.invoke.return_value = MagicMock(
+            content="技术分析报告：当前趋势良好，建议买入。"
         )
 
-        assert analyst.llm == mock_llm
-        assert analyst.memory == mock_memory
-        assert analyst.config["ticker"] == "000001"
+        # 创建分析师节点函数
+        analyst_node = create_market_analyst(mock_llm)
+
+        # 1. 验证返回的是可调用函数
+        assert callable(analyst_node), "create_market_analyst 应返回可调用的节点函数"
+
+        # 2. 验证函数可以被正确调用 (M1修复)
+        mock_state = {
+            "messages": [],
+            "company_of_interest": "000001",
+            "market_data": "测试市场数据",
+            "trade_date": "2024-01-01",  # 修复：使用 trade_date 而非 current_date
+        }
+
+        result = analyst_node(mock_state)
+        assert result is not None, "节点函数应返回结果"
+        assert isinstance(result, dict), "结果应为字典类型"
+        assert "market_report" in result, "结果应包含 market_report 字段"
 
     def test_technical_indicators_calculation(self, mock_market_data):
         """测试技术指标计算"""
@@ -91,21 +108,38 @@ class TestFundamentalsAnalyst:
             "debt_ratio": 0.45,
         }
 
-    def test_fundamentals_analyst_initialization(self):
-        """测试基本面分析师初始化"""
+    @patch("tradingagents.agents.analysts.fundamentals_analyst.get_company_name")
+    def test_fundamentals_analyst_node_creation(self, mock_get_company_name):
+        """测试基本面分析师节点创建（函数模式）(M2修复)"""
         from tradingagents.agents.analysts.fundamentals_analyst import (
-            FundamentalsAnalyst,
+            create_fundamentals_analyst,
         )
+
+        # Mock get_company_name 避免数据库连接
+        mock_get_company_name.return_value = "平安银行"
 
         mock_llm = Mock()
-        mock_memory = Mock()
-
-        analyst = FundamentalsAnalyst(
-            llm=mock_llm, memory=mock_memory, config={"ticker": "000001"}
+        mock_llm.invoke.return_value = MagicMock(
+            content="基本面分析：财务状况良好，PE合理。"
         )
 
-        assert analyst.llm == mock_llm
-        assert analyst.config["ticker"] == "000001"
+        # 创建分析师节点函数
+        analyst_node = create_fundamentals_analyst(mock_llm)
+
+        # 验证返回的是可调用函数
+        assert callable(analyst_node), "create_fundamentals_analyst 应返回可调用的节点函数"
+
+        # 验证函数调用 (M1修复)
+        mock_state = {
+            "messages": [],
+            "company_of_interest": "000001",
+            "financial_data": "测试财务数据",
+            "trade_date": "2024-01-01",  # 修复：添加 trade_date
+        }
+        result = analyst_node(mock_state)
+        assert result is not None
+        assert isinstance(result, dict)
+        assert "fundamentals_report" in result
 
     def test_financial_ratios_validation(self, mock_financial_data):
         """测试财务比率验证"""
@@ -158,19 +192,36 @@ class TestNewsAnalyst:
             },
         ]
 
-    def test_news_analyst_initialization(self):
-        """测试新闻分析师初始化"""
-        from tradingagents.agents.analysts.news_analyst import NewsAnalyst
+    @patch("tradingagents.agents.analysts.news_analyst.get_company_name")
+    def test_news_analyst_node_creation(self, mock_get_company_name):
+        """测试新闻分析师节点创建（函数模式）(M2修复)"""
+        from tradingagents.agents.analysts.news_analyst import create_news_analyst
+
+        # Mock get_company_name 避免数据库连接
+        mock_get_company_name.return_value = "平安银行"
 
         mock_llm = Mock()
-        mock_memory = Mock()
-
-        analyst = NewsAnalyst(
-            llm=mock_llm, memory=mock_memory, config={"ticker": "000001"}
+        mock_llm.invoke.return_value = MagicMock(
+            content="新闻分析：整体情绪偏正面。"
         )
 
-        assert analyst.llm == mock_llm
-        assert analyst.config["ticker"] == "000001"
+        # 创建分析师节点函数
+        analyst_node = create_news_analyst(mock_llm)
+
+        # 验证返回的是可调用函数
+        assert callable(analyst_node), "create_news_analyst 应返回可调用的节点函数"
+
+        # 验证函数调用 (M1修复)
+        mock_state = {
+            "messages": [],
+            "company_of_interest": "000001",
+            "news_data": "测试新闻数据",
+            "trade_date": "2024-01-01",  # 修复：添加 trade_date
+        }
+        result = analyst_node(mock_state)
+        assert result is not None
+        assert isinstance(result, dict)
+        assert "news_report" in result
 
     def test_news_sentiment_analysis(self, mock_news_data):
         """测试新闻情感分析"""
@@ -219,24 +270,41 @@ class TestChinaMarketAnalyst:
             "volume_ratio": 1.5,  # 量比
             "main_force_inflow": 5000000,  # 主力资金流入
             "north_bound_inflow": 2000000,  # 北向资金流入
-            " Margin_balance": 100000000,  # 融资融券余额
+            "Margin_balance": 100000000,  # 融资融券余额
         }
 
-    def test_china_market_analyst_initialization(self):
-        """测试中国市场分析师初始化"""
+    @patch("tradingagents.agents.analysts.china_market_analyst.get_company_name")
+    def test_china_market_analyst_node_creation(self, mock_get_company_name):
+        """测试中国市场分析师节点创建（函数模式）(M2修复)"""
         from tradingagents.agents.analysts.china_market_analyst import (
-            ChinaMarketAnalyst,
+            create_china_market_analyst,
         )
+
+        # Mock get_company_name 避免数据库连接
+        mock_get_company_name.return_value = "平安银行"
 
         mock_llm = Mock()
-        mock_memory = Mock()
-
-        analyst = ChinaMarketAnalyst(
-            llm=mock_llm, memory=mock_memory, config={"ticker": "000001"}
+        mock_llm.invoke.return_value = MagicMock(
+            content="中国市场分析：换手率正常，量比较高。"
         )
 
-        assert analyst.llm == mock_llm
-        assert analyst.config["ticker"] == "000001"
+        # 创建分析师节点函数
+        analyst_node = create_china_market_analyst(mock_llm)
+
+        # 验证返回的是可调用函数
+        assert callable(analyst_node), "create_china_market_analyst 应返回可调用的节点函数"
+
+        # 验证函数调用 (M1修复)
+        mock_state = {
+            "messages": [],
+            "company_of_interest": "000001",
+            "trade_date": "2024-01-15",
+            "china_market_data": "测试A股特色数据",
+        }
+        result = analyst_node(mock_state)
+        assert result is not None
+        assert isinstance(result, dict)
+        assert "china_market_report" in result
 
     def test_limit_price_calculation(self, mock_china_market_data):
         """测试涨跌停价格计算"""
@@ -284,21 +352,39 @@ class TestSocialMediaAnalyst:
             "neutral_ratio": 0.10,
         }
 
-    def test_social_media_analyst_initialization(self):
-        """测试社交媒体分析师初始化"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_node_creation(self, mock_get_company_name):
+        """测试社交媒体分析师节点创建（函数模式）(M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
-            SocialMediaAnalyst,
+            create_social_media_analyst,
         )
+
+        # Mock get_company_name 避免数据库连接
+        mock_get_company_name.return_value = "平安银行"
 
         mock_llm = Mock()
-        mock_memory = Mock()
-
-        analyst = SocialMediaAnalyst(
-            llm=mock_llm, memory=mock_memory, config={"ticker": "000001"}
+        mock_llm.invoke.return_value = MagicMock(
+            content="社交媒体分析：整体情绪偏正面，热度较高。"
         )
+        mock_toolkit = Mock()
 
-        assert analyst.llm == mock_llm
-        assert analyst.config["ticker"] == "000001"
+        # 创建分析师节点函数
+        analyst_node = create_social_media_analyst(mock_llm, mock_toolkit)
+
+        # 验证返回的是可调用函数
+        assert callable(analyst_node), "create_social_media_analyst 应返回可调用的节点函数"
+
+        # 验证函数调用 (M1修复)
+        mock_state = {
+            "messages": [],
+            "company_of_interest": "000001",
+            "trade_date": "2024-01-15",
+            "sentiment_data": "测试情绪数据",
+        }
+        result = analyst_node(mock_state)
+        assert result is not None
+        assert isinstance(result, dict)
+        assert "sentiment_report" in result
 
     def test_sentiment_aggregation(self, mock_sentiment_data):
         """测试情感聚合"""

@@ -16,6 +16,30 @@ from app.core.unified_config_service import (
 )
 
 
+# 自动使用的 fixture：在每个测试前后清理缓存
+@pytest.fixture(autouse=True)
+def clear_config_cache():
+    """在每个测试前清理配置缓存"""
+    # 测试前清理
+    manager = UnifiedConfigManager()
+    if hasattr(manager, "_cache"):
+        manager._cache.clear()
+    if hasattr(manager, "_db_config_cache"):
+        manager._db_config_cache = None
+    if hasattr(manager, "_file_config_cache"):
+        manager._file_config_cache.clear()
+
+    yield
+
+    # 测试后再次清理
+    if hasattr(manager, "_cache"):
+        manager._cache.clear()
+    if hasattr(manager, "_db_config_cache"):
+        manager._db_config_cache = None
+    if hasattr(manager, "_file_config_cache"):
+        manager._file_config_cache.clear()
+
+
 class TestGetConfigManager:
     """测试获取配置管理器"""
 
@@ -139,13 +163,17 @@ class TestUnifiedConfigManagerGetConfig:
 
     @patch("app.core.unified_config_service.get_mongo_db_sync")
     def test_get_from_mongodb(self, mock_get_db):
-        """测试从 MongoDB 获取配置"""
-        mock_db = Mock()
+        """测试从 MongoDB 获取配置 (L1修复)"""
+        # 创建正确的 mock 结构
         mock_collection = Mock()
-        mock_doc = {"is_active": True, "test_key": "mongo_value"}
-
-        mock_db.__getitem__ = Mock(return_value=mock_collection)
+        mock_doc = {
+            "is_active": True,
+            "system_settings": {"test_key": "mongo_value"},
+        }
         mock_collection.find_one.return_value = mock_doc
+
+        mock_db = Mock()
+        mock_db.system_configs = mock_collection
         mock_get_db.return_value = mock_db
 
         manager = UnifiedConfigManager()
@@ -162,13 +190,17 @@ class TestUnifiedConfigManagerGetConfig:
 
     @patch("app.core.unified_config_service.get_mongo_db_sync")
     def test_get_caches_result(self, mock_get_db):
-        """测试结果被缓存"""
-        mock_db = Mock()
+        """测试结果被缓存 (L1修复)"""
+        # 创建正确的 mock 结构
         mock_collection = Mock()
-        mock_doc = {"is_active": True, "test_key": "mongo_value"}
-
-        mock_db.__getitem__ = Mock(return_value=mock_collection)
+        mock_doc = {
+            "is_active": True,
+            "system_settings": {"test_key": "mongo_value"},
+        }
         mock_collection.find_one.return_value = mock_doc
+
+        mock_db = Mock()
+        mock_db.system_configs = mock_collection
         mock_get_db.return_value = mock_db
 
         manager = UnifiedConfigManager()
@@ -179,8 +211,6 @@ class TestUnifiedConfigManagerGetConfig:
         result2 = manager.get("test_key")
 
         assert result1 == result2 == "mongo_value"
-        # MongoDB 查询应该只调用一次（第二次从缓存获取）
-        # 由于使用了 cache，find_one 可能被调用多次，但配置会从缓存返回
 
 
 class TestUnifiedConfigManagerModelConfig:
@@ -203,8 +233,8 @@ class TestUnifiedConfigManagerModelConfig:
 
     @patch("app.core.unified_config_service.get_mongo_db_sync")
     def test_get_model_config_from_mongodb(self, mock_get_db):
-        """测试从 MongoDB 获取模型配置"""
-        mock_db = Mock()
+        """测试从 MongoDB 获取模型配置 (L1修复)"""
+        # 创建正确的 mock 结构
         mock_collection = Mock()
         mock_doc = {
             "is_active": True,
@@ -214,14 +244,16 @@ class TestUnifiedConfigManagerModelConfig:
                     "max_tokens": 8000,
                     "temperature": 0.8,
                     "provider": "openai",
+                    "api_base": "https://api.openai.com/v1",
                     "input_price_per_1k": 0.03,
                     "output_price_per_1k": 0.06,
                 }
             ],
         }
-
-        mock_db.__getitem__ = Mock(return_value=mock_collection)
         mock_collection.find_one.return_value = mock_doc
+
+        mock_db = Mock()
+        mock_db.system_configs = mock_collection
         mock_get_db.return_value = mock_db
 
         manager = UnifiedConfigManager()
@@ -272,8 +304,12 @@ class TestUnifiedConfigManagerSystemSettings:
 
         assert model == "gpt-3.5-turbo"
 
-    def test_get_quick_analysis_model_default(self):
+    @patch("app.core.unified_config_service.get_mongo_db_sync")
+    def test_get_quick_analysis_model_default(self, mock_get_db):
         """测试获取默认快速分析模型"""
+        # Mock MongoDB 返回 None（没有配置）
+        mock_get_db.return_value = None
+
         manager = UnifiedConfigManager()
         model = manager.get_quick_analysis_model()
 
@@ -287,8 +323,12 @@ class TestUnifiedConfigManagerSystemSettings:
 
         assert model == "gpt-4"
 
-    def test_get_deep_analysis_model_default(self):
+    @patch("app.core.unified_config_service.get_mongo_db_sync")
+    def test_get_deep_analysis_model_default(self, mock_get_db):
         """测试获取默认深度分析模型"""
+        # Mock MongoDB 返回 None（没有配置）
+        mock_get_db.return_value = None
+
         manager = UnifiedConfigManager()
         model = manager.get_deep_analysis_model()
 
