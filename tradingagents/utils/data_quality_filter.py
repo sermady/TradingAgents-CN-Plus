@@ -49,18 +49,60 @@ class DataQualityFilter:
         """
         issues = []
 
-        # 检查是否用静态利润去"验算"PE_TTM
+        # 检查1: PE_TTM 验算风险（任何验算都可能出错）
+        if "PE_TTM" in report_text and "验算" in report_text:
+            # 查找验算公式
+            pe_calc_pattern = r"PE[_\(]?TTM[\)\)]?\s*[=：]\s*[\d.]+\s*[÷/]\s*[\d.]+"
+            pe_matches = re.findall(pe_calc_pattern, report_text)
+            for match in pe_matches:
+                # 检查验算公式上下文（60个字符）
+                match_start = report_text.find(match)
+                context_start = max(0, match_start - 60)
+                context_end = min(len(report_text), match_start + len(match) + 60)
+                context = report_text[context_start:context_end]
+
+                # 如果上下文中没有明确说明使用TTM净利润，则警告
+                has_ttm_keyword = (
+                    "TTM" in context.upper()
+                    or "滚动" in context
+                    or "过去12个月" in context
+                )
+
+                if not has_ttm_keyword:
+                    issues.append(
+                        {
+                            "severity": "warning",
+                            "category": "calculation_logic",
+                            "description": "PE_TTM验算未明确使用TTM净利润",
+                            "detail": "PE_TTM必须用TTM滚动利润计算（过去12个月），不能用单期归母净利润验算。正确公式：PE_TTM = 总市值 / TTM净利润",
+                        }
+                    )
+
+        # 检查2: 提取错误的验算公式模式（查找PE相关验算中使用的利润字段）
         if "PE_TTM" in report_text and "验算" in report_text:
             # 查找类似 "市值 ÷ 归母净利润 = XX倍" 的验算
-            if re.search(r'验算.*归母净利润|归母净利润.*验算', report_text):
-                # 检查是否声称 PE_TTM 错误
-                if re.search(r'PE_TTM.*错误|错误.*PE_TTM|严重高估|严重低估', report_text):
-                    issues.append({
+            if re.search(r"验算.*归母净利润|归母净利润.*验算", report_text):
+                issues.append(
+                    {
                         "severity": "warning",
                         "category": "calculation_logic",
-                        "description": "可能用静态利润错误验算PE_TTM",
-                        "detail": "PE_TTM应使用TTM滚动利润计算，静态PE才用年报利润"
-                    })
+                        "description": "PE_TTM验算使用了错误的利润口径",
+                        "detail": "检测到在PE_TTM验算中使用了归母净利润。PE_TTM必须用TTM净利润计算，与PE静态（用归母净利润）是不同的指标",
+                    }
+                )
+
+        # 检查3: AI基于错误验算声称PE_TTM数据错误
+        if re.search(r"PE_TTM.*错误|错误.*PE_TTM|严重高估|严重低估", report_text):
+            # 如果同时有验算，标记为严重问题
+            if "验算" in report_text:
+                issues.append(
+                    {
+                        "severity": "critical",
+                        "category": "calculation_logic",
+                        "description": "基于验算声称PE_TTM数据错误",
+                        "detail": "报告声称PE_TTM错误并进行了验算。请确保：1）验算使用的是TTM净利润（过去12个月），2）如果验算结果与报告值一致，则说明数据本身没有问题。正确做法：先用TTM净利润验算，如果仍有差异再指出数据问题",
+                    }
+                )
 
         return issues
 
@@ -71,19 +113,21 @@ class DataQualityFilter:
 
         # 检查是否标记了数据缺失
         missing_patterns = [
-            (r'数据[未暂]提供', "数据未提供"),
-            (r'N/A', "数据为N/A"),
-            (r'无法[获取计算]', "无法获取/计算"),
+            (r"数据[未暂]提供", "数据未提供"),
+            (r"N/A", "数据为N/A"),
+            (r"无法[获取计算]", "无法获取/计算"),
         ]
 
         for pattern, desc in missing_patterns:
             if re.search(pattern, report_text):
-                issues.append({
-                    "severity": "info",
-                    "category": "missing_data",
-                    "description": desc,
-                    "detail": "报告中存在数据缺失"
-                })
+                issues.append(
+                    {
+                        "severity": "info",
+                        "category": "missing_data",
+                        "description": desc,
+                        "detail": "报告中存在数据缺失",
+                    }
+                )
 
         return issues
 
@@ -93,8 +137,12 @@ class DataQualityFilter:
         issues = []
 
         # 提取所有 PE 相关的数值
-        pe_matches = re.findall(r'PE[（\(]?TTM[）\)]?\s*[：:]\s*(\d+\.?\d*)倍', report_text)
-        pe_static_matches = re.findall(r'PE[（\(]?静态[）\)]?\s*[：:]\s*(\d+\.?\d*)倍', report_text)
+        pe_matches = re.findall(
+            r"PE[（\(]?TTM[）\)]?\s*[：:]\s*(\d+\.?\d*)倍", report_text
+        )
+        pe_static_matches = re.findall(
+            r"PE[（\(]?静态[）\)]?\s*[：:]\s*(\d+\.?\d*)倍", report_text
+        )
 
         if pe_matches and pe_static_matches:
             try:
@@ -103,14 +151,18 @@ class DataQualityFilter:
 
                 # 如果 PE_TTM 和 PE_STATIC 差异过大（超过50%），可能是计算错误
                 if pe_ttm > 0 and pe_static > 0:
-                    ratio = pe_ttm / pe_static if pe_ttm > pe_static else pe_static / pe_ttm
+                    ratio = (
+                        pe_ttm / pe_static if pe_ttm > pe_static else pe_static / pe_ttm
+                    )
                     if ratio > 1.5:  # 差异超过50%
-                        issues.append({
-                            "severity": "info",
-                            "category": "valuation_inconsistency",
-                            "description": f"PE_TTM({pe_ttm})与PE静态({pe_static})差异较大",
-                            "detail": "可能存在计算口径不一致，请核实数据来源"
-                        })
+                        issues.append(
+                            {
+                                "severity": "info",
+                                "category": "valuation_inconsistency",
+                                "description": f"PE_TTM({pe_ttm})与PE静态({pe_static})差异较大",
+                                "detail": "可能存在计算口径不一致，请核实数据来源",
+                            }
+                        )
             except (ValueError, IndexError):
                 pass
 
@@ -157,7 +209,9 @@ class DataQualityFilter:
         return summary
 
     @classmethod
-    def filter_and_mark_data(cls, financial_data: Dict, report_text: str) -> Tuple[Dict, str]:
+    def filter_and_mark_data(
+        cls, financial_data: Dict, report_text: str
+    ) -> Tuple[Dict, str]:
         """
         过滤并标记数据质量问题
 
