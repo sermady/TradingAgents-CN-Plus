@@ -94,7 +94,10 @@ def test_extract_trading_decision_confidence():
     result = extract_trading_decision(content)
 
     # Assert
-    assert abs(result["confidence"] - 0.75) < 0.01  # 允许浮点数精度误差
+    # 注意：由于默认 data_quality_score=100（A级），置信度会被提升5%
+    # 0.75 * 1.05 = 0.7875
+    expected_confidence = 0.75 * 1.05
+    assert abs(result["confidence"] - expected_confidence) < 0.01  # 允许浮点数精度误差
 
 
 @pytest.mark.unit
