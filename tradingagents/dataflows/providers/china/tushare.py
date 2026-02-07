@@ -557,6 +557,12 @@ class TushareProvider(BaseStockDataProvider):
                     if fina_df is not None and not fina_df.empty:
                         row = fina_df.iloc[0]
                         basic_data["q_profit_yoy"] = row.get("q_profit_yoy")
+                        # 营业收入同比增长率
+                        basic_data["or_yoy"] = row.get("or_yoy")
+                        # 每股收益同比增长率
+                        basic_data["eps_yoy"] = row.get("eps_yoy")
+                        # 净资产收益率同比增长率
+                        basic_data["roe_yoy"] = row.get("roe_yoy")
                         # 每股指标数据
                         basic_data["eps"] = row.get("diluted2_eps")  # 稀释每股收益
                         basic_data["bps"] = row.get("bps")  # 每股净资产
@@ -568,7 +574,7 @@ class TushareProvider(BaseStockDataProvider):
                             "undist_profit_ps"
                         )  # 每股未分配利润
                         self.logger.info(
-                            f"🔍 [Tushare] 获取到 {ts_code} 每股指标: EPS={basic_data.get('eps')}, BPS={basic_data.get('bps')}, OCFPS={basic_data.get('ocfps')}"
+                            f"🔍 [Tushare] 获取到 {ts_code} 每股指标: EPS={basic_data.get('eps')}, BPS={basic_data.get('bps')}, OCFPS={basic_data.get('ocfps')}, 营收同比={basic_data.get('or_yoy')}"
                         )
                     else:
                         self.logger.warning(

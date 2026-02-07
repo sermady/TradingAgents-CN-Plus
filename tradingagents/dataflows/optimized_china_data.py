@@ -1842,6 +1842,36 @@ class OptimizedChinaDataProvider:
             metrics["quick_ratio"] = latest_indicators.get("quick_ratio", "N/A")
             metrics["cash_ratio"] = latest_indicators.get("cash_ratio", "N/A")
 
+            # 从stock_info获取同比增长数据
+            revenue_yoy = stock_info.get("or_yoy") if stock_info else None
+            net_income_yoy = stock_info.get("q_profit_yoy") if stock_info else None
+
+            # 营收同比增速
+            if revenue_yoy and str(revenue_yoy) not in ["nan", "--", "None", ""]:
+                try:
+                    revenue_yoy_val = float(revenue_yoy)
+                    metrics["revenue_yoy"] = revenue_yoy_val
+                    metrics["revenue_yoy_fmt"] = f"{revenue_yoy_val:+.1f}%"
+                except (ValueError, TypeError):
+                    metrics["revenue_yoy"] = None
+                    metrics["revenue_yoy_fmt"] = "N/A"
+            else:
+                metrics["revenue_yoy"] = None
+                metrics["revenue_yoy_fmt"] = "N/A"
+
+            # 净利润同比增速
+            if net_income_yoy and str(net_income_yoy) not in ["nan", "--", "None", ""]:
+                try:
+                    net_income_yoy_val = float(net_income_yoy)
+                    metrics["net_income_yoy"] = net_income_yoy_val
+                    metrics["net_income_yoy_fmt"] = f"{net_income_yoy_val:+.1f}%"
+                except (ValueError, TypeError):
+                    metrics["net_income_yoy"] = None
+                    metrics["net_income_yoy_fmt"] = "N/A"
+            else:
+                metrics["net_income_yoy"] = None
+                metrics["net_income_yoy_fmt"] = "N/A"
+
             # 添加评分字段（使用默认值）
             metrics["fundamental_score"] = 7.0  # 基于真实数据的默认评分
             metrics["valuation_score"] = 6.5
