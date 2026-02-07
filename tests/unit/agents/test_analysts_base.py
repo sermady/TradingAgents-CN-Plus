@@ -467,13 +467,15 @@ class TestAnalystCommonPatterns:
             )
 
     @pytest.mark.unit
-    def test_analyst_state_handling(self):
-        """测试分析师正确处理state参数"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_analyst_state_handling(self, mock_get_company_name):
+        """测试分析师正确处理state参数 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "报告"
         mock_llm = Mock()
