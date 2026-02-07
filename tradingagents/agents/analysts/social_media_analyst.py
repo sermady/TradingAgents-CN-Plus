@@ -24,21 +24,79 @@ def create_social_media_analyst(llm, toolkit):
         sentiment_source = data_sources.get("sentiment", "unknown")
         sentiment_issues = data_issues.get("sentiment", [])
 
-        if not sentiment_data or "❌" in sentiment_data:
+        market_info = StockUtils.get_market_info(ticker)
+        company_name = get_company_name(ticker, market_info)
+
+        # 检查情绪数据是否可用
+        data_unavailable = (
+            not sentiment_data or "❌" in sentiment_data or "警告" in sentiment_data
+        )
+
+        if data_unavailable:
             logger.warning(
-                f"[Social Media Analyst] Sentiment data unavailable for {ticker} (source: {sentiment_source})"
+                f"[Social Media Analyst] Sentiment data unavailable for {ticker} (source: {sentiment_source}), "
+                f"generating default report instead of calling LLM"
             )
-            sentiment_data = (
-                "警告：情绪数据不可用。已尝试从多个数据源获取但均失败。\n"
-                "请检查网络连接或稍后重试。"
-            )
+            # 生成默认报告，避免LLM生成空内容
+            default_report = f"""# **{company_name}（{ticker}）市场情绪分析报告**
+
+## 一、投资者情绪概览
+
+⚠️ **数据获取状态**：由于中国社交媒体平台API限制，无法获取实时社交媒体情绪数据。
+
+当前可用的数据源：**{sentiment_source}**
+
+**数据限制说明**：
+- 微博、雪球等平台的公开API已关闭或限制访问
+- 东方财富等财经网站的数据抓取受到反爬虫机制限制
+- 当前仅能通过财经新闻间接了解市场情绪
+
+## 二、社交媒体热度分析
+
+**数据缺失** - 无法获取以下指标：
+- 股吧/雪球讨论热度
+- 微博提及量和情绪倾向
+- 散户情绪指数
+- 大V观点汇总
+
+## 三、潜在舆情风险
+
+基于新闻分析的舆情风险评估（详细内容请参考新闻分析报告）：
+- 请查看 `news_report.md` 了解最新舆情动态
+- 关注监管政策变化对投资者情绪的影响
+- 注意行业热点切换对资金流向的影响
+
+## 四、情绪面投资建议
+
+由于社交媒体情绪数据不可用，建议投资者：
+
+1. **关注新闻舆情**
+   - 参考新闻分析报告中的市场情绪评估
+   - 关注主流媒体对公司和行业的报道倾向
+
+2. **分析技术面信号**
+   - 成交量变化可能反映市场情绪
+   - 资金流向数据可作为情绪替代指标
+
+3. **重视基本面分析**
+   - 业绩预期和实际表现是情绪的根基
+   - 机构研报评级变化反映专业投资者看法
+
+4. **参考A股特色指标**
+   - 换手率反映交易活跃度
+   - 量比指标显示资金关注度
+
+---
+
+*⚠️ 注：本报告因数据获取限制未能提供完整的社交媒体情绪分析。建议结合其他分析报告进行综合判断。*
+
+*数据时间: {current_date}*
+"""
+            return {"sentiment_report": default_report, "messages": []}
 
         logger.info(
             f"[Social Media Analyst] Analyzing {ticker} on {current_date} (quality: {data_quality_score:.2f}, source: {sentiment_source})"
         )
-
-        market_info = StockUtils.get_market_info(ticker)
-        company_name = get_company_name(ticker, market_info)
 
         # 记录数据质量问题到日志（不在提示词中显示）
         if sentiment_issues:
