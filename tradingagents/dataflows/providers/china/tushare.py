@@ -1795,6 +1795,19 @@ class TushareProvider(BaseStockDataProvider):
             "eps": self._convert_to_float(raw_data.get("eps")),  # 稀释每股收益
             "bps": self._convert_to_float(raw_data.get("bps")),  # 每股净资产
             "ocfps": self._convert_to_float(raw_data.get("ocfps")),  # 每股经营现金流
+            # 同比增速 (2026-02-07 修复：添加营收/净利润同比增速字段)
+            "or_yoy": self._convert_to_float(
+                raw_data.get("or_yoy")
+            ),  # 营业收入同比增长率（%）
+            "q_profit_yoy": self._convert_to_float(
+                raw_data.get("q_profit_yoy")
+            ),  # 净利润同比增长率（%）
+            "eps_yoy": self._convert_to_float(
+                raw_data.get("eps_yoy")
+            ),  # 每股收益同比增长率（%）
+            "roe_yoy": self._convert_to_float(
+                raw_data.get("roe_yoy")
+            ),  # 净资产收益率同比增长率（%）
             "capital_rese_ps": self._convert_to_float(
                 raw_data.get("capital_rese_ps")
             ),  # 每股公积金
