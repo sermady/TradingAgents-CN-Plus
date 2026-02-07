@@ -79,11 +79,26 @@ class ConfigManager:
         # 加载.env文件（保持向后兼容）
         self._load_env_file()
 
-        # 初始化MongoDB存储（如果可用）
-        self.mongodb_storage = None
-        self._init_mongodb_storage()
+        # 🔧 修复：延迟初始化MongoDB存储，避免模块导入时立即连接
+        self._mongodb_storage = None
+        self._mongodb_initialized = False
+        # 注意：不再在 __init__ 中调用 _init_mongodb_storage()
 
         self._init_default_configs()
+
+    @property
+    def mongodb_storage(self):
+        """MongoDB存储访问器（延迟初始化）"""
+        self._ensure_mongodb_storage()
+        return self._mongodb_storage
+
+    def _ensure_mongodb_storage(self):
+        """确保MongoDB存储已初始化（延迟初始化）"""
+        if self._mongodb_initialized:
+            return
+
+        self._mongodb_initialized = True
+        self._init_mongodb_storage()
 
     def _load_env_file(self):
         """加载.env文件（保持向后兼容）"""
@@ -162,7 +177,7 @@ class ConfigManager:
         return True
 
     def _init_mongodb_storage(self):
-        """初始化MongoDB存储"""
+        """初始化MongoDB存储（延迟调用）"""
         logger.info("🔧 [ConfigManager] 开始初始化 MongoDB 存储...")
 
         if not MONGODB_AVAILABLE:
@@ -197,21 +212,31 @@ class ConfigManager:
                 return
 
             logger.info(f"[ConfigManager] 正在创建 MongoDBStorage 实例...")
-            self.mongodb_storage = MongoDBStorage(
-                connection_string=connection_string, database_name=database_name
+            # 🔧 修复：使用延迟连接，避免立即创建 MongoClient
+            # 注意：这里不再传入 auto_connect 参数，因为默认为 False
+            self._mongodb_storage = MongoDBStorage(
+                connection_string=connection_string,
+                database_name=database_name,
+                auto_connect=False  # 延迟连接
             )
 
-            if self.mongodb_storage.is_connected():
-                logger.info(
-                    f"✅ [ConfigManager] MongoDB存储已启用: {database_name}.token_usage"
-                )
-            else:
-                self.mongodb_storage = None
-                logger.warning("⚠️ [ConfigManager] MongoDB连接失败，将使用JSON文件存储")
+            # 尝试连接，失败时设置为 None
+            try:
+                self._mongodb_storage._connect()
+                if self._mongodb_storage.is_connected():
+                    logger.info(
+                        f"✅ [ConfigManager] MongoDB存储已启用: {database_name}.token_usage"
+                    )
+                else:
+                    self._mongodb_storage = None
+                    logger.warning("⚠️ [ConfigManager] MongoDB连接失败，将使用JSON文件存储")
+            except Exception as e:
+                logger.error(f"❌ [ConfigManager] MongoDB连接失败: {e}")
+                self._mongodb_storage = None
 
         except Exception as e:
             logger.error(f"❌ [ConfigManager] MongoDB初始化失败: {e}", exc_info=True)
-            self.mongodb_storage = None
+            self._mongodb_storage = None
 
     def _init_default_configs(self):
         """初始化默认配置"""

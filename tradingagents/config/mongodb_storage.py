@@ -32,7 +32,8 @@ class MongoDBStorage:
     """MongoDB存储适配器"""
 
     def __init__(
-        self, connection_string: str = None, database_name: str = "tradingagents"
+        self, connection_string: str = None, database_name: str = "tradingagents",
+        auto_connect: bool = True
     ):
         if not MONGODB_AVAILABLE:
             raise ImportError(
@@ -59,8 +60,9 @@ class MongoDBStorage:
         self.collection = None
         self._connected = False
 
-        # 尝试连接
-        self._connect()
+        # 🔧 修复：支持延迟连接，避免模块导入时立即连接
+        if auto_connect:
+            self._connect()
 
     def _connect(self):
         """连接到MongoDB"""

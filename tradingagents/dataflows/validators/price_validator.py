@@ -59,7 +59,7 @@ class PriceValidator(BaseDataValidator):
 
         # 1. 验证当前价格
         current_price = data.get('current_price')
-        if current_price:
+        if current_price is not None:
             self._validate_current_price(symbol, current_price, result)
 
         # 2. 验证移动平均线

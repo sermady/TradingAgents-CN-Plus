@@ -23,17 +23,96 @@ class DatabaseManager:
         # 数据库连接状态
         self.mongodb_available = False
         self.redis_available = False
-        self.mongodb_client = None
-        self.redis_client = None
+        self._mongodb_client = None  # 私有变量，延迟初始化
+        self._redis_client = None    # 私有变量，延迟初始化
+        self._mongodb_initialized = False
+        self._redis_initialized = False
 
         # 检测数据库可用性
         self._detect_databases()
 
-        # 初始化连接
-        self._initialize_connections()
+        # 🔧 修复：延迟初始化连接，避免模块导入时立即创建 MongoClient
+        # 不再在 __init__ 中调用 _initialize_connections()
 
         self.logger.info(f"数据库管理器初始化完成 - MongoDB: {self.mongodb_available}, Redis: {self.redis_available}")
-    
+
+    @property
+    def mongodb_client(self):
+        """MongoDB客户端访问器（延迟初始化）"""
+        if not self._mongodb_initialized:
+            self._mongodb_initialized = True
+            self._initialize_mongodb()
+        return self._mongodb_client
+
+    @property
+    def redis_client(self):
+        """Redis客户端访问器（延迟初始化）"""
+        if not self._redis_initialized:
+            self._redis_initialized = True
+            self._initialize_redis()
+        return self._redis_client
+
+    def _initialize_mongodb(self):
+        """初始化MongoDB连接（延迟调用）"""
+        if not self.mongodb_available:
+            return
+
+        try:
+            import pymongo
+
+            # 构建连接参数
+            connect_kwargs = {
+                "host": self.mongodb_config["host"],
+                "port": self.mongodb_config["port"],
+                "serverSelectionTimeoutMS": self.mongodb_config["server_selection_timeout"],
+                "connectTimeoutMS": self.mongodb_config["connect_timeout"],
+                "socketTimeoutMS": self.mongodb_config["socket_timeout"]
+            }
+
+            # 如果有用户名和密码，添加认证
+            if self.mongodb_config["username"] and self.mongodb_config["password"]:
+                connect_kwargs.update({
+                    "username": self.mongodb_config["username"],
+                    "password": self.mongodb_config["password"],
+                    "authSource": self.mongodb_config["auth_source"]
+                })
+
+            # 使用私有变量，避免触发属性访问器
+            self._mongodb_client = pymongo.MongoClient(**connect_kwargs)
+            self.logger.info("MongoDB客户端初始化成功")
+        except Exception as e:
+            self.logger.error(f"MongoDB客户端初始化失败: {e}")
+            self.mongodb_available = False
+            self._mongodb_client = None
+
+    def _initialize_redis(self):
+        """初始化Redis连接（延迟调用）"""
+        if not self.redis_available:
+            return
+
+        try:
+            import redis
+
+            # 构建连接参数
+            connect_kwargs = {
+                "host": self.redis_config["host"],
+                "port": self.redis_config["port"],
+                "db": self.redis_config["db"],
+                "socket_timeout": self.redis_config["timeout"]
+            }
+
+            # 如果有密码，添加密码
+            if self.redis_config["password"]:
+                connect_kwargs["password"] = self.redis_config["password"]
+
+            # 使用私有变量，避免触发属性访问器
+            self._redis_client = redis.Redis(**connect_kwargs)
+            self.logger.info("Redis客户端初始化成功")
+        except Exception as e:
+            self.logger.error(f"Redis客户端初始化失败: {e}")
+            self.redis_available = False
+            self._redis_client = None
+
     def _load_env_config(self):
         """从.env文件加载配置"""
         # 尝试加载python-dotenv
@@ -195,57 +274,10 @@ class DatabaseManager:
         self.logger.info(f"主要缓存后端: {self.primary_backend}")
     
     def _initialize_connections(self):
-        """初始化数据库连接"""
-        # 初始化MongoDB连接
-        if self.mongodb_available:
-            try:
-                import pymongo
-
-                # 构建连接参数
-                connect_kwargs = {
-                    "host": self.mongodb_config["host"],
-                    "port": self.mongodb_config["port"],
-                    "serverSelectionTimeoutMS": self.mongodb_config["server_selection_timeout"],
-                    "connectTimeoutMS": self.mongodb_config["connect_timeout"],
-                    "socketTimeoutMS": self.mongodb_config["socket_timeout"]
-                }
-
-                # 如果有用户名和密码，添加认证
-                if self.mongodb_config["username"] and self.mongodb_config["password"]:
-                    connect_kwargs.update({
-                        "username": self.mongodb_config["username"],
-                        "password": self.mongodb_config["password"],
-                        "authSource": self.mongodb_config["auth_source"]
-                    })
-
-                self.mongodb_client = pymongo.MongoClient(**connect_kwargs)
-                self.logger.info("MongoDB客户端初始化成功")
-            except Exception as e:
-                self.logger.error(f"MongoDB客户端初始化失败: {e}")
-                self.mongodb_available = False
-
-        # 初始化Redis连接
-        if self.redis_available:
-            try:
-                import redis
-
-                # 构建连接参数
-                connect_kwargs = {
-                    "host": self.redis_config["host"],
-                    "port": self.redis_config["port"],
-                    "db": self.redis_config["db"],
-                    "socket_timeout": self.redis_config["timeout"]
-                }
-
-                # 如果有密码，添加密码
-                if self.redis_config["password"]:
-                    connect_kwargs["password"] = self.redis_config["password"]
-
-                self.redis_client = redis.Redis(**connect_kwargs)
-                self.logger.info("Redis客户端初始化成功")
-            except Exception as e:
-                self.logger.error(f"Redis客户端初始化失败: {e}")
-                self.redis_available = False
+        """初始化数据库连接（已弃用，使用 _initialize_mongodb/_initialize_redis）"""
+        # 🔧 修复：此方法已不再使用，保留仅为向后兼容
+        # 实际初始化已延迟到属性访问时
+        pass
     
     def get_mongodb_client(self):
         """获取MongoDB客户端"""

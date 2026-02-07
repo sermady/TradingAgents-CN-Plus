@@ -162,9 +162,10 @@ def create_filtered_realtime_news_function():
 
                     # 使用 AKShareProvider 获取新闻（如果有相应方法）
                     provider = get_akshare_provider()
-                    # TODO: 需要实现 get_stock_news 方法
-                    # original_news_df = provider.get_stock_news(clean_ticker)
-                    # 暂时跳过，返回原始报告
+                    # 注意：AKShare 新闻功能待实现
+                    # provider.get_stock_news() 方法尚未在 AKShareProvider 中实现
+                    # 当前策略：跳过新闻获取，返回原始报告
+                    # 未来改进：实现 get_stock_news() 方法以支持实时新闻
                     logger.warning(f"[增强实时新闻] AKShare新闻功能暂未实现，返回原始报告")
                     return original_report
                         

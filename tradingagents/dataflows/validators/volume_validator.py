@@ -143,7 +143,12 @@ class VolumeValidator(BaseDataValidator):
         self, symbol: str, data: Dict[str, Any], result: ValidationResult
     ) -> None:
         """验证当前成交量"""
-        volume = data.get("volume") or data.get("成交量") or data.get("vol")
+        # 🔧 修复：显式检查 None，避免 `or` 操作符跳过 0 值
+        volume = data.get("volume")
+        if volume is None:
+            volume = data.get("成交量")
+        if volume is None:
+            volume = data.get("vol")
 
         if volume is None:
             return
