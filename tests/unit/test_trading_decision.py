@@ -75,7 +75,7 @@ class TestExtractTradingDecision:
         content = "建议买入"
         result = extract_trading_decision(content)
 
-        assert result["confidence"] == 0.7
+        assert abs(result["confidence"] - 0.7) < 0.01  # 允许浮点数精度误差
 
     def test_default_risk_for_sell(self):
         """测试卖出时默认风险评分"""
