@@ -254,7 +254,12 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataQualityApi } from '@/api/dataQuality'
-import type { DataQualityMetrics, Alert } from '@/types/dataQuality'
+import type { DataQualityMetrics, Alert, AlertSummary } from '@/types/dataQuality'
+import {
+  isDataQualityMetrics,
+  isAlertArray,
+  isAlertSummary
+} from '@/types/dataQuality'
 
 const router = useRouter()
 
@@ -467,14 +472,26 @@ const getSeverityText = (severity: string) => {
 const loadMetrics = async () => {
   try {
     loading.value = true
-    const response = await dataQualityApi.getMetrics() as any
-    if (response.success || response.data) {
-      currentMetrics.value = response.data || response
-      lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
+    const response = await dataQualityApi.getMetrics() as unknown
+
+    // 使用类型守卫安全地处理响应
+    if (isDataQualityMetrics(response)) {
+      currentMetrics.value = response
+    } else if (
+      typeof response === 'object' &&
+      response !== null &&
+      'data' in response &&
+      isDataQualityMetrics(response.data)
+    ) {
+      currentMetrics.value = response.data
+    } else {
+      throw new Error('Invalid response format')
     }
+
+    lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
   } catch (error) {
-    console.error('加载指标失败:', error)
     ElMessage.error('加载数据质量指标失败')
+    throw error
   } finally {
     loading.value = false
   }
@@ -483,12 +500,24 @@ const loadMetrics = async () => {
 const loadAlerts = async () => {
   try {
     loading.value = true
-    const response = await dataQualityApi.getAlerts(10) as any
-    if (response.success || response.data) {
-      recentAlerts.value = response.data || response || []
+    const response = await dataQualityApi.getAlerts(10) as unknown
+
+    // 使用类型守卫安全地处理响应
+    if (isAlertArray(response)) {
+      recentAlerts.value = response
+    } else if (
+      typeof response === 'object' &&
+      response !== null &&
+      'data' in response &&
+      isAlertArray(response.data)
+    ) {
+      recentAlerts.value = response.data
+    } else {
+      recentAlerts.value = []
     }
   } catch (error) {
-    console.error('加载告警失败:', error)
+    ElMessage.error('加载告警失败')
+    throw error
   } finally {
     loading.value = false
   }
@@ -496,31 +525,59 @@ const loadAlerts = async () => {
 
 const loadAlertSummary = async () => {
   try {
-    const response = await dataQualityApi.getAlertSummary() as any
-    if (response.success || response.data) {
-      alertSummary.value = response.data || response || alertSummary.value
+    const response = await dataQualityApi.getAlertSummary() as unknown
+
+    // 使用类型守卫安全地处理响应
+    if (isAlertSummary(response)) {
+      alertSummary.value = response
+    } else if (
+      typeof response === 'object' &&
+      response !== null &&
+      'data' in response &&
+      isAlertSummary(response.data)
+    ) {
+      alertSummary.value = response.data
     }
+    // 如果都不是，保持默认值
   } catch (error) {
-    console.error('加载告警摘要失败:', error)
+    ElMessage.error('加载告警摘要失败')
+    throw error
   }
 }
 
 const refreshMetrics = async () => {
   try {
     refreshing.value = true
-    const response = await dataQualityApi.refresh() as any
-    if (response.success || response.data) {
-      await loadMetrics()
-      const newAlertsCount = response.data?.new_alerts_count || 0
-      if (newAlertsCount > 0) {
-        ElMessage.warning(`检测到 ${newAlertsCount} 个新告警`)
-      } else {
-        ElMessage.success('指标已刷新')
-      }
+    const response = await dataQualityApi.refresh() as unknown
+
+    let newAlertsCount = 0
+    if (
+      typeof response === 'object' &&
+      response !== null &&
+      'data' in response &&
+      typeof response.data === 'object' &&
+      response.data !== null &&
+      'new_alerts_count' in response.data
+    ) {
+      newAlertsCount = (response.data as { new_alerts_count?: number }).new_alerts_count || 0
+    } else if (
+      typeof response === 'object' &&
+      response !== null &&
+      'new_alerts_count' in response
+    ) {
+      newAlertsCount = (response as { new_alerts_count?: number }).new_alerts_count || 0
+    }
+
+    await loadMetrics()
+
+    if (newAlertsCount > 0) {
+      ElMessage.warning(`检测到 ${newAlertsCount} 个新告警`)
+    } else {
+      ElMessage.success('指标已刷新')
     }
   } catch (error) {
-    console.error('刷新指标失败:', error)
     ElMessage.error('刷新指标失败')
+    throw error
   } finally {
     refreshing.value = false
   }

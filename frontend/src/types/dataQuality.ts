@@ -2,6 +2,14 @@
  * 数据质量监控相关类型定义
  */
 
+/** 通用 API 响应包装 */
+export interface ApiResponse<T> {
+  success?: boolean
+  data?: T
+  error?: string
+  message?: string
+}
+
 /** 数据质量指标 */
 export interface DataQualityMetrics {
   /** 时间戳 */
@@ -61,15 +69,7 @@ export interface AlertSummary {
   info: number
 }
 
-/** API 响应类型 */
-export interface MetricsResponse extends DataQualityMetrics {}
-
-export interface AlertsResponse {
-  alerts: Alert[]
-}
-
-export interface AlertSummaryResponse extends AlertSummary {}
-
+/** 刷新响应 */
 export interface RefreshResponse {
   success: boolean
   message: string
@@ -77,8 +77,47 @@ export interface RefreshResponse {
   new_alerts_count: number
 }
 
+/** 解决告警响应 */
 export interface ResolveAlertResponse {
   success: boolean
   message: string
   alert_id: string
+}
+
+/** 类型守卫：检查是否为 DataQualityMetrics */
+export function isDataQualityMetrics(obj: unknown): obj is DataQualityMetrics {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'timestamp' in obj &&
+    'source_availability' in obj &&
+    'data_latency_ms' in obj
+  )
+}
+
+/** 类型守卫：检查是否为 Alert */
+export function isAlert(obj: unknown): obj is Alert {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'id' in obj &&
+    'severity' in obj &&
+    'title' in obj &&
+    'message' in obj
+  )
+}
+
+/** 类型守卫：检查是否为 Alert 数组 */
+export function isAlertArray(obj: unknown): obj is Alert[] {
+  return Array.isArray(obj) && obj.every(isAlert)
+}
+
+/** 类型守卫：检查是否为 AlertSummary */
+export function isAlertSummary(obj: unknown): obj is AlertSummary {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'total' in obj &&
+    'unresolved' in obj
+  )
 }

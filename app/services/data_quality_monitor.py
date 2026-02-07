@@ -229,26 +229,36 @@ class DataQualityMonitor:
                 if redis_client:
                     # 扫描所有 source_stats 键
                     for source in ["tushare", "akshare", "baostock"]:
-                        stats_key = f"source_stats:{source}"
-                        stats = redis_client.hgetall(stats_key)
+                        try:
+                            stats_key = f"source_stats:{source}"
+                            stats = redis_client.hgetall(stats_key)
 
-                        if stats:
-                            # 根据成功率估算等级
-                            success_count = int(stats.get(b"success_count", 0))
-                            total = success_count + int(stats.get(b"failure_count", 0))
+                            if stats:
+                                # 根据成功率估算等级
+                                # 使用更安全的转换方法
+                                try:
+                                    success_count = int(stats.get(b"success_count", 0) or 0)
+                                    failure_count = int(stats.get(b"failure_count", 0) or 0)
+                                    total = success_count + failure_count
 
-                            if total > 0:
-                                success_rate = success_count / total
-                                if success_rate >= 0.95:
-                                    distribution["A"] += 1
-                                elif success_rate >= 0.90:
-                                    distribution["B"] += 1
-                                elif success_rate >= 0.80:
-                                    distribution["C"] += 1
-                                elif success_rate >= 0.60:
-                                    distribution["D"] += 1
-                                else:
-                                    distribution["F"] += 1
+                                    if total > 0:
+                                        success_rate = success_count / total
+                                        if success_rate >= 0.95:
+                                            distribution["A"] += 1
+                                        elif success_rate >= 0.90:
+                                            distribution["B"] += 1
+                                        elif success_rate >= 0.80:
+                                            distribution["C"] += 1
+                                        elif success_rate >= 0.60:
+                                            distribution["D"] += 1
+                                        else:
+                                            distribution["F"] += 1
+                                except (ValueError, TypeError) as e:
+                                    logger.warning(f"Invalid stats format for {source}: {e}")
+
+                        except Exception as e:
+                            # Redis 连接或操作错误，跳过此数据源
+                            logger.warning(f"Failed to get stats for {source}: {e}")
 
             except Exception as e:
                 logger.debug(f"收集质量分布失败: {e}")

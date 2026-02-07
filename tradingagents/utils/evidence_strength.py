@@ -7,6 +7,7 @@
 
 import re
 import logging
+import threading
 from typing import Dict, List, Tuple, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,24 @@ class EvidenceStrengthCalculator:
 
         Returns:
             float: 证据强度评分 (0-1)
+
+        Raises:
+            TypeError: 如果参数类型不正确
+            ValueError: 如果参数值超出有效范围
         """
+        # 参数验证
+        if not isinstance(argument, str):
+            raise TypeError(f"argument must be a string, got {type(argument).__name__}")
+
+        if not isinstance(data_quality_score, (int, float)):
+            raise TypeError(f"data_quality_score must be a number, got {type(data_quality_score).__name__}")
+
+        if not 0 <= data_quality_score <= 100:
+            raise ValueError(f"data_quality_score must be between 0 and 100, got {data_quality_score}")
+
+        if citations is not None and not isinstance(citations, list):
+            raise TypeError(f"citations must be a list or None, got {type(citations).__name__}")
+
         if not argument:
             return 0.0
 
@@ -231,15 +249,26 @@ class EvidenceStrengthCalculator:
             return 0.5
 
 
-# 全局实例
-_calculator = None
+# 全局实例和锁（线程安全）
+_calculator: Optional['EvidenceStrengthCalculator'] = None
+_lock = threading.Lock()
 
 
 def get_evidence_calculator() -> EvidenceStrengthCalculator:
-    """获取证据强度计算器实例"""
+    """
+    获取证据强度计算器实例（线程安全单例模式）
+
+    使用双重检查锁定模式确保线程安全
+
+    Returns:
+        EvidenceStrengthCalculator: 计算器实例
+    """
     global _calculator
     if _calculator is None:
-        _calculator = EvidenceStrengthCalculator()
+        with _lock:
+            # 双重检查：在获取锁后再次检查
+            if _calculator is None:
+                _calculator = EvidenceStrengthCalculator()
     return _calculator
 
 
@@ -258,6 +287,10 @@ def calculate_evidence_strength(
 
     Returns:
         float: 证据强度评分 (0-1)
+
+    Raises:
+        TypeError: 如果参数类型不正确
+        ValueError: 如果参数值超出有效范围
     """
     calculator = get_evidence_calculator()
     return calculator.calculate_evidence_strength(argument, data_quality_score, citations)

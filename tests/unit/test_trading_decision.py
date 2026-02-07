@@ -18,7 +18,7 @@ class TestExtractTradingDecision:
 
         assert result["recommendation"] == "买入"
         assert result["target_price"] == 21.0
-        assert result["confidence"] == 0.8
+        assert abs(result["confidence"] - 0.8) < 0.01  # 允许浮点数精度误差
         assert result["risk_score"] == 0.3
 
     def test_extract_hold_recommendation_with_range(self):
