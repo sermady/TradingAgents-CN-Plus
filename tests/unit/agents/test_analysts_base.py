@@ -106,13 +106,15 @@ class TestSocialMediaAnalyst:
         mock_llm.invoke.assert_called_once()
 
     @pytest.mark.unit
-    def test_social_media_analyst_empty_data(self):
-        """测试空情绪数据时生成默认报告"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_empty_data(self, mock_get_company_name):
+        """测试空情绪数据时生成默认报告 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "浦发银行"  # Mock 避免数据库连接
         mock_llm = Mock()
         mock_toolkit = Mock()
         analyst_node = create_social_media_analyst(mock_llm, mock_toolkit)
@@ -135,13 +137,15 @@ class TestSocialMediaAnalyst:
         assert "600000" in result["sentiment_report"]
 
     @pytest.mark.unit
-    def test_social_media_analyst_with_data_issues(self):
-        """测试有数据质量问题时记录日志"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_with_data_issues(self, mock_get_company_name):
+        """测试有数据质量问题时记录日志 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "报告内容"
         mock_llm = Mock()
@@ -170,13 +174,15 @@ class TestSocialMediaAnalyst:
         assert "sentiment_report" in result
 
     @pytest.mark.unit
-    def test_social_media_analyst_llm_error(self):
-        """测试LLM调用失败时的错误处理"""
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_social_media_analyst_llm_error(self, mock_get_company_name):
+        """测试LLM调用失败时的错误处理 (M2修复)"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_llm = Mock()
         mock_llm.invoke.side_effect = Exception("API错误")
         mock_toolkit = Mock()
@@ -218,11 +224,13 @@ class TestMarketAnalyst:
         assert callable(analyst_node)
 
     @pytest.mark.unit
-    def test_market_analyst_data_unavailable(self):
+    @patch("tradingagents.agents.analysts.market_analyst.get_company_name")
+    def test_market_analyst_data_unavailable(self, mock_get_company_name):
         """测试市场数据不可用时生成警告报告"""
         from tradingagents.agents.analysts.market_analyst import create_market_analyst
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "市场分析报告"
         mock_llm = Mock()
@@ -247,11 +255,13 @@ class TestMarketAnalyst:
         mock_llm.invoke.assert_called_once()
 
     @pytest.mark.unit
-    def test_market_analyst_with_valid_data(self):
+    @patch("tradingagents.agents.analysts.market_analyst.get_company_name")
+    def test_market_analyst_with_valid_data(self, mock_get_company_name):
         """测试市场数据可用时正常生成报告"""
         from tradingagents.agents.analysts.market_analyst import create_market_analyst
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "# 技术分析报告\n\n## 趋势分析\n上升趋势。"
         mock_llm = Mock()
@@ -296,13 +306,15 @@ class TestFundamentalsAnalyst:
         assert callable(analyst_node)
 
     @pytest.mark.unit
-    def test_fundamentals_analyst_with_valid_data(self):
+    @patch("tradingagents.agents.analysts.fundamentals_analyst.get_company_name")
+    def test_fundamentals_analyst_with_valid_data(self, mock_get_company_name):
         """测试基本面数据可用时正常生成报告"""
         from tradingagents.agents.analysts.fundamentals_analyst import (
             create_fundamentals_analyst,
         )
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "# 基本面分析报告\n\n## 财务指标\nROE: 15%"
         mock_llm = Mock()
@@ -346,11 +358,13 @@ class TestNewsAnalyst:
         assert callable(analyst_node)
 
     @pytest.mark.unit
-    def test_news_analyst_with_valid_data(self):
+    @patch("tradingagents.agents.analysts.news_analyst.get_company_name")
+    def test_news_analyst_with_valid_data(self, mock_get_company_name):
         """测试新闻数据可用时正常生成报告"""
         from tradingagents.agents.analysts.news_analyst import create_news_analyst
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "# 新闻分析报告\n\n## 重要新闻\n公司发布财报。"
         mock_llm = Mock()
@@ -376,11 +390,13 @@ class TestNewsAnalyst:
         assert result["news_report"] == mock_response.content
 
     @pytest.mark.unit
-    def test_news_analyst_data_unavailable(self):
+    @patch("tradingagents.agents.analysts.news_analyst.get_company_name")
+    def test_news_analyst_data_unavailable(self, mock_get_company_name):
         """测试新闻数据不可用时处理"""
         from tradingagents.agents.analysts.news_analyst import create_news_analyst
 
         # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
         mock_response = Mock()
         mock_response.content = "新闻分析报告（无数据）"
         mock_llm = Mock()
@@ -409,12 +425,16 @@ class TestAnalystCommonPatterns:
     """测试分析师通用模式"""
 
     @pytest.mark.unit
-    def test_all_analysts_handle_different_stock_types(self):
+    @patch("tradingagents.agents.analysts.social_media_analyst.get_company_name")
+    def test_all_analysts_handle_different_stock_types(self, mock_get_company_name):
         """测试所有分析师处理不同类型的股票"""
         from tradingagents.agents.analysts.social_media_analyst import (
             create_social_media_analyst,
         )
         from tradingagents.agents.analysts.market_analyst import create_market_analyst
+
+        # Arrange
+        mock_get_company_name.return_value = "平安银行"  # Mock 避免数据库连接
 
         stock_types = [
             ("000001", "中国A股"),

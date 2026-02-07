@@ -29,6 +29,23 @@ from tradingagents.dataflows.validators.volume_validator import VolumeValidator
 from tradingagents.dataflows.validators.fundamentals_validator import FundamentalsValidator
 
 
+# 测试辅助类 (M2修复)
+class _TestValidatorHelper(BaseDataValidator):
+    """用于测试 BaseDataValidator 的辅助类"""
+
+    def validate(self, symbol: str, data: dict) -> ValidationResult:
+        """实现抽象方法"""
+        return ValidationResult(is_valid=True, confidence=1.0, source="test")
+
+    def get_validator_type(self):
+        """实现抽象方法"""
+        return "test"
+
+    async def cross_validate(self, symbol: str, sources: list, metric: str) -> ValidationResult:
+        """实现抽象方法 (M2修复)"""
+        return ValidationResult(is_valid=True, confidence=0.5, source="multi_source")
+
+
 # ============================================================================
 # 基础验证器测试
 # ============================================================================
@@ -242,37 +259,37 @@ class TestBaseDataValidator:
 
     def test_calculate_confidence_empty_list(self):
         """测试空列表的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         confidence = validator.calculate_confidence([])
         assert confidence == 0.0
 
     def test_calculate_confidence_single_value(self):
         """测试单值的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         confidence = validator.calculate_confidence([100])
         assert confidence == 0.5
 
     def test_calculate_confidence_multiple_same_values(self):
         """测试多相同值的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         confidence = validator.calculate_confidence([100, 100, 100])
         assert confidence == 1.0
 
     def test_calculate_confidence_similar_values(self):
         """测试相似值的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         confidence = validator.calculate_confidence([100, 101, 99, 100.5])
         assert confidence > 0.9
 
     def test_calculate_confidence_different_values(self):
         """测试不同值的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         confidence = validator.calculate_confidence([100, 150, 50, 200])
         assert confidence < 0.5
 
     def test_calculate_confidence_non_numeric(self):
         """测试非数值类型的置信度计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         # 完全一致
         confidence = validator.calculate_confidence(["test", "test", "test"], is_numeric=False)
         assert confidence == 1.0
@@ -282,7 +299,7 @@ class TestBaseDataValidator:
 
     def test_check_value_in_range(self):
         """测试值范围检查"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.check_value_in_range(50, 0, 100, "test") is True
         assert validator.check_value_in_range(150, 0, 100, "test") is False
         assert validator.check_value_in_range(-10, 0, 100, "test") is False
@@ -290,7 +307,7 @@ class TestBaseDataValidator:
 
     def test_calculate_percentage_difference(self):
         """测试百分比差异计算"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         diff = validator.calculate_percentage_difference(100, 105)
         assert abs(diff - 4.88) < 0.01  # 约4.88%
 
@@ -301,7 +318,7 @@ class TestBaseDataValidator:
 
     def test_find_median_value(self):
         """测试中位数查找"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.find_median_value([1, 3, 2]) == 2
         assert validator.find_median_value([1, 2, 3, 4]) == 2.5  # (2+3)/2
         assert validator.find_median_value([]) is None
@@ -309,17 +326,17 @@ class TestBaseDataValidator:
 
     def test_to_float_with_float(self):
         """测试float转换 - 输入为float"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.to_float(123.45) == 123.45
 
     def test_to_float_with_int(self):
         """测试float转换 - 输入为int"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.to_float(123) == 123.0
 
     def test_to_float_with_string(self):
         """测试float转换 - 输入为字符串"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.to_float("123.45") == 123.45
         assert validator.to_float("¥123.45") == 123.45
         assert validator.to_float("¥1,234.56") == 1234.56
@@ -327,13 +344,13 @@ class TestBaseDataValidator:
 
     def test_to_float_with_invalid_string(self):
         """测试float转换 - 无效字符串"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.to_float("invalid") is None
         assert validator.to_float("") is None
 
     def test_to_float_with_none(self):
         """测试float转换 - None输入"""
-        validator = TestValidator()
+        validator = _TestValidatorHelper()
         assert validator.to_float(None) is None
 
 
@@ -781,24 +798,424 @@ class TestFundamentalsValidator:
 
 
 # ============================================================================
-# 辅助测试类
+# 价格验证器交叉验证测试 (阶段 2 扩展)
 # ============================================================================
 
-class TestValidator(BaseDataValidator):
-    """用于测试的基础验证器实现"""
+class TestPriceValidatorCrossValidate:
+    """测试价格验证器异步交叉验证"""
 
-    def validate(self, symbol: str, data: dict) -> ValidationResult:
-        """基础验证实现"""
-        return ValidationResult(
-            is_valid=True,
-            confidence=1.0,
-            source="test"
+    @pytest.mark.asyncio
+    async def test_cross_validate_consistent_sources(self):
+        """测试多源价格一致时的验证"""
+        validator = PriceValidator()
+
+        # Mock DataSourceManager at the import location
+        with patch('tradingagents.dataflows.data_source_manager.DataSourceManager') as mock_mgr_class:
+            mock_instance = MagicMock()
+            mock_mgr_class.return_value = mock_instance
+
+            # Mock get_stock_data 返回一致的数据
+            mock_instance.get_stock_data.side_effect = [
+                {'current_price': 100.50, 'source': 'tushare'},
+                {'current_price': 100.52, 'source': 'akshare'},
+                {'current_price': 100.48, 'source': 'baostock'}
+            ]
+
+            # Mock record_source_reliability
+            mock_instance.record_source_reliability = MagicMock()
+
+            result = await validator.cross_validate(
+                symbol='000001',
+                sources=['tushare', 'akshare', 'baostock'],
+                metric='current_price'
+            )
+
+            assert result.is_valid is True
+            assert result.confidence > 0.95
+            assert len(result.alternative_sources) == 3
+            assert result.suggested_value is not None
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_inconsistent_sources_warning(self):
+        """测试多源价格差异在警告阈值(0.5%-1%)"""
+        validator = PriceValidator()
+
+        with patch('tradingagents.dataflows.data_source_manager.DataSourceManager') as mock_mgr_class:
+            mock_instance = MagicMock()
+            mock_mgr_class.return_value = mock_instance
+
+            # 差异约 0.6% (在警告阈值 0.5% 之上)
+            mock_instance.get_stock_data.side_effect = [
+                {'current_price': 100.0},
+                {'current_price': 100.6},  # 0.6% 差异
+            ]
+            mock_instance.record_source_reliability = MagicMock()
+
+            result = await validator.cross_validate(
+                symbol='000001',
+                sources=['tushare', 'akshare'],
+                metric='current_price'
+            )
+
+            # 应该有警告但仍有效
+            warnings = result.get_issues_by_severity(ValidationSeverity.WARNING)
+            assert len(warnings) > 0
+            assert "0.60%" in warnings[0].message
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_inconsistent_sources_error(self):
+        """测试多源价格差异超过错误阈值(>1%)"""
+        validator = PriceValidator()
+
+        with patch('tradingagents.dataflows.data_source_manager.DataSourceManager') as mock_mgr_class:
+            mock_instance = MagicMock()
+            mock_mgr_class.return_value = mock_instance
+
+            # 差异超过 1%
+            # 计算公式: (max - min) / avg * 100
+            # diff_pct = (102 - 100) / 101 * 100 = 1.98%
+            mock_instance.get_stock_data.side_effect = [
+                {'current_price': 100.0},
+                {'current_price': 102.0},
+            ]
+            mock_instance.record_source_reliability = MagicMock()
+
+            result = await validator.cross_validate(
+                symbol='000001',
+                sources=['tushare', 'akshare'],
+                metric='current_price'
+            )
+
+            assert result.is_valid is False
+            errors = result.get_issues_by_severity(ValidationSeverity.ERROR)
+            assert len(errors) > 0
+            # 实际计算: (102 - 100) / ((100 + 102) / 2) * 100 = 1.98%
+            assert "1.98%" in errors[0].message
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_all_sources_fail(self):
+        """测试所有数据源失败"""
+        validator = PriceValidator()
+
+        with patch('tradingagents.dataflows.data_source_manager.DataSourceManager') as mock_mgr_class:
+            mock_instance = MagicMock()
+            mock_mgr_class.return_value = mock_instance
+            mock_instance.get_stock_data.return_value = None
+            mock_instance.record_source_reliability = MagicMock()
+
+            result = await validator.cross_validate(
+                symbol='000001',
+                sources=['tushare', 'akshare'],
+                metric='current_price'
+            )
+
+            assert result.is_valid is False
+            assert result.has_critical_issues()
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_records_reliability(self):
+        """测试数据源可靠性记录"""
+        validator = PriceValidator()
+
+        with patch('tradingagents.dataflows.data_source_manager.DataSourceManager') as mock_mgr_class:
+            mock_instance = MagicMock()
+            mock_mgr_class.return_value = mock_instance
+            mock_instance.get_stock_data.return_value = {'current_price': 100.0}
+            mock_instance.record_source_reliability = MagicMock()
+
+            await validator.cross_validate(
+                symbol='000001',
+                sources=['tushare'],
+                metric='current_price'
+            )
+
+            # 验证记录了可靠性
+            assert mock_instance.record_source_reliability.called
+
+
+class TestPriceValidatorMAIndicators:
+    """测试价格验证器MA指标"""
+
+    def test_validate_ma_bullish_trend(self):
+        """测试MA多头排列"""
+        validator = PriceValidator()
+        data = {
+            'MA5': 105,
+            'MA10': 103,
+            'MA20': 100,
+            'MA60': 98,
+            'current_price': 106
+        }
+        result = validator.validate('000001', data)
+        # 多头排列，应该通过
+        assert result.is_valid is True
+
+    def test_validate_ma_deviates_from_price(self):
+        """测试MA偏离价格检测"""
+        validator = PriceValidator()
+        data = {
+            'MA5': 50,  # 偏离当前价格 >50%
+            'current_price': 100
+        }
+        result = validator.validate('000001', data)
+        warnings = result.get_issues_by_severity(ValidationSeverity.WARNING)
+        assert len(warnings) > 0
+        assert "偏离" in warnings[0].message
+
+    def test_validate_ma_negative_value(self):
+        """测试MA负值检测"""
+        validator = PriceValidator()
+        data = {
+            'MA5': -10.0,
+            'current_price': 100
+        }
+        result = validator.validate('000001', data)
+        assert result.is_valid is False
+        errors = result.get_issues_by_severity(ValidationSeverity.ERROR)
+        assert len(errors) > 0
+
+
+class TestPriceValidatorPosition:
+    """测试价格验证器位置"""
+
+    def test_validate_price_position_in_range(self):
+        """测试价格位置在有效范围"""
+        validator = PriceValidator()
+        data = {
+            'price_position': 50,  # 50%位置，中间
+            'BOLL_UPPER': 110,
+            'BOLL_LOWER': 90,
+            'current_price': 100
+        }
+        result = validator.validate('000001', data)
+        assert result.is_valid is True
+
+    def test_validate_price_position_out_of_range(self):
+        """测试价格位置超出范围"""
+        validator = PriceValidator()
+        data = {
+            'price_position': 200,  # 超出150%上限
+            'current_price': 100
+        }
+        result = validator.validate('000001', data)
+        assert result.is_valid is False
+
+    def test_validate_price_position_calculation(self):
+        """测试价格位置计算一致性"""
+        validator = PriceValidator()
+        data = {
+            'BOLL_UPPER': 110,
+            'BOLL_LOWER': 90,
+            'current_price': 100,
+            'price_position': 50  # 正确值应该是 50%
+        }
+        result = validator.validate('000001', data)
+        # 计算值 = (100-90)/(110-90)*100 = 50%
+        assert result.is_valid is True
+
+    def test_validate_price_position_wrong_calculation(self):
+        """测试价格位置计算错误"""
+        validator = PriceValidator()
+        data = {
+            'BOLL_UPPER': 110,
+            'BOLL_LOWER': 90,
+            'current_price': 100,
+            'price_position': 80  # 错误值，实际应该是 50%
+        }
+        result = validator.validate('000001', data)
+        # 差异 = |80 - 50| = 30% > 2%
+        assert result.is_valid is False
+
+
+# ============================================================================
+# 成交量验证器交叉验证测试 (阶段 2 扩展)
+# ============================================================================
+
+class TestVolumeValidatorCrossValidate:
+    """测试成交量验证器异步交叉验证"""
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_volume_consistency(self):
+        """测试多源成交量一致性"""
+        validator = VolumeValidator()
+
+        # VolumeValidator 的 cross_validate 方法返回基本结果
+        result = await validator.cross_validate(
+            symbol='000001',
+            sources=['tushare', 'akshare', 'baostock'],
+            metric='volume'
         )
 
-    async def cross_validate(self, symbol: str, sources: list, metric: str) -> ValidationResult:
-        """基础交叉验证实现"""
-        return ValidationResult(
-            is_valid=True,
-            confidence=0.5,
-            source="multi_source"
+        # 当前实现返回基本有效结果
+        assert result is not None
+        assert result.source == 'multi_source'
+
+    def test_infer_volume_unit_from_turnover_rate(self):
+        """测试从换手率推断单位"""
+        validator = VolumeValidator()
+        data = {
+            'volume': 100000,
+            'turnover_rate': 10,  # 10%换手率
+            'share_count': 1000000  # 100万股
+        }
+        # 根据换手率计算: (100000/1000000)*100 = 10%
+        unit = validator._infer_volume_unit(data['volume'], data)
+        # 由于计算匹配，推断为shares
+        assert unit == 'shares'
+
+    def test_infer_volume_unit_default_to_shares(self):
+        """测试默认推断为股"""
+        validator = VolumeValidator()
+        data = {'volume': 954158}
+        unit = validator._infer_volume_unit(data['volume'], data)
+        # 修复后的代码默认为shares
+        assert unit == 'shares'
+
+
+# ============================================================================
+# 基本面验证器交叉验证测试 (阶段 2 扩展)
+# ============================================================================
+
+class TestFundamentalsValidatorPSCalculation:
+    """测试基本面验证器PS计算"""
+
+    def test_calculate_and_validate_ps_with_existing_ps_correct(self):
+        """测试当PS已存在且正确时的验证"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1000,  # 亿元
+            'revenue': 200,      # 亿元
+            'PS': 5.0            # 正确值
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._calculate_and_validate_ps(data, result)
+
+        # 差异在10%以内，应该通过
+        assert result.is_valid is True
+
+    def test_calculate_and_validate_ps_with_large_error(self):
+        """测试PS计算错误检测"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1000,
+            'revenue': 200,
+            'PS': 10.0  # 报告值严重错误 (正确值应该是5.0)
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._calculate_and_validate_ps(data, result)
+
+        # 差异超过10%，应该标记错误
+        errors = result.get_issues_by_severity(ValidationSeverity.ERROR)
+        assert len(errors) > 0
+        assert "PS" in errors[0].field
+        assert result.suggested_value == 5.0
+
+    def test_calculate_ps_from_components(self):
+        """测试从组件计算PS"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 500,
+            'revenue': 100
+        }
+        ps = validator._calculate_ps_from_components(data)
+        assert ps == 5.0
+
+    def test_calculate_ps_with_zero_revenue(self):
+        """测试营收为0时返回None"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 500,
+            'revenue': 0
+        }
+        ps = validator._calculate_ps_from_components(data)
+        assert ps is None
+
+    def test_calculate_ps_auto_add_when_missing(self):
+        """测试PS缺失时自动计算"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1000,
+            'revenue': 200
+            # 注意：没有 PS 字段
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._calculate_and_validate_ps(data, result)
+
+        # 应该自动计算PS
+        assert 'calculated_ps' in result.metadata
+        assert result.metadata['calculated_ps'] == 5.0
+
+
+class TestFundamentalsValidatorMarketCap:
+    """测试基本面验证器市值"""
+
+    def test_validate_market_cap_consistency_correct(self):
+        """测试正确市值计算一致性"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1000,
+            'share_count': 100000,  # 万股
+            'current_price': 100    # 元
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._validate_market_cap_consistency(data, result)
+
+        # 计算值 = (100000 * 100) / 10000 = 1000
+        assert result.is_valid is True
+
+    def test_validate_market_cap_consistency_incorrect(self):
+        """测试错误市值计算一致性"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1500,  # 错误的市值
+            'share_count': 100000,
+            'current_price': 100
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._validate_market_cap_consistency(data, result)
+
+        # 计算值 = (100000 * 100) / 10000 = 1000
+        # 差异 = |(1500 - 1000) / 1000| * 100 = 50% > 10%
+        warnings = result.get_issues_by_severity(ValidationSeverity.WARNING)
+        assert len(warnings) > 0
+
+    def test_validate_market_cap_consistency_missing_fields(self):
+        """测试缺失字段时不报错"""
+        validator = FundamentalsValidator()
+        data = {
+            'market_cap': 1000,
+            # 缺少 share_count 和 current_price
+        }
+
+        result = ValidationResult(is_valid=True, confidence=0.0, source='test')
+        validator._validate_market_cap_consistency(data, result)
+
+        # 缺少字段时不应该报错
+        assert result.is_valid is True
+
+
+class TestFundamentalsValidatorCrossValidate:
+    """测试基本面验证器异步交叉验证"""
+
+    @pytest.mark.asyncio
+    async def test_cross_validate_basic(self):
+        """测试基本交叉验证"""
+        validator = FundamentalsValidator()
+
+        # FundamentalsValidator 的 cross_validate 方法返回基本结果
+        result = await validator.cross_validate(
+            symbol='000001',
+            sources=['tushare', 'akshare'],
+            metric='PE'
         )
+
+        # 当前实现返回基本有效结果
+        assert result is not None
+        assert result.source == 'multi_source'
+
+
