@@ -44,6 +44,25 @@ ANALYST_REPORT_MAP: Dict[str, str] = {
     "china": "china_market_report",
 }
 
+# 分析师步骤名称映射（用于进度跟踪）
+# 键：分析师显示名称（中文）
+# 值：步骤名称（带emoji，与 analysis_steps 定义保持一致）
+ANALYST_STEP_MAPPING: Dict[str, str] = {
+    "市场分析师": "📊 市场分析师",
+    "社交媒体分析师": "💬 社交媒体分析师",
+    "新闻分析师": "📰 新闻分析师",
+    "基本面分析师": "💼 基本面分析师",
+    "中国市场分析师": "🇨🇳 中国市场分析师",
+    "看涨研究员": "🐂 看涨研究员",
+    "看跌研究员": "🐻 看跌研究员",
+    "研究经理": "👔 研究经理",
+    "交易员": "💼 交易员决策",
+    "激进分析师": "🔥 激进风险评估",
+    "保守分析师": "🛡️ 保守风险评估",
+    "中性分析师": "⚖️ 中性风险评估",
+    "风险经理": "🎯 风险经理",
+}
+
 # 研究团队顺序
 RESEARCH_TEAM_ORDER: List[str] = [
     "bull_researcher",    # 看涨研究员
@@ -78,8 +97,15 @@ class AnalystStatus:
     COMPLETED = "completed"   # 已完成
     FAILED = "failed"         # 失败
 
-# 任务状态
+
+# 任务状态 - 从 memory_state_manager 迁移至此，作为统一入口
+# 注意: 如需使用 Enum 版本，请从 app.services.memory_state_manager 导入
 class TaskStatus:
+    """任务状态常量类 (字符串版本)
+
+    注意: 如需使用 Enum 版本，请从 app.services.memory_state_manager 导入 TaskStatus
+    两个版本的值保持一致以确保兼容性
+    """
     PENDING = "pending"       # 等待中
     RUNNING = "running"       # 运行中
     COMPLETED = "completed"   # 已完成

@@ -476,23 +476,10 @@ class RedisProgressTracker:
             }
 
             # 尝试匹配并更新对应步骤的状态
-            step_mapping = {
-                '市场分析师': '📊 市场分析师',
-                '社交媒体分析师': '💬 社交媒体分析师',
-                '新闻分析师': '📰 新闻分析师',
-                '基本面分析师': '💼 基本面分析师',
-                '中国市场分析师': '🇨🇳 中国市场分析师',
-                '看涨研究员': '🐂 看涨研究员',
-                '看跌研究员': '🐻 看跌研究员',
-                '研究经理': '👔 研究经理',
-                '交易员': '💼 交易员决策',
-                '激进分析师': '🔥 激进风险评估',
-                '保守分析师': '🛡️ 保守风险评估',
-                '中性分析师': '⚖️ 中性风险评估',
-                '风险经理': '🎯 风险经理',
-            }
+            # 使用常量定义避免硬编码，确保与 ANALYST_DISPLAY_NAMES 保持同步
+            from app.services.progress.constants import ANALYST_STEP_MAPPING
 
-            step_name = step_mapping.get(agent_name)
+            step_name = ANALYST_STEP_MAPPING.get(agent_name)
             if step_name:
                 step = self._find_step_by_name(step_name)
                 # 将外部状态映射为内部状态
