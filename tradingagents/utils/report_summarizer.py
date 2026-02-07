@@ -18,9 +18,11 @@ from datetime import datetime
 # 导入日志
 try:
     from tradingagents.utils.logging_init import get_logger
+
     logger = get_logger("report_summarizer")
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 
@@ -29,28 +31,57 @@ class ReportSummarizer:
 
     # 摘要目标大小（字符数）
     TARGET_SUMMARY_SIZE = 8000  # 约 8KB
-    MAX_SUMMARY_SIZE = 12000    # 最大 12KB
+    MAX_SUMMARY_SIZE = 12000  # 最大 12KB
 
     # 关键词权重（用于识别重要句子）
     IMPORTANCE_KEYWORDS = {
         # 结论性关键词（最高权重）
-        "conclusion": ["建议", "结论", "决策", "判断", "总结", "最终", "综合", "买入", "卖出", "持有"],
+        "conclusion": [
+            "建议",
+            "结论",
+            "决策",
+            "判断",
+            "总结",
+            "最终",
+            "综合",
+            "买入",
+            "卖出",
+            "持有",
+        ],
         # 数据关键词（高权重）
-        "data": ["市盈率", "PE", "PB", "ROE", "成交量", "涨跌", "价格", "估值", "营收", "利润"],
+        "data": [
+            "市盈率",
+            "PE",
+            "PB",
+            "ROE",
+            "成交量",
+            "涨跌",
+            "价格",
+            "估值",
+            "营收",
+            "利润",
+        ],
         # 风险关键词（中高权重）
         "risk": ["风险", "警告", "注意", "谨慎", "波动", "下跌", "亏损", "止损"],
         # 论点关键词（中权重）
-        "argument": ["因为", "因此", "所以", "由于", "导致", "表明", "显示", "支撑", "反驳"],
+        "argument": [
+            "因为",
+            "因此",
+            "所以",
+            "由于",
+            "导致",
+            "表明",
+            "显示",
+            "支撑",
+            "反驳",
+        ],
     }
 
     def __init__(self):
         self.extraction_stats = {}
 
     def summarize_research_decision(
-        self,
-        full_content: str,
-        stock_code: str = "",
-        company_name: str = ""
+        self, full_content: str, stock_code: str = "", company_name: str = ""
     ) -> Tuple[str, str]:
         """
         生成研究团队决策报告的摘要
@@ -83,18 +114,17 @@ class ReportSummarizer:
             recommendation=recommendation,
             stock_code=stock_code,
             company_name=company_name,
-            original_length=len(full_content)
+            original_length=len(full_content),
         )
 
-        logger.info(f"📝 [摘要生成] 研究决策报告摘要长度: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+        logger.info(
+            f"📝 [摘要生成] 研究决策报告摘要长度: {len(summary):,} 字符 (压缩率: {len(summary) / len(full_content) * 100:.1f}%)"
+        )
 
         return summary, full_content
 
     def summarize_risk_decision(
-        self,
-        full_content: str,
-        stock_code: str = "",
-        company_name: str = ""
+        self, full_content: str, stock_code: str = "", company_name: str = ""
     ) -> Tuple[str, str]:
         """
         生成风险管理决策报告的摘要
@@ -126,10 +156,12 @@ class ReportSummarizer:
             recommendation=recommendation,
             stock_code=stock_code,
             company_name=company_name,
-            original_length=len(full_content)
+            original_length=len(full_content),
         )
 
-        logger.info(f"📝 [摘要生成] 风险决策报告摘要长度: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+        logger.info(
+            f"📝 [摘要生成] 风险决策报告摘要长度: {len(summary):,} 字符 (压缩率: {len(summary) / len(full_content) * 100:.1f}%)"
+        )
 
         return summary, full_content
 
@@ -137,9 +169,9 @@ class ReportSummarizer:
         """提取结论部分"""
         # 尝试多种模式匹配结论
         patterns = [
-            r'(?:结论|总结|最终决策|综合评估)[：:\s]*(.{100,800}?)(?=\n\n|\n#|$)',
-            r'(?:建议|决策)[：:\s]*\*{0,2}(买入|卖出|持有)\*{0,2}(.{0,500}?)(?=\n\n|\n#|$)',
-            r'(?:综合来看|总体而言|综上所述)[，,](.{100,600}?)(?=\n\n|\n#|$)',
+            r"(?:结论|总结|最终决策|综合评估)[：:\s]*(.{100,800}?)(?=\n\n|\n#|$)",
+            r"(?:建议|决策)[：:\s]*\*{0,2}(买入|卖出|持有)\*{0,2}(.{0,500}?)(?=\n\n|\n#|$)",
+            r"(?:综合来看|总体而言|综上所述)[，,](.{100,600}?)(?=\n\n|\n#|$)",
         ]
 
         for pattern in patterns:
@@ -148,59 +180,115 @@ class ReportSummarizer:
                 return match.group(0).strip()[:800]
 
         # 如果没有匹配到，提取最后一段作为结论
-        paragraphs = content.split('\n\n')
+        paragraphs = content.split("\n\n")
         for para in reversed(paragraphs):
             if len(para.strip()) > 100:
                 return para.strip()[:800]
 
         return ""
 
+    def _clean_argument(self, text: str) -> str:
+        """清理论点文本，移除JSON和代码片段"""
+        import re
+
+        # 移除JSON结构
+        text = re.sub(r"\{[^}]*\}", "", text)
+        text = re.sub(r"\[[^\]]*\]", "", text)
+        # 移除代码块
+        text = re.sub(r"```[\s\S]*?```", "", text)
+        text = re.sub(r"`[^`]*`", "", text)
+        # 移除URL
+        text = re.sub(r"https?://\S+", "", text)
+        # 移除过多的换行和空格
+        text = re.sub(r"\n+", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    def _is_valid_argument(self, text: str) -> bool:
+        """检查论点是否有效（不是JSON或代码）"""
+        import re
+
+        # 如果文本主要是JSON格式，则无效
+        if text.count("{") > 2 or text.count("[") > 2:
+            return False
+        # 如果包含太多特殊字符，可能是代码
+        if text.count("|") > 5 and text.count("-") > 10:
+            return False
+        # 必须包含中文字符（论点应该是中文描述）
+        if not re.search(r"[\u4e00-\u9fff]", text):
+            return False
+        return True
+
     def _extract_key_arguments(self, content: str) -> List[str]:
         """提取关键论点"""
         arguments = []
 
         # 查找看涨/看跌论点
-        bull_pattern = r'(?:看涨|多头|积极)[^：:]*[：:](.{50,300}?)(?=\n\n|\n-|\n#|$)'
-        bear_pattern = r'(?:看跌|空头|消极|风险)[^：:]*[：:](.{50,300}?)(?=\n\n|\n-|\n#|$)'
+        bull_pattern = r"(?:看涨|多头|积极)[^：:]*[：:](.{50,300}?)(?=\n\n|\n-|\n#|$)"
+        bear_pattern = (
+            r"(?:看跌|空头|消极|风险)[^：:]*[：:](.{50,300}?)(?=\n\n|\n-|\n#|$)"
+        )
 
         for pattern in [bull_pattern, bear_pattern]:
             matches = re.findall(pattern, content, re.DOTALL)
             for match in matches[:3]:  # 每类最多3个
-                clean_arg = match.strip()
-                if len(clean_arg) > 50:
+                clean_arg = self._clean_argument(match.strip())
+                if len(clean_arg) > 50 and self._is_valid_argument(clean_arg):
                     arguments.append(clean_arg[:300])
 
         # 如果论点不足，按重要性提取句子
         if len(arguments) < 4:
-            important_sentences = self._extract_important_sentences(content, 6 - len(arguments))
-            arguments.extend(important_sentences)
+            important_sentences = self._extract_important_sentences(
+                content, 6 - len(arguments)
+            )
+            for sentence in important_sentences:
+                clean_sentence = self._clean_argument(sentence)
+                if (
+                    self._is_valid_argument(clean_sentence)
+                    and clean_sentence not in arguments
+                ):
+                    arguments.append(clean_sentence[:300])
 
-        return arguments[:6]  # 最多6个关键论点
+        # 去重
+        unique_arguments = []
+        seen = set()
+        for arg in arguments[:6]:
+            # 使用前100字符作为去重键
+            key = arg[:100]
+            if key not in seen:
+                seen.add(key)
+                unique_arguments.append(arg)
+
+        return unique_arguments  # 最多6个关键论点
 
     def _extract_data_points(self, content: str) -> List[str]:
         """提取关键数据点"""
         data_points = []
+        seen_indicators = set()  # 用于去重
 
         # 查找包含数字的关键数据
         patterns = [
-            r'(?:市盈率|PE)[：:\s]*(\d+\.?\d*)',
-            r'(?:市净率|PB)[：:\s]*(\d+\.?\d*)',
-            r'(?:ROE|净资产收益率)[：:\s]*(\d+\.?\d*%?)',
-            r'(?:当前价|现价|股价)[：:\s]*[¥￥$]?(\d+\.?\d*)',
-            r'(?:目标价)[：:\s]*[¥￥$]?(\d+\.?\d*)',
-            r'(?:涨跌幅|涨幅|跌幅)[：:\s]*([+-]?\d+\.?\d*%?)',
-            r'(?:成交量)[：:\s]*([\d,]+\.?\d*)\s*(?:股|万股)?',
+            ("PE", r"(?:市盈率|PE)[：:\s]*(\d+\.?\d*)"),
+            ("PB", r"(?:市净率|PB)[：:\s]*(\d+\.?\d*)"),
+            ("ROE", r"(?:ROE|净资产收益率)[：:\s]*(\d+\.?\d*%?)"),
+            ("股价", r"(?:当前价|现价|股价)[：:\s]*[¥￥$]?(\d+\.?\d*)"),
+            ("目标价", r"(?:目标价)[：:\s]*[¥￥$]?(\d+\.?\d*)"),
+            ("涨跌幅", r"(?:涨跌幅|涨幅|跌幅)[：:\s]*([+-]?\d+\.?\d*%?)"),
+            ("成交量", r"(?:成交量)[：:\s]*([\d,]+\.?\d*)\s*(?:股|万股|手)?"),
         ]
 
-        for pattern in patterns:
-            match = re.search(pattern, content)
+        for indicator_name, pattern in patterns:
+            if indicator_name in seen_indicators:
+                continue  # 跳过已提取的指标
+
+            match = re.search(pattern, content, re.IGNORECASE)
             if match:
-                # 获取完整上下文
-                start = max(0, match.start() - 20)
-                end = min(len(content), match.end() + 20)
-                context = content[start:end].strip()
-                if context not in data_points:
-                    data_points.append(context)
+                # 获取匹配值
+                value = match.group(1).strip()
+                if value:
+                    seen_indicators.add(indicator_name)
+                    # 格式化数据点
+                    data_points.append(f"{indicator_name}: {value}")
 
         return data_points[:8]  # 最多8个数据点
 
@@ -210,9 +298,9 @@ class ReportSummarizer:
 
         # 查找风险相关内容
         patterns = [
-            r'(?:风险因素|主要风险|潜在风险)[：:\s]*(.{50,300}?)(?=\n\n|\n-|\n#|$)',
-            r'(?:需要注意|值得关注|警惕)[：:\s]*(.{30,200}?)(?=\n\n|\n。|$)',
-            r'(?:下行风险|不利因素)[：:\s]*(.{50,300}?)(?=\n\n|\n-|\n#|$)',
+            r"(?:风险因素|主要风险|潜在风险)[：:\s]*(.{50,300}?)(?=\n\n|\n-|\n#|$)",
+            r"(?:需要注意|值得关注|警惕)[：:\s]*(.{30,200}?)(?=\n\n|\n。|$)",
+            r"(?:下行风险|不利因素)[：:\s]*(.{50,300}?)(?=\n\n|\n-|\n#|$)",
         ]
 
         for pattern in patterns:
@@ -227,8 +315,8 @@ class ReportSummarizer:
     def _extract_risk_assessment(self, content: str) -> str:
         """提取风险评估结果"""
         patterns = [
-            r'(?:风险等级|风险评级|风险评估)[：:\s]*(.{20,200}?)(?=\n|\n\n|$)',
-            r'(?:激进|保守|中性)[^：:]*分析师[^：:]*[：:](.{50,300}?)(?=\n\n|$)',
+            r"(?:风险等级|风险评级|风险评估)[：:\s]*(.{20,200}?)(?=\n|\n\n|$)",
+            r"(?:激进|保守|中性)[^：:]*分析师[^：:]*[：:](.{50,300}?)(?=\n\n|$)",
         ]
 
         for pattern in patterns:
@@ -241,8 +329,8 @@ class ReportSummarizer:
     def _extract_recommendation(self, content: str) -> str:
         """提取投资建议"""
         patterns = [
-            r'(?:最终交易建议|投资建议|建议)[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}',
-            r'\*{2}(买入|持有|卖出)\*{2}',
+            r"(?:最终交易建议|投资建议|建议)[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+            r"\*{2}(买入|持有|卖出)\*{2}",
         ]
 
         for pattern in patterns:
@@ -254,7 +342,7 @@ class ReportSummarizer:
 
     def _extract_important_sentences(self, content: str, count: int) -> List[str]:
         """按重要性提取句子"""
-        sentences = re.split(r'[。！？\n]', content)
+        sentences = re.split(r"[。！？\n]", content)
         scored_sentences = []
 
         for sentence in sentences:
@@ -290,7 +378,7 @@ class ReportSummarizer:
         recommendation: str,
         stock_code: str,
         company_name: str,
-        original_length: int
+        original_length: int,
     ) -> str:
         """构建研究团队决策摘要"""
         display_name = company_name if company_name else stock_code
@@ -326,7 +414,7 @@ class ReportSummarizer:
             summary += "| 指标 | 数值 |\n|------|------|\n"
             for dp in data_points:
                 # 清理并格式化数据点
-                clean_dp = dp.replace('\n', ' ').strip()
+                clean_dp = dp.replace("\n", " ").strip()
                 summary += f"| {clean_dp} |\n"
         else:
             summary += "*暂无关键数据*\n\n"
@@ -335,7 +423,7 @@ class ReportSummarizer:
         summary += f"""
 ---
 
-*摘要生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+*摘要生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
 *此为精简摘要，如需查看完整辩论过程，请参阅完整版报告*
 """
 
@@ -349,7 +437,7 @@ class ReportSummarizer:
         recommendation: str,
         stock_code: str,
         company_name: str,
-        original_length: int
+        original_length: int,
     ) -> str:
         """构建风险管理决策摘要"""
         display_name = company_name if company_name else stock_code
@@ -387,7 +475,7 @@ class ReportSummarizer:
         summary += f"""
 ---
 
-*摘要生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+*摘要生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
 *此为精简摘要，如需查看完整风险辩论过程，请参阅完整版报告*
 """
 
@@ -395,10 +483,7 @@ class ReportSummarizer:
 
 
 def summarize_report(
-    content: str,
-    report_type: str,
-    stock_code: str = "",
-    company_name: str = ""
+    content: str, report_type: str, stock_code: str = "", company_name: str = ""
 ) -> Tuple[str, str]:
     """
     便捷函数：生成报告摘要
