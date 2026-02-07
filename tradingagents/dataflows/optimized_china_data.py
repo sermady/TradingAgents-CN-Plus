@@ -1846,18 +1846,30 @@ class OptimizedChinaDataProvider:
             revenue_yoy = stock_info.get("or_yoy") if stock_info else None
             net_income_yoy = stock_info.get("q_profit_yoy") if stock_info else None
 
+            # 添加数据质量检查
+            if stock_info:
+                code = stock_info.get("code", "Unknown")
+            else:
+                code = "Unknown"
+
             # 营收同比增速
             if revenue_yoy and str(revenue_yoy) not in ["nan", "--", "None", ""]:
                 try:
                     revenue_yoy_val = float(revenue_yoy)
                     metrics["revenue_yoy"] = revenue_yoy_val
                     metrics["revenue_yoy_fmt"] = f"{revenue_yoy_val:+.1f}%"
+                    logger.info(f"✅ [{code}] 营收同比增速: {revenue_yoy_val:+.1f}%")
                 except (ValueError, TypeError):
                     metrics["revenue_yoy"] = None
                     metrics["revenue_yoy_fmt"] = "N/A"
+                    logger.warning(f"⚠️ [{code}] 营收同比增速格式错误: {revenue_yoy}")
             else:
                 metrics["revenue_yoy"] = None
                 metrics["revenue_yoy_fmt"] = "N/A"
+                logger.warning(
+                    f"⚠️ [{code}] 营收同比增速数据缺失 (or_yoy={revenue_yoy}), "
+                    f"可能原因：数据源未返回或字段为空"
+                )
 
             # 净利润同比增速
             if net_income_yoy and str(net_income_yoy) not in ["nan", "--", "None", ""]:
@@ -1865,12 +1877,22 @@ class OptimizedChinaDataProvider:
                     net_income_yoy_val = float(net_income_yoy)
                     metrics["net_income_yoy"] = net_income_yoy_val
                     metrics["net_income_yoy_fmt"] = f"{net_income_yoy_val:+.1f}%"
+                    logger.info(
+                        f"✅ [{code}] 净利润同比增速: {net_income_yoy_val:+.1f}%"
+                    )
                 except (ValueError, TypeError):
                     metrics["net_income_yoy"] = None
                     metrics["net_income_yoy_fmt"] = "N/A"
+                    logger.warning(
+                        f"⚠️ [{code}] 净利润同比增速格式错误: {net_income_yoy}"
+                    )
             else:
                 metrics["net_income_yoy"] = None
                 metrics["net_income_yoy_fmt"] = "N/A"
+                logger.warning(
+                    f"⚠️ [{code}] 净利润同比增速数据缺失 (q_profit_yoy={net_income_yoy}), "
+                    f"可能原因：数据源未返回、字段为空或公司为亏损股"
+                )
 
             # 添加评分字段（使用默认值）
             metrics["fundamental_score"] = 7.0  # 基于真实数据的默认评分

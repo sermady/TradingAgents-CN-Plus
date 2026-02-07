@@ -551,7 +551,7 @@ class TushareProvider(BaseStockDataProvider):
                     fina_df = await asyncio.to_thread(
                         self.api.fina_indicator,
                         ts_code=ts_code,
-                        fields="ts_code,q_profit_yoy,diluted2_eps,bps,ocfps,capital_rese_ps,undist_profit_ps",
+                        fields="ts_code,q_profit_yoy,or_yoy,eps_yoy,roe_yoy,diluted2_eps,bps,ocfps,capital_rese_ps,undist_profit_ps",
                         limit=1,
                     )
                     if fina_df is not None and not fina_df.empty:
