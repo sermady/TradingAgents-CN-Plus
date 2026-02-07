@@ -3,6 +3,7 @@ import functools
 import time
 import json
 import re
+from typing import Optional, Tuple
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
@@ -12,7 +13,9 @@ logger = get_logger("default")
 
 
 def extract_trading_decision(
-    content: str, current_price: float = None, data_quality_score: float = 100.0
+    content: str,
+    current_price: Optional[float] = None,
+    data_quality_score: float = 100.0,
 ) -> dict:
     """
     从交易决策内容中提取结构化信息，并自动填充缺失字段
@@ -103,15 +106,28 @@ def extract_trading_decision(
                 f"自动计算目标区间（持有）: {result['target_price_range']}"
             )
 
-    # 3. 提取置信度
+    # 3. 提取置信度 - 支持多种格式
     confidence_patterns = [
+        # 标准格式
         r"置信度[：:\s]*(\d*\.?\d+)",
         r"信心程度[：:\s]*(\d*\.?\d+)",
         r"confidence[：:\s]*(\d*\.?\d+)",
+        # 百分比格式
+        r"置信度[：:\s]*(\d+)%",
+        r"信心程度[：:\s]*(\d+)%",
+        r"confidence[：:\s]*(\d+)%",
+        # 带百分号的浮点数
+        r"置信度[：:\s]*(\d+\.\d+)%",
+        # Markdown格式
+        r"\*\*置信度\*\*[：:\s]*(\d*\.?\d+)",
+        r"\*\*confidence\*\*[：:\s]*(\d*\.?\d+)",
+        # 表格格式
+        r"\|\s*置信度\s*\|\s*(\d*\.?\d+)\s*\|",
+        r"\|\s*confidence\s*\|\s*(\d*\.?\d+)\s*\|",
     ]
 
     for pattern in confidence_patterns:
-        match = re.search(pattern, content)
+        match = re.search(pattern, content, re.IGNORECASE)
         if match:
             val = float(match.group(1))
             if 0 <= val <= 1:
@@ -148,15 +164,28 @@ def extract_trading_decision(
         # 高质量数据可以略微提升置信度，但不超过0.95
         result["confidence"] = min(result["confidence"] * 1.05, 0.95)
 
-    # 4. 提取风险评分
+    # 4. 提取风险评分 - 支持多种格式
     risk_patterns = [
+        # 标准格式
         r"风险评分[：:\s]*(\d*\.?\d+)",
         r"风险等级[：:\s]*(\d*\.?\d+)",
         r"risk[：:\s]*(\d*\.?\d+)",
+        # 百分比格式
+        r"风险评分[：:\s]*(\d+)%",
+        r"风险等级[：:\s]*(\d+)%",
+        r"risk[：:\s]*(\d+)%",
+        # 带百分号的浮点数
+        r"风险评分[：:\s]*(\d+\.\d+)%",
+        # Markdown格式
+        r"\*\*风险评分\*\*[：:\s]*(\d*\.?\d+)",
+        r"\*\*风险等级\*\*[：:\s]*(\d*\.?\d+)",
+        # 表格格式
+        r"\|\s*风险评分\s*\|\s*(\d*\.?\d+)\s*\|",
+        r"\|\s*风险等级\s*\|\s*(\d*\.?\d+)\s*\|",
     ]
 
     for pattern in risk_patterns:
-        match = re.search(pattern, content)
+        match = re.search(pattern, content, re.IGNORECASE)
         if match:
             val = float(match.group(1))
             if 0 <= val <= 1:
@@ -182,7 +211,7 @@ def extract_trading_decision(
 def _enhance_trading_decision(
     original_content: str,
     validation: dict,
-    current_price: float,
+    current_price: Optional[float],
     currency_symbol: str,
     company_name: str,
     market_info: dict,
@@ -206,11 +235,31 @@ def _enhance_trading_decision(
         str: 增强后的交易决策内容
     """
     extracted = validation.get("extracted", {})
-    recommendation = extracted.get("recommendation", "未知")
-    target_price = extracted.get("target_price")
-    target_price_range = extracted.get("target_price_range")
-    confidence = extracted.get("confidence", 0.5)
-    risk_score = extracted.get("risk_score", 0.5)
+
+    # 优先从原始内容中提取关键指标，确保表格和正文一致
+    # 1. 提取投资建议
+    recommendation = _extract_recommendation_from_content(
+        original_content
+    ) or extracted.get("recommendation", "未知")
+
+    # 2. 提取目标价位 - 正确处理元组返回值
+    tp_price, tp_range = _extract_target_price_from_content(
+        original_content, currency_symbol
+    )
+    target_price = tp_price if tp_price is not None else extracted.get("target_price")
+    target_price_range = (
+        tp_range if tp_range is not None else extracted.get("target_price_range")
+    )
+
+    # 3. 提取置信度 - 优先从原文提取
+    confidence = _extract_confidence_from_content(original_content) or extracted.get(
+        "confidence", 0.5
+    )
+
+    # 4. 提取风险评分 - 优先从原文提取
+    risk_score = _extract_risk_score_from_content(original_content) or extracted.get(
+        "risk_score", 0.5
+    )
 
     # 计算止损位
     stop_loss = None
@@ -317,7 +366,7 @@ def _determine_time_horizon(recommendation: str, confidence: float) -> str:
 
 
 def _generate_entry_strategy(
-    recommendation: str, current_price: float, confidence: float
+    recommendation: str, current_price: Optional[float], confidence: float
 ) -> str:
     """生成建仓策略"""
     if recommendation == "买入":
@@ -378,7 +427,7 @@ def validate_trading_decision(
     content: str,
     currency_symbol: str,
     company_name: str,
-    current_price: float = None,
+    current_price: Optional[float] = None,
     data_quality_score: float = 100.0,
 ) -> dict:
     """
@@ -630,3 +679,90 @@ def create_trader(llm, memory):
         }
 
     return functools.partial(trader_node, name="Trader")
+
+
+# =============================================================================
+# 辅助函数：从原始内容中提取指标（确保表格和正文一致）
+# =============================================================================
+
+
+def _extract_recommendation_from_content(content: str) -> Optional[str]:
+    """从内容中提取投资建议"""
+    patterns = [
+        r"最终交易建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"投资建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"建议[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+        r"\*{2}(买入|持有|卖出)\*{2}",
+        r"决策[：:\s]*\*{0,2}(买入|持有|卖出)\*{0,2}",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _extract_target_price_from_content(
+    content: str, currency_symbol: str
+) -> Tuple[Optional[float], Optional[str]]:
+    """从内容中提取目标价位，返回 (target_price, target_price_range)"""
+    # 尝试匹配价格区间
+    range_patterns = [
+        rf"目标价[位格]?[：:\s]*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)\s*[-~到至]\s*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)",
+        rf"目标[：:\s]*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)\s*[-~到至]\s*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)",
+    ]
+    for pattern in range_patterns:
+        match = re.search(pattern, content)
+        if match:
+            return None, f"{currency_symbol}{match.group(1)}-{match.group(2)}"
+
+    # 尝试匹配单一价格
+    price_patterns = [
+        rf"目标价[位格]?[：:\s]*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)",
+        rf"目标[：:\s]*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)",
+        rf"价格目标[：:\s]*{re.escape(currency_symbol)}?\s*(\d+\.?\d*)",
+    ]
+    for pattern in price_patterns:
+        match = re.search(pattern, content)
+        if match:
+            return float(match.group(1)), None
+
+    return None, None
+
+
+def _extract_confidence_from_content(content: str) -> Optional[float]:
+    """从内容中提取置信度"""
+    patterns = [
+        r"置信度[：:\s]*(\d+\.?\d+)",
+        r"置信度[：:\s]*(\d+)%",
+        r"置信度[：:\s]*(\d+\.\d+)%",
+        r"\*\*置信度\*\*[：:\s]*(\d+\.?\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            val = float(match.group(1))
+            if 0 <= val <= 1:
+                return val
+            elif val > 1 and val <= 100:
+                return val / 100
+    return None
+
+
+def _extract_risk_score_from_content(content: str) -> Optional[float]:
+    """从内容中提取风险评分"""
+    patterns = [
+        r"风险评分[：:\s]*(\d+\.?\d+)",
+        r"风险评分[：:\s]*(\d+)%",
+        r"风险评分[：:\s]*(\d+\.\d+)%",
+        r"\*\*风险评分\*\*[：:\s]*(\d+\.?\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            val = float(match.group(1))
+            if 0 <= val <= 1:
+                return val
+            elif val > 1 and val <= 100:
+                return val / 100
+    return None
