@@ -451,6 +451,95 @@ class RedisProgressTracker:
             logger.error(f"[RedisProgress] mark failed failed: {self.task_id} - {e}")
             return self.progress_data
 
+    def update_agent_status(self, agent_name: str, status: str) -> None:
+        """
+        更新特定代理的状态
+
+        借鉴上游 TradingAgents 项目设计思想:
+        - 统一的状态更新接口
+        - 支持分析师、研究团队、风险团队等不同角色
+        - 自动更新相关步骤状态
+
+        Args:
+            agent_name: 代理名称（如"市场分析师"）
+            status: 状态（pending/in_progress/completed/failed）
+        """
+        try:
+            # 确保 agent_status 字段存在
+            if 'agent_status' not in self.progress_data:
+                self.progress_data['agent_status'] = {}
+
+            # 更新代理状态
+            self.progress_data['agent_status'][agent_name] = {
+                'status': status,
+                'updated_at': time.time()
+            }
+
+            # 尝试匹配并更新对应步骤的状态
+            step_mapping = {
+                '市场分析师': '📊 市场分析师',
+                '社交媒体分析师': '💬 社交媒体分析师',
+                '新闻分析师': '📰 新闻分析师',
+                '基本面分析师': '💼 基本面分析师',
+                '中国市场分析师': '🇨🇳 中国市场分析师',
+                '看涨研究员': '🐂 看涨研究员',
+                '看跌研究员': '🐻 看跌研究员',
+                '研究经理': '👔 研究经理',
+                '交易员': '💼 交易员决策',
+                '激进分析师': '🔥 激进风险评估',
+                '保守分析师': '🛡️ 保守风险评估',
+                '中性分析师': '⚖️ 中性风险评估',
+                '风险经理': '🎯 风险经理',
+            }
+
+            step_name = step_mapping.get(agent_name)
+            if step_name:
+                step = self._find_step_by_name(step_name)
+                # 将外部状态映射为内部状态
+                internal_status = status
+                if status == 'in_progress':
+                    internal_status = 'current'
+
+                if step and step.status != internal_status:
+                    if status == 'in_progress':
+                        step.status = 'current'
+                        step.start_time = step.start_time or time.time()
+                    elif status == 'completed':
+                        step.status = 'completed'
+                        step.end_time = step.end_time or time.time()
+                    elif status == 'failed':
+                        step.status = 'failed'
+                        step.end_time = step.end_time or time.time()
+                    elif status == 'pending':
+                        step.status = 'pending'
+                        # 重置时间戳
+                        step.start_time = None
+                        step.end_time = None
+
+            self._save_progress()
+            logger.debug(f"[RedisProgress] agent status updated: {self.task_id} - {agent_name}={status}")
+
+        except Exception as e:
+            logger.error(f"[RedisProgress] update agent status failed: {self.task_id} - {e}")
+
+    def get_agent_status(self, agent_name: str) -> Optional[str]:
+        """
+        获取特定代理的状态
+
+        Args:
+            agent_name: 代理名称
+
+        Returns:
+            Optional[str]: 状态字符串，如果不存在则返回None
+        """
+        try:
+            agent_status = self.progress_data.get('agent_status', {})
+            status_info = agent_status.get(agent_name, {})
+            return status_info.get('status')
+        except Exception as e:
+            logger.debug(f"[RedisProgress] get agent status failed: {e}")
+            return None
+
     def to_dict(self) -> Dict[str, Any]:
         try:
             return {
@@ -465,7 +554,8 @@ class RedisProgressTracker:
                 'estimated_total_time': self.progress_data.get('estimated_total_time', 0),
                 'progress_percentage': self.progress_data.get('progress_percentage', 0),
                 'status': self.progress_data.get('status', 'pending'),
-                'current_step': self.progress_data.get('current_step')
+                'current_step': self.progress_data.get('current_step'),
+                'agent_status': self.progress_data.get('agent_status', {})
             }
         except Exception as e:
             logger.error(f"[RedisProgress] to_dict failed: {self.task_id} - {e}")

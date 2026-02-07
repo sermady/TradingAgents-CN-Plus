@@ -2,12 +2,23 @@
 """
 Analysis Progress Manager
 封装分析进度追踪相关的业务逻辑
+
+借鉴上游 TradingAgents 项目设计思想:
+- 统一状态转换逻辑 (update_analyst_statuses)
+- 标准化分析师顺序 (ANALYST_ORDER)
+- 支持消息去重
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.services.redis_progress_tracker import RedisProgressTracker, AnalysisStep
 from app.core.database import get_redis_client
+from app.services.progress.constants import (
+    ANALYST_ORDER,
+    ANALYST_DISPLAY_NAMES,
+    ANALYST_REPORT_MAP,
+    AnalystStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +158,112 @@ class ProgressManager:
 
         if expired_ids:
             logger.info(f"🗑️ 清理了 {len(expired_ids)} 个过期进度跟踪器")
+
+    def update_analyst_statuses(
+        self,
+        task_id: str,
+        analyst_reports: Dict[str, Any],
+        selected_analysts: List[str],
+    ) -> Dict[str, str]:
+        """
+        统一更新所有分析师状态
+
+        借鉴上游 TradingAgents 项目设计思想:
+        - 根据报告存在性自动判断状态
+        - 第一个无报告的分析师设为 in_progress
+        - 其余无报告的分析师设为 pending
+        - 有报告的分析师设为 completed
+
+        Args:
+            task_id: 任务ID
+            analyst_reports: 分析师报告字典 {report_key: report_content}
+            selected_analysts: 选中的分析师列表
+
+        Returns:
+            Dict[str, str]: 分析师状态映射 {analyst_key: status}
+        """
+        tracker = self.get_tracker(task_id)
+        if not tracker:
+            logger.warning(f"⚠️ 更新分析师状态失败: 跟踪器不存在 {task_id}")
+            return {}
+
+        status_map = {}
+        found_active = False
+
+        # 按照 ANALYST_ORDER 顺序处理，确保状态一致性
+        selected_set = set(selected_analysts)
+
+        for analyst_key in ANALYST_ORDER:
+            if analyst_key not in selected_set:
+                continue
+
+            report_key = ANALYST_REPORT_MAP.get(analyst_key)
+            has_report = bool(report_key and analyst_reports.get(report_key))
+            analyst_name = ANALYST_DISPLAY_NAMES.get(analyst_key, analyst_key)
+
+            if has_report:
+                # 有报告 = 已完成
+                status_map[analyst_key] = AnalystStatus.COMPLETED
+                tracker.update_agent_status(analyst_name, AnalystStatus.COMPLETED)
+            elif not found_active:
+                # 第一个无报告的 = 执行中
+                status_map[analyst_key] = AnalystStatus.IN_PROGRESS
+                tracker.update_agent_status(analyst_name, AnalystStatus.IN_PROGRESS)
+                found_active = True
+            else:
+                # 其余无报告的 = 等待中
+                status_map[analyst_key] = AnalystStatus.PENDING
+                tracker.update_agent_status(analyst_name, AnalystStatus.PENDING)
+
+        # 当所有分析师完成时，更新研究团队状态
+        if not found_active and selected_analysts:
+            logger.info(f"✅ 所有分析师完成，准备进入研究团队阶段: {task_id}")
+            # 可以在这里触发研究团队状态更新
+
+        logger.debug(f"📊 分析师状态更新: {task_id} - {status_map}")
+        return status_map
+
+    def normalize_analyst_order(self, selected_analysts: List[str]) -> List[str]:
+        """
+        标准化分析师顺序
+
+        按照 ANALYST_ORDER 中定义的顺序返回分析师列表，
+        确保执行顺序的一致性。
+
+        Args:
+            selected_analysts: 选中的分析师列表
+
+        Returns:
+            List[str]: 按标准顺序排列的分析师列表
+        """
+        selected_set = set(selected_analysts)
+        ordered = [a for a in ANALYST_ORDER if a in selected_set]
+
+        # 检查是否有未定义的分析师
+        undefined = selected_set - set(ANALYST_ORDER)
+        if undefined:
+            logger.warning(f"⚠️ 未定义的分析师类型: {undefined}")
+            ordered.extend(sorted(undefined))
+
+        return ordered
+
+    def get_next_pending_analyst(
+        self, status_map: Dict[str, str], selected_analysts: List[str]
+    ) -> Optional[str]:
+        """
+        获取下一个等待中的分析师
+
+        Args:
+            status_map: 分析师状态映射
+            selected_analysts: 选中的分析师列表
+
+        Returns:
+            Optional[str]: 下一个等待中的分析师key，如果没有则返回None
+        """
+        for analyst in self.normalize_analyst_order(selected_analysts):
+            if status_map.get(analyst) == AnalystStatus.PENDING:
+                return analyst
+        return None
 
 
 # 全局进度管理器实例(延迟初始化)
