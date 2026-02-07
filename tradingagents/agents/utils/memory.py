@@ -369,6 +369,86 @@ class FinancialSituationMemory:
         )
         return truncated, True
 
+    def _extract_key_info_with_llm(self, text: str, max_length: int = 8000) -> str:
+        """
+        使用LLM提炼文本关键信息
+
+        当文本超长且需要保留关键信息时使用，比机械截断更智能。
+        适合信息密度高、结构复杂的文本。
+
+        Args:
+            text: 原始长文本
+            max_length: 目标长度限制
+
+        Returns:
+            str: 提炼后的关键信息
+        """
+        # 计算需要压缩的比例
+        compression_ratio = len(text) / max_length
+
+        # 根据压缩比例决定提炼策略
+        if compression_ratio > 5:
+            # 高度压缩：提取核心要点
+            instruction = f"""请从以下文本中提取最关键的信息，压缩至原来的20%以内（约{max_length}字符）。
+
+要求：
+1. 保留核心观点、关键数据、重要结论
+2. 删除重复内容、过渡语句、次要细节
+3. 保持逻辑连贯性
+4. 使用简洁的语言重新组织
+
+原文：
+{text[: min(len(text), 50000)]}  # 限制输入长度，避免超出LLM上下文
+"""
+        else:
+            # 中度压缩：总结精炼
+            instruction = f"""请对以下文本进行精炼总结，压缩至{max_length}字符以内。
+
+要求：
+1. 保留所有重要信息点
+2. 合并相似内容
+3. 使用简洁表达
+4. 保持原文结构
+
+原文：
+{text[: min(len(text), 50000)]}
+"""
+
+        try:
+            # 检查是否有可用的LLM客户端
+            if hasattr(self, "client") and self.client and self.client != "DISABLED":
+                # 使用现有的 OpenAI 兼容客户端
+                if hasattr(self.client, "chat"):
+                    response = self.client.chat.completions.create(
+                        model=getattr(self, "quick_think_llm", "gpt-3.5-turbo"),
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "你是一个专业的文本分析助手，擅长提取关键信息和精炼文本。",
+                            },
+                            {"role": "user", "content": instruction},
+                        ],
+                        max_tokens=min(max_length, 4000),
+                        temperature=0.3,
+                    )
+                    extracted = response.choices[0].message.content
+
+                    logger.info(
+                        f"🤖 LLM智能提炼: {len(text)}字符 -> {len(extracted)}字符 "
+                        f"(压缩率: {len(extracted) / len(text) * 100:.1f}%)"
+                    )
+                    return extracted
+
+            # 如果没有LLM客户端，回退到智能截断
+            logger.warning("⚠️ LLM客户端不可用，回退到智能截断")
+            truncated, _ = self._smart_text_truncation(text, max_length)
+            return truncated
+
+        except Exception as e:
+            logger.error(f"❌ LLM提炼失败: {e}，回退到智能截断")
+            truncated, _ = self._smart_text_truncation(text, max_length)
+            return truncated
+
     def get_embedding(self, text):
         """Get embedding for a text using the configured provider"""
 
@@ -443,19 +523,28 @@ class FinancialSituationMemory:
                     logger.warning(f"⚠️ DashScope API密钥未设置，记忆功能降级")
                     return [0.0] * 1024  # 返回空向量
 
-                # 🔧 修复：在调用API前检查并截断过长文本
+                # 🔧 修复：在调用API前处理过长文本
                 processed_text = text
                 if len(text) > 8000:  # 留一些余量，避免刚好在边界
-                    logger.warning(
-                        f"⚠️ 文本长度({len(text)})超过DashScope限制(8192)，进行智能截断"
-                    )
-                    processed_text, was_truncated = self._smart_text_truncation(
-                        text, max_length=8000
-                    )
-                    if was_truncated:
-                        logger.info(
-                            f"✅ 文本已截断: {len(text)} -> {len(processed_text)} 字符"
+                    logger.warning(f"⚠️ 文本长度({len(text)})超过DashScope限制(8192)")
+
+                    # 🚀 智能选择处理策略
+                    if len(text) > 20000 and self.client != "DISABLED":
+                        # 超长文本：使用LLM提炼关键信息
+                        logger.info("🤖 文本超长，使用LLM智能提炼关键信息...")
+                        processed_text = self._extract_key_info_with_llm(
+                            text, max_length=8000
                         )
+                    else:
+                        # 中等长度：使用智能截断（更快、成本低）
+                        logger.info("✂️ 使用智能截断处理长文本...")
+                        processed_text, was_truncated = self._smart_text_truncation(
+                            text, max_length=8000
+                        )
+                        if was_truncated:
+                            logger.info(
+                                f"✅ 文本已截断: {len(text)} -> {len(processed_text)} 字符"
+                            )
 
                 # 尝试调用DashScope API
                 response = TextEmbedding.call(
