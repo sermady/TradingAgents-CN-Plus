@@ -3088,75 +3088,143 @@ class OptimizedChinaDataProvider:
                 metrics["n_cashflow_fin_act"] = 0
                 metrics["n_cashflow_fin_act_fmt"] = "N/A"
 
-            # 🔥 计算同比增速
+            # 🔥 计算同比增速（优先从 financial_data 或 stock_info 直接获取 Tushare 字段，备选计算）
             revenue_yoy = None
             net_income_yoy = None
-            try:
-                if len(income_statement) >= 4:
-                    # 获取最新一期和上年同期数据
-                    latest_stmt = income_statement[0]
-                    # 查找上年同期（4个季度前）
-                    last_year_stmt = (
-                        income_statement[3] if len(income_statement) >= 4 else None
-                    )
 
-                    if last_year_stmt:
-                        # 营收同比增速
-                        latest_revenue = latest_stmt.get(
-                            "total_revenue", 0
-                        ) or latest_stmt.get("revenue", 0)
-                        last_year_revenue = last_year_stmt.get(
-                            "total_revenue", 0
-                        ) or last_year_stmt.get("revenue", 0)
-                        if (
-                            latest_revenue
-                            and last_year_revenue
-                            and last_year_revenue > 0
-                        ):
-                            revenue_yoy = (
-                                (latest_revenue - last_year_revenue) / last_year_revenue
-                            ) * 100
-                            metrics["revenue_yoy"] = revenue_yoy
-                            metrics["revenue_yoy_fmt"] = f"{revenue_yoy:+.1f}%"
-                        else:
+            # 第一优先级：从 financial_data 或 stock_info 直接获取 Tushare 增速字段
+            try:
+                # Tushare 字段名: or_yoy (营收同比增速), q_profit_yoy (净利润同比增速)
+                # 优先从 financial_data 获取，备选从 stock_info 获取
+                revenue_yoy_direct = financial_data.get("or_yoy") or (
+                    stock_info.get("or_yoy") if stock_info else None
+                )
+                if revenue_yoy_direct and str(revenue_yoy_direct) not in [
+                    "nan",
+                    "--",
+                    "None",
+                    "",
+                    "NoneType",
+                ]:
+                    try:
+                        revenue_yoy = float(revenue_yoy_direct)
+                        metrics["revenue_yoy"] = revenue_yoy
+                        metrics["revenue_yoy_fmt"] = f"{revenue_yoy:+.1f}%"
+                        logger.info(
+                            f"✅ 从 Tushare 字段获取营收同比增速: {revenue_yoy:+.1f}%"
+                        )
+                    except (ValueError, TypeError):
+                        revenue_yoy = None
+
+                net_income_yoy_direct = financial_data.get("q_profit_yoy") or (
+                    stock_info.get("q_profit_yoy") if stock_info else None
+                )
+                if net_income_yoy_direct and str(net_income_yoy_direct) not in [
+                    "nan",
+                    "--",
+                    "None",
+                    "",
+                    "NoneType",
+                ]:
+                    try:
+                        net_income_yoy = float(net_income_yoy_direct)
+                        metrics["net_income_yoy"] = net_income_yoy
+                        metrics["net_income_yoy_fmt"] = f"{net_income_yoy:+.1f}%"
+                        logger.info(
+                            f"✅ 从 Tushare 字段获取净利润同比增速: {net_income_yoy:+.1f}%"
+                        )
+                    except (ValueError, TypeError):
+                        net_income_yoy = None
+            except Exception as e:
+                logger.debug(f"从 financial_data/stock_info 获取增速字段失败: {e}")
+
+            # 第二优先级：从 income_statement 计算同比增速（如果没有从 direct 获取）
+            if revenue_yoy is None or net_income_yoy is None:
+                try:
+                    if len(income_statement) >= 4:
+                        # 获取最新一期和上年同期数据
+                        latest_stmt = income_statement[0]
+                        # 查找上年同期（4个季度前）
+                        last_year_stmt = (
+                            income_statement[3] if len(income_statement) >= 4 else None
+                        )
+
+                        if last_year_stmt:
+                            # 营收同比增速（如果还没有从 direct 获取）
+                            if revenue_yoy is None:
+                                latest_revenue = latest_stmt.get(
+                                    "total_revenue", 0
+                                ) or latest_stmt.get("revenue", 0)
+                                last_year_revenue = last_year_stmt.get(
+                                    "total_revenue", 0
+                                ) or last_year_stmt.get("revenue", 0)
+                                if (
+                                    latest_revenue
+                                    and last_year_revenue
+                                    and last_year_revenue > 0
+                                ):
+                                    revenue_yoy = (
+                                        (latest_revenue - last_year_revenue)
+                                        / last_year_revenue
+                                    ) * 100
+                                    metrics["revenue_yoy"] = revenue_yoy
+                                    metrics["revenue_yoy_fmt"] = f"{revenue_yoy:+.1f}%"
+                                    logger.info(
+                                        f"✅ 计算营收同比增速: {revenue_yoy:+.1f}%"
+                                    )
+                                else:
+                                    metrics["revenue_yoy"] = None
+                                    metrics["revenue_yoy_fmt"] = "N/A"
+
+                            # 净利润同比增速（如果还没有从 direct 获取）
+                            if net_income_yoy is None:
+                                latest_profit = latest_stmt.get(
+                                    "n_income", 0
+                                ) or latest_stmt.get("net_income", 0)
+                                last_year_profit = last_year_stmt.get(
+                                    "n_income", 0
+                                ) or last_year_stmt.get("net_income", 0)
+                                if (
+                                    latest_profit
+                                    and last_year_profit
+                                    and last_year_profit != 0
+                                ):
+                                    net_income_yoy = (
+                                        (latest_profit - last_year_profit)
+                                        / abs(last_year_profit)
+                                    ) * 100
+                                    metrics["net_income_yoy"] = net_income_yoy
+                                    metrics["net_income_yoy_fmt"] = (
+                                        f"{net_income_yoy:+.1f}%"
+                                    )
+                                    logger.info(
+                                        f"✅ 计算净利润同比增速: {net_income_yoy:+.1f}%"
+                                    )
+                                else:
+                                    metrics["net_income_yoy"] = None
+                                    metrics["net_income_yoy_fmt"] = "N/A"
+
+                            logger.info(
+                                f"✅ 最终同比增速: 营收={metrics.get('revenue_yoy_fmt', 'N/A')}, 净利润={metrics.get('net_income_yoy_fmt', 'N/A')}"
+                            )
+                    else:
+                        if revenue_yoy is None:
                             metrics["revenue_yoy"] = None
                             metrics["revenue_yoy_fmt"] = "N/A"
-
-                        # 净利润同比增速
-                        latest_profit = latest_stmt.get(
-                            "n_income", 0
-                        ) or latest_stmt.get("net_income", 0)
-                        last_year_profit = last_year_stmt.get(
-                            "n_income", 0
-                        ) or last_year_stmt.get("net_income", 0)
-                        if latest_profit and last_year_profit and last_year_profit != 0:
-                            net_income_yoy = (
-                                (latest_profit - last_year_profit)
-                                / abs(last_year_profit)
-                            ) * 100
-                            metrics["net_income_yoy"] = net_income_yoy
-                            metrics["net_income_yoy_fmt"] = f"{net_income_yoy:+.1f}%"
-                        else:
+                        if net_income_yoy is None:
                             metrics["net_income_yoy"] = None
                             metrics["net_income_yoy_fmt"] = "N/A"
-
                         logger.info(
-                            f"✅ 计算同比增速: 营收={metrics.get('revenue_yoy_fmt', 'N/A')}, 净利润={metrics.get('net_income_yoy_fmt', 'N/A')}"
+                            f"⚠️ 历史数据不足({len(income_statement)}期)且无可用的直接增速字段"
                         )
-                else:
-                    metrics["revenue_yoy"] = None
-                    metrics["revenue_yoy_fmt"] = "N/A"
-                    metrics["net_income_yoy"] = None
-                    metrics["net_income_yoy_fmt"] = "N/A"
-                    logger.info(
-                        f"⚠️ 历史数据不足({len(income_statement)}期)，无法计算同比增速"
-                    )
-            except Exception as e:
-                logger.warning(f"⚠️ 计算同比增速失败: {e}")
-                metrics["revenue_yoy"] = None
-                metrics["revenue_yoy_fmt"] = "N/A"
-                metrics["net_income_yoy"] = None
-                metrics["net_income_yoy_fmt"] = "N/A"
+                except Exception as e:
+                    logger.warning(f"⚠️ 计算同比增速失败: {e}")
+                    if revenue_yoy is None:
+                        metrics["revenue_yoy"] = None
+                        metrics["revenue_yoy_fmt"] = "N/A"
+                    if net_income_yoy is None:
+                        metrics["net_income_yoy"] = None
+                        metrics["net_income_yoy_fmt"] = "N/A"
 
             # 其他指标设为默认值
             metrics.update(
@@ -3322,6 +3390,7 @@ class OptimizedChinaDataProvider:
                 metrics["pb"] = "N/A"
 
             # 总市值（从 daily_basic 获取的单位是万元，需要转换为亿元）
+            total_mv_yuan = None  # 初始化变量
             if stock_info_total_mv is not None and stock_info_total_mv > 0:
                 total_mv_yuan = stock_info_total_mv / 10000  # 万元转亿元
                 metrics["total_mv"] = f"{total_mv_yuan:.2f}亿元"
@@ -3555,36 +3624,74 @@ class OptimizedChinaDataProvider:
                 metrics["n_cashflow_fin_act"] = 0
                 metrics["n_cashflow_fin_act_fmt"] = "N/A"
 
-            # 🔥 添加同比增速（从 financial_data 直接获取或使用 income_statement 计算）
-            revenue_yoy = financial_data.get("revenue_yoy") or financial_data.get(
-                "oper_rev_yoy"
+            # 🔥 添加同比增速（从 financial_data 或 stock_info 直接获取）
+            # 支持多种字段名：Tushare (or_yoy), 通用 (revenue_yoy, oper_rev_yoy)
+            # 第一优先级：financial_data（来自 get_financial_data 的详细数据）
+            # 第二优先级：stock_info（来自 get_stock_basic_info 的基础数据）
+            revenue_yoy = (
+                financial_data.get("or_yoy")  # Tushare 字段名
+                or financial_data.get("revenue_yoy")
+                or financial_data.get("oper_rev_yoy")
+                or (
+                    stock_info.get("or_yoy") if stock_info else None
+                )  # 从 stock_info 获取
             )
-            if revenue_yoy and str(revenue_yoy) not in ["nan", "--", "None", ""]:
+            if revenue_yoy and str(revenue_yoy) not in [
+                "nan",
+                "--",
+                "None",
+                "",
+                "NoneType",
+            ]:
                 try:
                     revenue_yoy_val = float(revenue_yoy)
                     metrics["revenue_yoy"] = revenue_yoy_val
                     metrics["revenue_yoy_fmt"] = f"{revenue_yoy_val:+.1f}%"
-                except (ValueError, TypeError):
+                    logger.info(f"✅ 营收同比增速: {revenue_yoy_val:+.1f}%")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"⚠️ 营收同比增速格式错误: {revenue_yoy}, 错误: {e}")
                     metrics["revenue_yoy"] = None
                     metrics["revenue_yoy_fmt"] = "N/A"
             else:
                 metrics["revenue_yoy"] = None
                 metrics["revenue_yoy_fmt"] = "N/A"
+                logger.debug(f"⚠️ 营收同比增速数据缺失 (or_yoy={revenue_yoy})")
 
-            net_income_yoy = financial_data.get("net_income_yoy") or financial_data.get(
-                "n_income_yoy"
+            # 支持多种字段名：Tushare (q_profit_yoy), 通用 (net_income_yoy, n_income_yoy)
+            # 第一优先级：financial_data（来自 get_financial_data 的详细数据）
+            # 第二优先级：stock_info（来自 get_stock_basic_info 的基础数据）
+            net_income_yoy = (
+                financial_data.get("q_profit_yoy")  # Tushare 字段名
+                or financial_data.get("net_income_yoy")
+                or financial_data.get("n_income_yoy")
+                or (
+                    stock_info.get("q_profit_yoy") if stock_info else None
+                )  # 从 stock_info 获取
             )
-            if net_income_yoy and str(net_income_yoy) not in ["nan", "--", "None", ""]:
+            if net_income_yoy and str(net_income_yoy) not in [
+                "nan",
+                "--",
+                "None",
+                "",
+                "NoneType",
+            ]:
                 try:
                     net_income_yoy_val = float(net_income_yoy)
                     metrics["net_income_yoy"] = net_income_yoy_val
                     metrics["net_income_yoy_fmt"] = f"{net_income_yoy_val:+.1f}%"
-                except (ValueError, TypeError):
+                    logger.info(f"✅ 净利润同比增速: {net_income_yoy_val:+.1f}%")
+                except (ValueError, TypeError) as e:
+                    logger.warning(
+                        f"⚠️ 净利润同比增速格式错误: {net_income_yoy}, 错误: {e}"
+                    )
                     metrics["net_income_yoy"] = None
                     metrics["net_income_yoy_fmt"] = "N/A"
             else:
                 metrics["net_income_yoy"] = None
                 metrics["net_income_yoy_fmt"] = "N/A"
+                logger.debug(
+                    f"⚠️ 净利润同比增速数据缺失 (q_profit_yoy={net_income_yoy})"
+                )
 
             logger.info(
                 f"✅ [_parse_financial_data_with_stock_info] 财务指标: 营收={metrics.get('total_revenue_fmt', 'N/A')}, "
