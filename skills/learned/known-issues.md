@@ -18,6 +18,8 @@
 8. [数据源增强与修复批次](#数据源增强与修复批次)
 9. [Tushare 新接口集成](#tushare-新接口集成)
 10. [实时行情判断逻辑修复](#实时行情判断逻辑修复)
+11. [增速字段解析修复](#增速字段解析修复)
+12. [数据源网络连接问题](#数据源网络连接问题)
 
 ---
 
@@ -322,6 +324,107 @@ def should_use_realtime_quote(symbol, analysis_date, check_time):
 - ⚡ 盘前分析 - 使用昨日收盘价
 - 📊 盘后分析 - 使用今日收盘价
 - ⚡ 历史分析 - 使用历史收盘价
+
+---
+
+## 增速字段解析修复
+
+**日期**: 2026-02-10
+**状态**: 🟢 已修复
+
+**问题现象**: 分析报告中 **筹资性现金流净额**、**营收同比增速**、**净利润同比增速** 显示为 **N/A**
+
+**根本原因**: 数据源字段名与代码中使用的字段名不匹配
+
+```python
+# Tushare 返回的字段名
+tushare_data = {
+    "or_yoy": 15.5,          # 营收同比增速
+    "q_profit_yoy": 20.3,    # 净利润同比增速
+    "n_cashflow_fin_act": -50000000,  # 筹资性现金流净额
+}
+
+# 代码中查找的字段名（错误）
+code_lookup = {
+    "revenue_yoy": None,      # ❌ 找不到
+    "net_income_yoy": None,   # ❌ 找不到
+}
+```
+
+**修复方案**:
+
+```python
+# 在 _parse_financial_data_with_stock_info() 中添加多字段名映射
+revenue_yoy = (
+    financial_data.get("or_yoy")  # Tushare 字段名
+    or financial_data.get("revenue_yoy")
+    or financial_data.get("oper_rev_yoy")
+    or (stock_info.get("or_yoy") if stock_info else None)
+)
+
+net_income_yoy = (
+    financial_data.get("q_profit_yoy")  # Tushare 字段名
+    or financial_data.get("net_income_yoy")
+    or financial_data.get("n_income_yoy")
+    or (stock_info.get("q_profit_yoy") if stock_info else None)
+)
+```
+
+**相关技能**: [数据源字段名映射不匹配问题](data-source-field-mapping.md)
+
+---
+
+## 数据源网络连接问题
+
+**日期**: 2026-02-10
+**状态**: 🟢 已诊断
+
+**问题现象**: 
+```
+Tushare: ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。')
+AKShare: NameResolutionError: Failed to resolve 'query.sse.com.cn'
+RuntimeError: All data sources failed to provide stock list
+```
+
+**诊断结果**:
+- 网络连接测试：✅ 正常
+- DNS 解析：✅ 正常
+- Tushare API：✅ 可连接（响应 5s）
+
+**根本原因**: 
+- Tushare 服务器临时不稳定或 Token 被限流
+- 应用程序层问题，非网络问题
+
+**解决方案**:
+
+1. **检查 Token 有效性**:
+```python
+python -c "
+import tushare as ts
+import os
+from dotenv import load_dotenv
+load_dotenv('app/.env')
+token = os.getenv('TUSHARE_TOKEN')
+ts.set_token(token)
+pro = ts.pro_api()
+df = pro.stock_basic(limit=5)
+print(f'✅ Token 有效，获取到 {len(df)} 条数据')
+"
+```
+
+2. **启用 Baostock 作为备选**:
+```bash
+# 在 .env 中添加
+BAOSTOCK_UNIFIED_ENABLED=true
+```
+
+3. **等待后重试**:
+- ConnectionResetError 通常是服务器临时问题
+- 建议等待 10-15 分钟后重试
+
+**相关技能**: [数据源网络连接问题诊断](network-diagnostics.md)
+
+**诊断脚本**: `diagnose_network.py`
 
 ---
 
