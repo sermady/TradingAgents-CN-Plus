@@ -185,20 +185,26 @@ class OptimizedChinaDataProvider:
             from .data_source_manager import get_china_stock_data_unified
 
             # 🔥 从 Toolkit._config 获取分析日期
-            analysis_date = None
+            analysis_date = ""
             try:
                 from tradingagents.agents.utils.agent_utils import Toolkit
 
-                analysis_date = Toolkit._config.get("analysis_date")
+                date_val = Toolkit._config.get("analysis_date")
+                if date_val and isinstance(date_val, str):
+                    analysis_date = date_val
             except Exception as e:
                 logger.debug(f"⚠️ 无法从 Toolkit._config 获取 analysis_date: {e}")
 
-            formatted_data = get_china_stock_data_unified(
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-                analysis_date=analysis_date,
-            )
+            # 准备函数参数
+            call_kwargs = {
+                "symbol": symbol,
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+            if analysis_date:
+                call_kwargs["analysis_date"] = analysis_date
+
+            formatted_data = get_china_stock_data_unified(**call_kwargs)
 
             # 检查是否获取成功
             if "❌" in formatted_data or "错误" in formatted_data:
@@ -678,6 +684,27 @@ class OptimizedChinaDataProvider:
         else:
             data_source_note = "\n✅ **数据说明**: 财务指标基于真实财务数据计算"
 
+        # 🔥 执行数据质量检查
+        data_quality = self._check_data_quality(
+            symbol, industry_info, financial_estimates
+        )
+
+        # 🔥 触发后台数据同步（如果有缺失的关键字段）
+        if data_quality["missing_fields"]:
+            self._trigger_background_sync(symbol, data_quality["missing_fields"])
+
+        # 生成数据质量报告
+        data_quality_report = ""
+        if data_quality["missing_fields"]:
+            data_quality_report = f"""
+
+## 📋 数据质量报告
+- **质量评分**: {data_quality["quality_score"]}/100 ({data_quality["quality_level"]})
+- **缺失字段**: {", ".join(data_quality["missing_fields"])}
+- **改进建议**:
+  {chr(10).join(["  - " + issue for issue in data_quality["quality_issues"]])}
+"""
+
         # 根据分析模块级别调整报告内容
         logger.debug(f"🔍 [基本面分析] 使用分析模块级别: {analysis_modules}")
 
@@ -707,7 +734,7 @@ class OptimizedChinaDataProvider:
 
 ## 💡 基础评估
 - **基本面评分**: {financial_estimates["fundamental_score"]}/10
-- **风险等级**: {financial_estimates["risk_level"]}
+- **风险等级**: {financial_estimates["risk_level"]}{data_quality_report}
 
 ---
 **重要声明**: 本报告基于公开数据和模型估算生成，仅供参考，不构成投资建议。
@@ -779,7 +806,7 @@ class OptimizedChinaDataProvider:
 - **成长潜力**: {financial_estimates["growth_score"]}/10
 - **风险等级**: {financial_estimates["risk_level"]}
 
-{self._generate_investment_advice(financial_estimates, industry_info)}
+{self._generate_investment_advice(financial_estimates, industry_info)}{data_quality_report}
 
 ---
 **重要声明**: 本报告基于公开数据和模型估算生成，仅供参考，不构成投资建议。
@@ -902,6 +929,8 @@ class OptimizedChinaDataProvider:
 - **仓位建议**：根据风险承受能力合理配置仓位
 - **关注指标**：重点关注ROE、PE、现金流等核心指标
 
+{data_quality_report}
+
 ---
 **重要声明**: 本报告基于公开数据和模型估算生成，仅供参考，不构成投资建议。
 实际投资决策请结合最新财报数据和专业分析师意见。
@@ -927,7 +956,11 @@ class OptimizedChinaDataProvider:
             from .cache.app_adapter import get_basics_from_cache
 
             doc = get_basics_from_cache(symbol)
-            if doc:
+            # 处理返回类型：可能是 Dict 或 List[Dict]
+            if isinstance(doc, list) and len(doc) > 0:
+                doc = doc[0]
+
+            if doc and isinstance(doc, dict):
                 # 只记录关键字段，避免打印完整文档
                 logger.debug(
                     f"🔍 [股票代码追踪] 从数据库获取到基础信息: code={doc.get('code')}, name={doc.get('name')}, industry={doc.get('industry')}"
@@ -936,10 +969,10 @@ class OptimizedChinaDataProvider:
                 # 规范化行业与板块（避免把"中小板/创业板"等板块值误作行业）
                 board_labels = {"主板", "中小板", "创业板", "科创板"}
                 raw_industry = (
-                    doc.get("industry") or doc.get("industry_name") or ""
+                    str(doc.get("industry") or doc.get("industry_name") or "")
                 ).strip()
-                sec_or_cat = (doc.get("sec") or doc.get("category") or "").strip()
-                market_val = (doc.get("market") or "").strip()
+                sec_or_cat = str(doc.get("sec") or doc.get("category") or "").strip()
+                market_val = str(doc.get("market") or "").strip()
                 industry_val = raw_industry or sec_or_cat or "未知"
 
                 # 如果industry字段是板块名，则将其用于market；industry改用更细分类（sec/category）
@@ -955,7 +988,7 @@ class OptimizedChinaDataProvider:
                 # 构建行业信息
                 info = {
                     "industry": industry_val or "未知",
-                    "market": market_val or doc.get("market", "未知"),
+                    "market": market_val or str(doc.get("market", "未知")),
                     "type": self._get_market_type_by_code(symbol),
                 }
 
@@ -979,7 +1012,108 @@ class OptimizedChinaDataProvider:
         except Exception as e:
             logger.warning(f"⚠️ 从数据库获取行业信息失败: {e}")
 
-        # 备用方案：使用代码前缀判断（但修正了行业/市场的映射）
+        # 🔥 降级方案1：实时从Tushare API获取行业信息
+        try:
+            logger.info(
+                f"🔄 [行业信息降级] 尝试从Tushare API实时获取 {symbol} 的行业信息"
+            )
+            from .providers.china.tushare import get_tushare_provider
+
+            tushare_provider = get_tushare_provider()
+            if tushare_provider and tushare_provider.is_available():
+                # 使用异步方法获取，但在这里用 asyncio.run 包装
+                import asyncio
+
+                async def fetch_from_tushare():
+                    return await tushare_provider.get_stock_basic_info(symbol)
+
+                # 检查是否有运行中的事件循环
+                try:
+                    loop = asyncio.get_running_loop()
+                    # 如果有运行中的循环，需要在线程中运行新的异步代码
+                    import concurrent.futures
+
+                    def run_async_in_thread():
+                        """在线程中运行异步代码"""
+                        try:
+                            return asyncio.run(fetch_from_tushare())
+                        except RuntimeError as e:
+                            # 如果线程中已有事件循环，使用 nest_asyncio
+                            try:
+                                import nest_asyncio
+
+                                nest_asyncio.apply()
+                                return asyncio.run(fetch_from_tushare())
+                            except ImportError:
+                                logger.warning("⚠️ nest_asyncio 未安装，尝试其他方式")
+                                # 创建新的事件循环
+                                new_loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(new_loop)
+                                try:
+                                    return new_loop.run_until_complete(
+                                        fetch_from_tushare()
+                                    )
+                                finally:
+                                    new_loop.close()
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_async_in_thread)
+                        tushare_info = future.result(timeout=10)
+                except RuntimeError:
+                    # 没有运行中的循环，直接使用 asyncio.run
+                    tushare_info = asyncio.run(fetch_from_tushare())
+
+                if tushare_info:
+                    # 处理返回类型可能是列表的情况
+                    if isinstance(tushare_info, list):
+                        if len(tushare_info) > 0:
+                            tushare_info = tushare_info[0]
+                        else:
+                            tushare_info = None
+
+                    if tushare_info and isinstance(tushare_info, dict):
+                        tushare_industry = str(tushare_info.get("industry", "")).strip()
+                        tushare_market = str(tushare_info.get("market", "")).strip()
+                        tushare_area = str(tushare_info.get("area", "")).strip()
+
+                    if tushare_industry and tushare_industry != "未知":
+                        info = {
+                            "industry": tushare_industry,
+                            "market": tushare_market or "未知",
+                            "area": tushare_area or "未知",
+                            "type": self._get_market_type_by_code(symbol),
+                            "source": "tushare_realtime",  # 标记数据来源
+                        }
+
+                        logger.info(
+                            f"✅ [行业信息降级] 从Tushare API成功获取 {symbol} 的行业信息: "
+                            f"行业={tushare_industry}, 市场={tushare_market}"
+                        )
+
+                        # 添加分析信息
+                        info.update(
+                            {
+                                "analysis": f"该股票属于{tushare_industry}行业，在{tushare_market}上市交易。",
+                                "market_share": "待分析",
+                                "brand_value": "待评估",
+                                "tech_advantage": "待分析",
+                            }
+                        )
+
+                        return info
+                    else:
+                        logger.warning(
+                            f"⚠️ [行业信息降级] Tushare API返回的行业信息为空或为'未知': {tushare_info}"
+                        )
+                else:
+                    logger.warning(f"⚠️ [行业信息降级] Tushare API未返回数据")
+            else:
+                logger.warning(f"⚠️ [行业信息降级] Tushare provider不可用")
+
+        except Exception as tushare_e:
+            logger.warning(f"⚠️ [行业信息降级] 从Tushare API获取失败: {tushare_e}")
+
+        # 备用方案2：使用代码前缀判断（但修正了行业/市场的映射）
         logger.debug(f"🔍 [股票代码追踪] 使用备用方案，基于代码前缀判断")
         code_prefix = symbol[:3]
         logger.debug(f"🔍 [股票代码追踪] 提取的代码前缀: '{code_prefix}'")
@@ -1031,6 +1165,207 @@ class OptimizedChinaDataProvider:
             )
 
         return info
+
+    def _check_data_quality(
+        self,
+        symbol: str,
+        industry_info: dict,
+        financial_estimates: dict,
+    ) -> dict:
+        """检查数据质量，识别缺失的关键字段
+
+        Returns:
+            dict: 包含缺失字段列表和质量评分的字典
+        """
+        missing_fields = []
+        quality_issues = []
+
+        # 检查行业信息
+        if industry_info.get("industry") in ["未知", "", None]:
+            missing_fields.append("所属行业")
+            quality_issues.append("行业信息缺失，可能影响行业对比分析")
+
+        # 检查成长性指标
+        if financial_estimates.get("revenue_yoy_fmt") in ["N/A", None]:
+            missing_fields.append("营收同比增速")
+            quality_issues.append("营收同比增速数据缺失，无法评估营收增长情况")
+
+        if financial_estimates.get("net_income_yoy_fmt") in ["N/A", None]:
+            missing_fields.append("净利润同比增速")
+            quality_issues.append("净利润同比增速数据缺失，无法评估盈利能力变化")
+
+        # 检查核心财务指标
+        if financial_estimates.get("total_revenue_fmt") in ["N/A", None]:
+            missing_fields.append("营业收入")
+
+        if financial_estimates.get("net_income_fmt") in ["N/A", None]:
+            missing_fields.append("净利润")
+
+        if financial_estimates.get("pe") in ["N/A", None]:
+            missing_fields.append("市盈率(PE)")
+
+        if financial_estimates.get("pb") in ["N/A", None]:
+            missing_fields.append("市净率(PB)")
+
+        # 计算质量评分 (满分100)
+        total_critical_fields = 7  # 行业、营收增速、净利润增速、营收、净利润、PE、PB
+        missing_count = len(
+            [
+                f
+                for f in missing_fields
+                if f in ["所属行业", "营收同比增速", "净利润同比增速"]
+            ]
+        )
+        quality_score = max(0, 100 - (missing_count * 15))  # 每个关键字段缺失扣15分
+
+        return {
+            "missing_fields": missing_fields,
+            "quality_issues": quality_issues,
+            "quality_score": quality_score,
+            "quality_level": (
+                "优秀"
+                if quality_score >= 90
+                else "良好"
+                if quality_score >= 70
+                else "一般"
+                if quality_score >= 50
+                else "较差"
+            ),
+        }
+
+    def _trigger_background_sync(self, symbol: str, missing_fields: list) -> bool:
+        """触发后台数据同步，尝试补充缺失的数据
+
+        Args:
+            symbol: 股票代码
+            missing_fields: 缺失的字段列表
+
+        Returns:
+            bool: 是否成功触发同步
+        """
+        try:
+            # 检查是否需要同步（有关键字段缺失）
+            critical_missing = [
+                f
+                for f in missing_fields
+                if f in ["所属行业", "营收同比增速", "净利润同比增速"]
+            ]
+
+            if not critical_missing:
+                logger.debug(f"✅ [{symbol}] 数据质量良好，无需触发后台同步")
+                return False
+
+            logger.info(
+                f"🔄 [{symbol}] 检测到关键数据缺失: {critical_missing}，尝试触发后台同步"
+            )
+
+            # 直接使用TushareProvider获取最新数据
+            import asyncio
+
+            async def do_sync():
+                try:
+                    from .providers.china.tushare import get_tushare_provider
+                    from tradingagents.config.database_manager import (
+                        get_mongodb_client,
+                        get_database_manager,
+                    )
+
+                    tushare_provider = get_tushare_provider()
+                    if not tushare_provider or not tushare_provider.is_available():
+                        logger.warning(f"⚠️ [{symbol}] Tushare不可用，无法同步")
+                        return
+
+                    # 获取最新基础信息
+                    stock_info = await tushare_provider.get_stock_basic_info(symbol)
+                    if not stock_info:
+                        logger.warning(f"⚠️ [{symbol}] 无法从Tushare获取数据")
+                        return
+
+                    # 处理返回类型
+                    if isinstance(stock_info, list):
+                        if len(stock_info) > 0:
+                            stock_info = stock_info[0]
+                        else:
+                            logger.warning(f"⚠️ [{symbol}] Tushare返回空列表")
+                            return
+
+                    if not isinstance(stock_info, dict):
+                        logger.warning(f"⚠️ [{symbol}] Tushare返回数据格式错误")
+                        return
+
+                    # 直接保存到MongoDB
+                    client = get_mongodb_client()
+                    if client:
+                        db_name = get_database_manager().mongodb_config.get(
+                            "database", "tradingagents"
+                        )
+                        db = client[db_name]
+                        coll = db["stock_basic_info"]
+
+                        # 添加更新时间戳
+                        stock_info["last_sync"] = datetime.now().isoformat()
+                        stock_info["data_source"] = "tushare_auto_sync"
+
+                        # 确保code字段存在
+                        if "code" not in stock_info and "symbol" in stock_info:
+                            stock_info["code"] = stock_info["symbol"]
+
+                        # 使用upsert更新或插入
+                        code = stock_info.get("code", symbol)
+                        coll.update_one(
+                            {"$or": [{"code": code}, {"symbol": code}]},
+                            {"$set": stock_info},
+                            upsert=True,
+                        )
+                        logger.info(
+                            f"✅ [{symbol}] 后台数据同步成功，已更新MongoDB缓存"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ [{symbol}] MongoDB客户端不可用，无法保存同步数据"
+                        )
+
+                except Exception as e:
+                    logger.error(f"❌ [{symbol}] 后台同步执行出错: {e}")
+
+            # 在后台执行同步
+            try:
+                loop = asyncio.get_running_loop()
+                # 如果已有事件循环，创建后台任务
+                loop.create_task(do_sync())
+                logger.info(f"🔄 [{symbol}] 已创建后台同步任务")
+            except RuntimeError:
+                # 没有运行中的事件循环，使用线程执行
+                import threading
+
+                def run_sync_with_proper_loop():
+                    """在线程中正确运行异步代码"""
+                    # 为新线程创建独立的事件循环
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        new_loop.run_until_complete(do_sync())
+                    finally:
+                        # 清理未完成的任务
+                        pending = asyncio.all_tasks(new_loop)
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            new_loop.run_until_complete(
+                                asyncio.gather(*pending, return_exceptions=True)
+                            )
+                        new_loop.run_until_complete(new_loop.shutdown_asyncgens())
+                        new_loop.close()
+
+                thread = threading.Thread(target=run_sync_with_proper_loop, daemon=True)
+                thread.start()
+                logger.info(f"🔄 [{symbol}] 已在后台线程启动同步任务")
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"⚠️ [{symbol}] 触发后台同步失败: {e}")
+            return False
 
     def _get_market_type_by_code(self, symbol: str) -> str:
         """根据股票代码判断市场类型"""
@@ -1113,13 +1448,16 @@ class OptimizedChinaDataProvider:
             if db_manager.is_mongodb_available():
                 try:
                     db_client = db_manager.get_mongodb_client()
-                    db = db_client["tradingagents"]
+                    if db_client is None:
+                        logger.warning("⚠️ MongoDB 客户端获取失败，使用传入价格")
+                    else:
+                        db = db_client["tradingagents"]
 
-                    # 标准化股票代码为6位
-                    code6 = symbol.replace(".SH", "").replace(".SZ", "").zfill(6)
+                        # 标准化股票代码为6位
+                        code6 = symbol.replace(".SH", "").replace(".SZ", "").zfill(6)
 
-                    # 从 market_quotes 获取实时股价
-                    quote = db.market_quotes.find_one({"code": code6})
+                        # 从 market_quotes 获取实时股价
+                        quote = db.market_quotes.find_one({"code": code6})
                     if quote and quote.get("close"):
                         realtime_price = float(quote.get("close"))
                         logger.info(
@@ -1169,10 +1507,13 @@ class OptimizedChinaDataProvider:
                                     akshare_quotes = loop.run_until_complete(
                                         akshare_provider.get_stock_quotes_cached(code6)
                                     )
-                                    if akshare_quotes and akshare_quotes.get("price"):
-                                        akshare_price = float(
-                                            akshare_quotes.get("price")
-                                        )
+                                    price_val = (
+                                        akshare_quotes.get("price")
+                                        if akshare_quotes
+                                        else None
+                                    )
+                                    if price_val is not None:
+                                        akshare_price = float(price_val)
                                         logger.info(
                                             f"✅ 从 AKShare 获取实时股价: {code6} = {akshare_price}元"
                                         )
@@ -1231,7 +1572,11 @@ class OptimizedChinaDataProvider:
                     finally:
                         loop.close()
 
-                    if stock_info and (
+                    # 处理返回类型：可能是 Dict 或 List[Dict]
+                    if isinstance(stock_info, list) and len(stock_info) > 0:
+                        stock_info = stock_info[0]
+
+                    if isinstance(stock_info, dict) and (
                         stock_info.get("pe") is not None
                         or stock_info.get("pb") is not None
                     ):
@@ -1245,13 +1590,14 @@ class OptimizedChinaDataProvider:
                             )
                             metrics["data_source"] = "Tushare"
                             # 缓存原始财务数据到数据库
-                            self._cache_raw_financial_data(
-                                symbol, financial_data, stock_info
-                            )
+                            if isinstance(stock_info, dict):
+                                self._cache_raw_financial_data(
+                                    symbol, financial_data, stock_info
+                                )
                             return metrics
                         else:
                             logger.warning(f"⚠️ Tushare解析失败，降级到AKShare")
-                    else:
+                    elif isinstance(stock_info, dict):
                         # 解析Tushare财务数据
                         metrics = self._parse_financial_data(
                             financial_data, stock_info, price_value
@@ -1303,19 +1649,23 @@ class OptimizedChinaDataProvider:
                     finally:
                         loop.close()
 
-                    # 解析AKShare财务数据
-                    logger.debug(f"🔧 调用AKShare解析函数，股价: {price_value}")
-                    metrics = self._parse_akshare_financial_data(
-                        financial_data, stock_info, price_value
-                    )
-                    logger.debug(f"🔧 AKShare解析结果: {metrics}")
-                    if metrics:
-                        logger.info(f"✅ AKShare解析成功，返回指标")
-                        # 缓存原始财务数据到数据库（而不是解析后的指标）
-                        self._cache_raw_financial_data(
-                            symbol, financial_data, stock_info
+                    # 处理返回类型：确保是 dict
+                    stock_info = self._normalize_stock_info(stock_info)
+
+                    if stock_info:
+                        # 解析AKShare财务数据
+                        logger.debug(f"🔧 调用AKShare解析函数，股价: {price_value}")
+                        metrics = self._parse_akshare_financial_data(
+                            financial_data, stock_info, price_value
                         )
-                        return metrics
+                        logger.debug(f"🔧 AKShare解析结果: {metrics}")
+                        if metrics:
+                            logger.info(f"✅ AKShare解析成功，返回指标")
+                            # 缓存原始财务数据到数据库（而不是解析后的指标）
+                            self._cache_raw_financial_data(
+                                symbol, financial_data, stock_info
+                            )
+                            return metrics
                     else:
                         logger.warning(f"⚠️ AKShare解析失败")
                 else:
@@ -1326,7 +1676,7 @@ class OptimizedChinaDataProvider:
         except Exception as e:
             logger.debug(f"获取{symbol}真实财务数据失败: {e}")
 
-        return None
+        return {}
 
     def _parse_mongodb_financial_data(
         self, financial_data: dict, price_value: float
@@ -1907,7 +2257,7 @@ class OptimizedChinaDataProvider:
 
         except Exception as e:
             logger.error(f"❌ MongoDB财务数据解析失败: {e}", exc_info=True)
-            return None
+            return {}
 
     def _parse_akshare_financial_data(
         self, financial_data: dict, stock_info: dict, price_value: float
@@ -1923,13 +2273,13 @@ class OptimizedChinaDataProvider:
             # main_indicators 可能是 DataFrame 或 list（to_dict('records') 的结果）
             if main_indicators is None:
                 logger.warning("AKShare主要财务指标为空")
-                return None
+                return {}
 
             # 检查是否为空
             if isinstance(main_indicators, list):
                 if not main_indicators:
                     logger.warning("AKShare主要财务指标列表为空")
-                    return None
+                    return {}
                 # 列表格式：[{指标: 值, ...}, ...]
                 # 转换为 DataFrame 以便统一处理
                 import pandas as pd
@@ -1937,7 +2287,7 @@ class OptimizedChinaDataProvider:
                 main_indicators = pd.DataFrame(main_indicators)
             elif hasattr(main_indicators, "empty") and main_indicators.empty:
                 logger.warning("AKShare主要财务指标DataFrame为空")
-                return None
+                return {}
 
             # main_indicators是DataFrame，需要转换为字典格式便于查找
             # 获取最新数据列（第3列，索引为2）
@@ -1946,7 +2296,7 @@ class OptimizedChinaDataProvider:
             )
             if not latest_col:
                 logger.warning("AKShare主要财务指标缺少数据列")
-                return None
+                return {}
 
             logger.info(f"📅 使用AKShare最新数据期间: {latest_col}")
 
@@ -2099,7 +2449,14 @@ class OptimizedChinaDataProvider:
 
                             eps_data = []
                             for col in value_cols:
-                                eps_val = eps_row[col].iloc[0]
+                                # 安全获取值，处理 Series 和 ndarray 类型
+                                col_data = eps_row[col]
+                                if hasattr(col_data, "iloc"):
+                                    eps_val = col_data.iloc[0]
+                                elif hasattr(col_data, "__getitem__"):
+                                    eps_val = col_data[0]
+                                else:
+                                    eps_val = None
                                 if (
                                     eps_val is not None
                                     and str(eps_val) != "nan"
@@ -2288,7 +2645,14 @@ class OptimizedChinaDataProvider:
 
                         revenue_data = []
                         for col in value_cols:
-                            rev_val = revenue_row[col].iloc[0]
+                            # 安全获取值，处理 Series 和 ndarray 类型
+                            col_data = revenue_row[col]
+                            if hasattr(col_data, "iloc"):
+                                rev_val = col_data.iloc[0]
+                            elif hasattr(col_data, "__getitem__"):
+                                rev_val = col_data[0]
+                            else:
+                                rev_val = None
                             if (
                                 rev_val is not None
                                 and str(rev_val) != "nan"
@@ -2372,7 +2736,7 @@ class OptimizedChinaDataProvider:
 
         except Exception as e:
             logger.error(f"❌ AKShare财务数据解析失败: {e}")
-            return None
+            return {}
 
     def _parse_financial_data(
         self, financial_data: dict, stock_info: dict, price_value: float
@@ -2411,7 +2775,7 @@ class OptimizedChinaDataProvider:
             # 检查是否有数据
             if not latest_income and not latest_balance:
                 logger.warning(f"⚠️ 财务数据为空，无法解析")
-                return None
+                return {}
 
             # 计算财务指标
             metrics = {}
@@ -2824,7 +3188,7 @@ class OptimizedChinaDataProvider:
 
         except Exception as e:
             logger.error(f"解析财务数据失败: {e}")
-            return None
+            return {}
 
     def _parse_financial_data_with_stock_info(
         self, financial_data: dict, stock_info: dict, price_value: float
@@ -3252,7 +3616,7 @@ class OptimizedChinaDataProvider:
 
         except Exception as e:
             logger.error(f"解析Tushare财务数据失败: {e}")
-            return None
+            return {}
 
     def _calculate_fundamental_score(self, metrics: dict, stock_info: dict) -> float:
         """计算基本面评分"""
@@ -3500,6 +3864,61 @@ class OptimizedChinaDataProvider:
 生成时间: {datetime.now(ZoneInfo(get_timezone_name())).strftime("%Y-%m-%d %H:%M:%S")}
 """
 
+    def _cache_raw_financial_data(
+        self, symbol: str, financial_data: dict, stock_info: dict
+    ):
+        """将原始财务数据缓存到数据库（简化版）"""
+        try:
+            from tradingagents.config.runtime_settings import use_app_cache_enabled
+            from .cache.app_adapter import get_mongodb_client
+            from datetime import datetime
+
+            if not use_app_cache_enabled(False):
+                return
+
+            client = get_mongodb_client()
+            if not client:
+                return
+
+            db = client.get_database("tradingagents")
+            collection = db.financial_data_cache
+
+            serializable_data = {}
+            for key, value in financial_data.items():
+                if hasattr(value, "to_dict"):
+                    serializable_data[key] = value.to_dict("records")
+                else:
+                    serializable_data[key] = value
+
+            cache_doc = {
+                "symbol": symbol,
+                "cache_type": "raw_financial_data",
+                "financial_data": serializable_data,
+                "stock_info": stock_info,
+                "updated_at": datetime.now(),
+            }
+
+            collection.replace_one(
+                {"symbol": symbol, "cache_type": "raw_financial_data"},
+                cache_doc,
+                upsert=True,
+            )
+
+            logger.info(f"[财务缓存] {symbol}原始财务数据已缓存")
+
+        except Exception as e:
+            logger.debug(f"[财务缓存] 缓存{symbol}数据失败: {e}")
+
+    def _normalize_stock_info(self, stock_info) -> dict:
+        """标准化 stock_info 为 dict 类型"""
+        if isinstance(stock_info, list):
+            if len(stock_info) > 0 and isinstance(stock_info[0], dict):
+                return stock_info[0]
+            return {}
+        elif isinstance(stock_info, dict):
+            return stock_info
+        return {}
+
 
 # 全局实例
 _china_data_provider = None
@@ -3545,264 +3964,3 @@ def get_china_fundamentals_cached(symbol: str, force_refresh: bool = False) -> s
     """
     provider = get_optimized_china_data_provider()
     return provider.get_fundamentals_data(symbol, force_refresh)
-
-
-# 在OptimizedChinaDataProvider类中添加缓存方法
-def _add_financial_cache_methods():
-    """为OptimizedChinaDataProvider类添加财务数据缓存方法"""
-
-    def _get_cached_raw_financial_data(self, symbol: str) -> dict:
-        """从数据库缓存获取原始财务数据"""
-        try:
-            from .cache.app_adapter import get_mongodb_client
-
-            client = get_mongodb_client()
-            if not client:
-                logger.debug(f"📊 [财务缓存] MongoDB客户端不可用")
-                return None
-
-            db = client.get_database("tradingagents")
-
-            # 第一优先级：从 stock_financial_data 集合读取（定时任务同步的持久化数据）
-            stock_financial_collection = db.stock_financial_data
-
-            # 尝试使用 symbol 或 code 字段查询（兼容不同的同步服务）
-            financial_doc = stock_financial_collection.find_one(
-                {"$or": [{"symbol": symbol}, {"code": symbol}]},
-                sort=[("updated_at", -1)],
-            )
-
-            if financial_doc:
-                logger.info(
-                    f"✅ [财务数据] 从 stock_financial_data 集合获取{symbol}财务数据"
-                )
-                # 将数据库文档转换为财务数据格式
-                financial_data = {}
-
-                # 提取各类财务数据
-                # 第一优先级：检查 raw_data 字段（Tushare 同步服务使用的结构）
-                if "raw_data" in financial_doc and isinstance(
-                    financial_doc["raw_data"], dict
-                ):
-                    raw_data = financial_doc["raw_data"]
-                    # 映射字段名：raw_data 中使用 cashflow_statement，我们需要 cash_flow
-                    if "balance_sheet" in raw_data and raw_data["balance_sheet"]:
-                        financial_data["balance_sheet"] = raw_data["balance_sheet"]
-                    if "income_statement" in raw_data and raw_data["income_statement"]:
-                        financial_data["income_statement"] = raw_data[
-                            "income_statement"
-                        ]
-                    if (
-                        "cashflow_statement" in raw_data
-                        and raw_data["cashflow_statement"]
-                    ):
-                        financial_data["cash_flow"] = raw_data[
-                            "cashflow_statement"
-                        ]  # 注意字段名映射
-                    if (
-                        "financial_indicators" in raw_data
-                        and raw_data["financial_indicators"]
-                    ):
-                        financial_data["main_indicators"] = raw_data[
-                            "financial_indicators"
-                        ]  # 注意字段名映射
-                    if "main_business" in raw_data and raw_data["main_business"]:
-                        financial_data["main_business"] = raw_data["main_business"]
-
-                # 第二优先级：检查 financial_data 嵌套字段
-                elif "financial_data" in financial_doc and isinstance(
-                    financial_doc["financial_data"], dict
-                ):
-                    nested_data = financial_doc["financial_data"]
-                    if "balance_sheet" in nested_data:
-                        financial_data["balance_sheet"] = nested_data["balance_sheet"]
-                    if "income_statement" in nested_data:
-                        financial_data["income_statement"] = nested_data[
-                            "income_statement"
-                        ]
-                    if "cash_flow" in nested_data:
-                        financial_data["cash_flow"] = nested_data["cash_flow"]
-                    if "main_indicators" in nested_data:
-                        financial_data["main_indicators"] = nested_data[
-                            "main_indicators"
-                        ]
-
-                # 第三优先级：直接从文档根级别读取
-                else:
-                    if (
-                        "balance_sheet" in financial_doc
-                        and financial_doc["balance_sheet"]
-                    ):
-                        financial_data["balance_sheet"] = financial_doc["balance_sheet"]
-                    if (
-                        "income_statement" in financial_doc
-                        and financial_doc["income_statement"]
-                    ):
-                        financial_data["income_statement"] = financial_doc[
-                            "income_statement"
-                        ]
-                    if "cash_flow" in financial_doc and financial_doc["cash_flow"]:
-                        financial_data["cash_flow"] = financial_doc["cash_flow"]
-                    if (
-                        "main_indicators" in financial_doc
-                        and financial_doc["main_indicators"]
-                    ):
-                        financial_data["main_indicators"] = financial_doc[
-                            "main_indicators"
-                        ]
-
-                if financial_data:
-                    logger.info(
-                        f"📊 [财务数据] 成功提取{symbol}的财务数据，包含字段: {list(financial_data.keys())}"
-                    )
-                    return financial_data
-                else:
-                    logger.warning(
-                        f"⚠️ [财务数据] {symbol}的 stock_financial_data 记录存在但无有效财务数据字段"
-                    )
-            else:
-                logger.debug(
-                    f"📊 [财务数据] stock_financial_data 集合中未找到{symbol}的记录"
-                )
-
-            # 第二优先级：从 financial_data_cache 集合读取（临时缓存）
-            collection = db.financial_data_cache
-
-            # 查找缓存的原始财务数据
-            cache_doc = collection.find_one(
-                {"symbol": symbol, "cache_type": "raw_financial_data"},
-                sort=[("updated_at", -1)],
-            )
-
-            if cache_doc:
-                # 检查缓存是否过期（24小时）
-                from datetime import datetime, timedelta
-
-                cache_time = cache_doc.get("updated_at")
-                if cache_time and datetime.now() - cache_time < timedelta(hours=24):
-                    financial_data = cache_doc.get("financial_data", {})
-                    if financial_data:
-                        logger.info(
-                            f"✅ [财务缓存] 从 financial_data_cache 获取{symbol}原始财务数据"
-                        )
-                        return financial_data
-                else:
-                    logger.debug(f"📊 [财务缓存] {symbol}原始财务数据缓存已过期")
-            else:
-                logger.debug(f"📊 [财务缓存] 未找到{symbol}原始财务数据缓存")
-
-        except Exception as e:
-            logger.debug(f"📊 [财务缓存] 获取{symbol}原始财务数据缓存失败: {e}")
-
-        return None
-
-    def _get_cached_stock_info(self, symbol: str) -> dict:
-        """从数据库缓存获取股票基本信息"""
-        try:
-            from .cache.app_adapter import get_mongodb_client
-
-            client = get_mongodb_client()
-            if not client:
-                return {}
-
-            db = client.get_database("tradingagents")
-            collection = db.stock_basic_info
-
-            # 查找股票基本信息
-            doc = collection.find_one({"code": symbol})
-            if doc:
-                return {
-                    "symbol": symbol,
-                    "name": doc.get("name", ""),
-                    "industry": doc.get("industry", ""),
-                    "market": doc.get("market", ""),
-                    "source": "database_cache",
-                }
-        except Exception as e:
-            logger.debug(f"📊 获取{symbol}股票基本信息缓存失败: {e}")
-
-        return {}
-
-    def _restore_financial_data_format(self, cached_data: dict) -> dict:
-        """将缓存的财务数据恢复为DataFrame格式"""
-        try:
-            import pandas as pd
-
-            restored_data = {}
-
-            for key, value in cached_data.items():
-                if isinstance(value, list) and value:  # 如果是list格式的数据
-                    # 转换回DataFrame
-                    restored_data[key] = pd.DataFrame(value)
-                else:
-                    restored_data[key] = value
-
-            return restored_data
-        except Exception as e:
-            logger.debug(f"📊 恢复财务数据格式失败: {e}")
-            return cached_data
-
-    def _cache_raw_financial_data(
-        self, symbol: str, financial_data: dict, stock_info: dict
-    ):
-        """将原始财务数据缓存到数据库"""
-        try:
-            from tradingagents.config.runtime_settings import use_app_cache_enabled
-
-            if not use_app_cache_enabled(False):
-                logger.debug(f"📊 [财务缓存] 应用缓存未启用，跳过缓存保存")
-                return
-
-            from .cache.app_adapter import get_mongodb_client
-
-            client = get_mongodb_client()
-            if not client:
-                logger.debug(f"📊 [财务缓存] MongoDB客户端不可用")
-                return
-
-            db = client.get_database("tradingagents")
-            collection = db.financial_data_cache
-
-            from datetime import datetime
-
-            # 将DataFrame转换为可序列化的格式
-            serializable_data = {}
-            for key, value in financial_data.items():
-                if hasattr(value, "to_dict"):  # pandas DataFrame
-                    serializable_data[key] = value.to_dict("records")
-                else:
-                    serializable_data[key] = value
-
-            cache_doc = {
-                "symbol": symbol,
-                "cache_type": "raw_financial_data",
-                "financial_data": serializable_data,
-                "stock_info": stock_info,
-                "updated_at": datetime.now(),
-            }
-
-            # 使用upsert更新或插入
-            collection.replace_one(
-                {"symbol": symbol, "cache_type": "raw_financial_data"},
-                cache_doc,
-                upsert=True,
-            )
-
-            logger.info(f"✅ [财务缓存] {symbol}原始财务数据已缓存到数据库")
-
-        except Exception as e:
-            logger.debug(f"📊 [财务缓存] 缓存{symbol}原始财务数据失败: {e}")
-
-    # 将方法添加到类中
-    OptimizedChinaDataProvider._get_cached_raw_financial_data = (
-        _get_cached_raw_financial_data
-    )
-    OptimizedChinaDataProvider._get_cached_stock_info = _get_cached_stock_info
-    OptimizedChinaDataProvider._restore_financial_data_format = (
-        _restore_financial_data_format
-    )
-    OptimizedChinaDataProvider._cache_raw_financial_data = _cache_raw_financial_data
-
-
-# 执行方法添加
-_add_financial_cache_methods()

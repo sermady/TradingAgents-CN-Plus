@@ -68,6 +68,11 @@ def _standardize_cached_data(doc: Dict[str, Any]) -> Dict[str, Any]:
         "ocfps": doc.get("ocfps"),
         "capital_rese_ps": doc.get("capital_rese_ps"),
         "undist_profit_ps": doc.get("undist_profit_ps"),
+        # 同比增速指标 (2026-02-10 新增)
+        "or_yoy": doc.get("or_yoy"),
+        "q_profit_yoy": doc.get("q_profit_yoy"),
+        "eps_yoy": doc.get("eps_yoy"),
+        "roe_yoy": doc.get("roe_yoy"),
         "data_source": doc.get("data_source", "app_cache"),
         "data_version": doc.get("data_version", 1),
         "last_sync": doc.get("last_sync", datetime.now().isoformat()),

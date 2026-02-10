@@ -145,9 +145,9 @@ class TushareBasicStandardizer(StockBasicStandardizer):
         pe = convert_to_float(pe_ttm)
         growth = convert_to_float(growth_rate)
 
-        # 添加调试日志
+        # 调试日志（仅DEBUG级别）
         if pe is not None and growth is not None:
-            logger.info(f"[PEG_CALC] pe={pe}, growth={growth}")
+            logger.debug(f"[PEG_CALC] pe={pe}, growth={growth}")
 
         if pe is None or growth is None:
             return None
@@ -159,15 +159,6 @@ class TushareBasicStandardizer(StockBasicStandardizer):
         return round(pe / growth, 4)
 
     def _transform(self, raw_data: Dict[str, Any]) -> StockBasicData:
-        # DEBUG: Print to stdout to bypass logging config
-        try:
-            p_pe = raw_data.get("pe_ttm")
-            p_growth = raw_data.get("q_profit_yoy")
-            p_peg = self._calculate_peg(p_pe, p_growth)
-            print(f"DEBUG_STDOUT: pe_ttm={p_pe}, growth={p_growth} => peg={p_peg}")
-        except Exception as e:
-            print(f"DEBUG_STDOUT: Error calculating PEG in transform: {e}")
-
         code = (
             raw_data.get("ts_code", "").split(".")[0] if raw_data.get("ts_code") else ""
         )
@@ -218,6 +209,11 @@ class TushareBasicStandardizer(StockBasicStandardizer):
             ocfps=convert_to_float(raw_data.get("ocfps")),
             capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
             undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
+            # 同比增速指标 (2026-02-10 新增)
+            or_yoy=convert_to_float(raw_data.get("or_yoy")),
+            q_profit_yoy=convert_to_float(raw_data.get("q_profit_yoy")),
+            eps_yoy=convert_to_float(raw_data.get("eps_yoy")),
+            roe_yoy=convert_to_float(raw_data.get("roe_yoy")),
             data_source=self.PROVIDER_NAME,
             data_version=1,
         )
@@ -228,6 +224,29 @@ class BaostockBasicStandardizer(StockBasicStandardizer):
 
     PROVIDER_NAME = "baostock"
 
+    def _calculate_peg(self, pe_ttm: Any, growth_rate: Any) -> Optional[float]:
+        """
+        计算PEG = PE_TTM / Growth Rate
+
+        Args:
+            pe_ttm: 滚动市盈率
+            growth_rate: 净利润增长率(%)
+
+        Returns:
+            PEG值
+        """
+        pe = convert_to_float(pe_ttm)
+        growth = convert_to_float(growth_rate)
+
+        if pe is None or growth is None:
+            return None
+
+        # 避免除以零
+        if abs(growth) < 0.001:
+            return None
+
+        return round(pe / growth, 4)
+
     def _transform(self, raw_data: Dict[str, Any]) -> StockBasicData:
         code = raw_data.get("code", "")
         if not code:
@@ -265,10 +284,24 @@ class BaostockBasicStandardizer(StockBasicStandardizer):
             pb=convert_to_float(raw_data.get("pb")),
             ps=convert_to_float(raw_data.get("ps")),
             pcf=convert_to_float(raw_data.get("pcf")),
+            peg=self._calculate_peg(
+                raw_data.get("pe_ttm"), raw_data.get("q_profit_yoy")
+            ),
             total_mv=convert_to_float(raw_data.get("total_mv")),
             circ_mv=convert_to_float(raw_data.get("circ_mv")),
             turnover_rate=convert_to_float(raw_data.get("turnover_rate")),
             volume_ratio=convert_to_float(raw_data.get("volume_ratio")),
+            # 每股指标 (2026-02-02 新增)
+            eps=convert_to_float(raw_data.get("eps")),
+            bps=convert_to_float(raw_data.get("bps")),
+            ocfps=convert_to_float(raw_data.get("ocfps")),
+            capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
+            undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
+            # 同比增速指标 (2026-02-10 新增)
+            or_yoy=convert_to_float(raw_data.get("or_yoy")),
+            q_profit_yoy=convert_to_float(raw_data.get("q_profit_yoy")),
+            eps_yoy=convert_to_float(raw_data.get("eps_yoy")),
+            roe_yoy=convert_to_float(raw_data.get("roe_yoy")),
             data_source=self.PROVIDER_NAME,
             data_version=1,
         )
@@ -279,6 +312,29 @@ class AkShareBasicStandardizer(StockBasicStandardizer):
 
     PROVIDER_NAME = "akshare"
 
+    def _calculate_peg(self, pe_ttm: Any, growth_rate: Any) -> Optional[float]:
+        """
+        计算PEG = PE_TTM / Growth Rate
+
+        Args:
+            pe_ttm: 滚动市盈率
+            growth_rate: 净利润增长率(%)
+
+        Returns:
+            PEG值
+        """
+        pe = convert_to_float(pe_ttm)
+        growth = convert_to_float(growth_rate)
+
+        if pe is None or growth is None:
+            return None
+
+        # 避免除以零
+        if abs(growth) < 0.001:
+            return None
+
+        return round(pe / growth, 4)
+
     def _transform(self, raw_data: Dict[str, Any]) -> StockBasicData:
         code = raw_data.get("code", "")
         if not code:
@@ -316,10 +372,24 @@ class AkShareBasicStandardizer(StockBasicStandardizer):
             pb=convert_to_float(raw_data.get("pb")),
             ps=convert_to_float(raw_data.get("ps")),
             pcf=convert_to_float(raw_data.get("pcf")),
+            peg=self._calculate_peg(
+                raw_data.get("pe_ttm"), raw_data.get("q_profit_yoy")
+            ),
             total_mv=convert_to_float(raw_data.get("total_mv")),
             circ_mv=convert_to_float(raw_data.get("circ_mv")),
             turnover_rate=convert_to_float(raw_data.get("turnover_rate")),
             volume_ratio=convert_to_float(raw_data.get("volume_ratio")),
+            # 每股指标 (2026-02-02 新增)
+            eps=convert_to_float(raw_data.get("eps")),
+            bps=convert_to_float(raw_data.get("bps")),
+            ocfps=convert_to_float(raw_data.get("ocfps")),
+            capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
+            undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
+            # 同比增速指标 (2026-02-10 新增)
+            or_yoy=convert_to_float(raw_data.get("or_yoy")),
+            q_profit_yoy=convert_to_float(raw_data.get("q_profit_yoy")),
+            eps_yoy=convert_to_float(raw_data.get("eps_yoy")),
+            roe_yoy=convert_to_float(raw_data.get("roe_yoy")),
             data_source=self.PROVIDER_NAME,
             data_version=1,
         )

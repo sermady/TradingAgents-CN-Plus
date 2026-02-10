@@ -153,6 +153,17 @@ STOCK_BASIC_OPTIONAL_FIELDS = {
     "circ_mv": {"type": "number", "description": "流通市值（亿元）", "example": 1480.2},
     "turnover_rate": {"type": "number", "description": "换手率（%）", "example": 0.85},
     "volume_ratio": {"type": "number", "description": "量比", "example": 1.2},
+    # 每股指标 (2026-02-02 新增)
+    "eps": {"type": "number", "description": "每股收益", "example": 2.5},
+    "bps": {"type": "number", "description": "每股净资产", "example": 12.8},
+    "ocfps": {"type": "number", "description": "每股经营现金流", "example": 3.2},
+    "capital_rese_ps": {"type": "number", "description": "每股公积金", "example": 5.5},
+    "undist_profit_ps": {"type": "number", "description": "每股未分配利润", "example": 8.3},
+    # 同比增速指标 (2026-02-10 新增)
+    "or_yoy": {"type": "number", "description": "营业收入同比增长率(%)", "example": 15.5},
+    "q_profit_yoy": {"type": "number", "description": "净利润同比增长率(%)", "example": 20.3},
+    "eps_yoy": {"type": "number", "description": "每股收益同比增长率(%)", "example": 10.2},
+    "roe_yoy": {"type": "number", "description": "净资产收益率同比增长率(%)", "example": 5.8},
     "last_sync": {
         "type": "string",
         "description": "最后同步时间",
@@ -374,6 +385,11 @@ class StockBasicData:
     ocfps: Optional[float] = None  # 每股经营现金流
     capital_rese_ps: Optional[float] = None  # 每股公积金
     undist_profit_ps: Optional[float] = None  # 每股未分配利润
+    # 同比增速指标 (2026-02-10 新增: 修复增速数据显示 N/A 问题)
+    or_yoy: Optional[float] = None  # 营业收入同比增长率
+    q_profit_yoy: Optional[float] = None  # 净利润同比增长率
+    eps_yoy: Optional[float] = None  # 每股收益同比增长率
+    roe_yoy: Optional[float] = None  # 净资产收益率同比增长率
 
     last_sync: str = ""
     data_version: int = 1
@@ -446,6 +462,11 @@ class StockBasicData:
             ocfps=convert_to_float(raw_data.get("ocfps")),
             capital_rese_ps=convert_to_float(raw_data.get("capital_rese_ps")),
             undist_profit_ps=convert_to_float(raw_data.get("undist_profit_ps")),
+            # 同比增速指标 (2026-02-10 新增: 修复增速数据显示 N/A 问题)
+            or_yoy=convert_to_float(raw_data.get("or_yoy")),
+            q_profit_yoy=convert_to_float(raw_data.get("q_profit_yoy")),
+            eps_yoy=convert_to_float(raw_data.get("eps_yoy")),
+            roe_yoy=convert_to_float(raw_data.get("roe_yoy")),
             last_sync=datetime.now().isoformat(),
             data_source=data_source,
             data_version=1,

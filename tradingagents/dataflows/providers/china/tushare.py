@@ -488,8 +488,11 @@ class TushareProvider(BaseStockDataProvider):
             # 获取数据
             df = await asyncio.to_thread(self.api.stock_basic, **params)
 
-            if df is None or df.empty:
-                return None
+            if df is None:
+                return []
+
+            if df.empty:
+                return []
 
             # 转换为标准格式
             stock_list = []
@@ -502,7 +505,7 @@ class TushareProvider(BaseStockDataProvider):
 
         except Exception as e:
             self.logger.error(f"❌ 获取股票列表失败: {e}")
-            return None
+            return []
 
     async def get_stock_basic_info(
         self, symbol: Optional[str] = None
