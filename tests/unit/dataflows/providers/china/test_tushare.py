@@ -43,9 +43,7 @@ class TestTushareProviderConnection:
         mock_ts, mock_pro = mock_tushare_module
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -74,9 +72,7 @@ class TestTushareProviderConnection:
         mock_ts, mock_pro = mock_tushare_module
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": ""}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -121,9 +117,7 @@ class TestTushareProviderStockList:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -199,9 +193,7 @@ class TestTushareProviderQuotes:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -311,9 +303,7 @@ class TestTushareProviderHistorical:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -337,7 +327,13 @@ class TestTushareProviderHistorical:
         mock_df = pd.DataFrame(
             {
                 "ts_code": ["000001.SZ"] * 5,
-                "trade_date": ["20240101", "20240102", "20240103", "20240104", "20240105"],
+                "trade_date": [
+                    "20240101",
+                    "20240102",
+                    "20240103",
+                    "20240104",
+                    "20240105",
+                ],
                 "open": [10.0, 10.2, 10.1, 10.3, 10.5],
                 "high": [10.5, 10.4, 10.6, 10.7, 10.8],
                 "low": [9.8, 10.0, 10.0, 10.2, 10.3],
@@ -367,7 +363,7 @@ class TestTushareProviderHistorical:
         """2. test_get_historical_data_different_periods - 不同周期"""
         provider, mock_pro = provider_with_mock
 
-        # 测试周线
+        # 测试周线 - 使用 pro_bar 接口（实际实现使用 ts.pro_bar）
         mock_weekly_df = pd.DataFrame(
             {
                 "ts_code": ["000001.SZ"],
@@ -380,14 +376,19 @@ class TestTushareProviderHistorical:
                 "amount": [57700],
             }
         )
-        mock_pro.weekly.return_value = mock_weekly_df
 
-        result = await provider.get_historical_data(
-            "000001", "2024-01-01", "2024-01-05", period="weekly"
-        )
+        # Mock ts.pro_bar 函数
+        with patch("tradingagents.dataflows.providers.china.tushare.ts") as mock_ts:
+            mock_ts.pro_bar.return_value = mock_weekly_df
+            result = await provider.get_historical_data(
+                "000001", "2024-01-01", "2024-01-05", period="weekly"
+            )
 
-        assert result is not None
-        mock_pro.weekly.assert_called_once()
+            assert result is not None
+            # pro_bar 应该被调用，传入 freq='W' 表示周线
+            mock_ts.pro_bar.assert_called_once()
+            call_kwargs = mock_ts.pro_bar.call_args.kwargs
+            assert call_kwargs.get("freq") == "W"
 
     @pytest.mark.asyncio
     async def test_get_historical_data_empty_range(self, provider_with_mock):
@@ -398,7 +399,10 @@ class TestTushareProviderHistorical:
         mock_pro.daily.return_value = pd.DataFrame()
 
         result = await provider.get_historical_data(
-            "000001", "2024-01-01", "2023-01-01", period="daily"  # 无效范围
+            "000001",
+            "2024-01-01",
+            "2023-01-01",
+            period="daily",  # 无效范围
         )
 
         assert result is None
@@ -415,9 +419,7 @@ class TestTushareProviderFinancial:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -501,8 +503,8 @@ class TestTushareProviderFinancial:
 
         result = await provider.get_financial_data("000001")
 
-        # 应该返回空字典或处理缺失数据
-        assert isinstance(result, dict)
+        # 当所有财务数据都缺失时，返回None
+        assert result is None
 
 
 class TestTushareProviderErrorHandling:
@@ -516,9 +518,7 @@ class TestTushareProviderErrorHandling:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -581,9 +581,7 @@ class TestTushareProviderAdditional:
         mock_ts.pro_api.return_value = mock_pro
 
         with patch.dict("os.environ", {"TUSHARE_TOKEN": "test_token"}):
-            with patch(
-                "tradingagents.dataflows.providers.china.tushare.ts", mock_ts
-            ):
+            with patch("tradingagents.dataflows.providers.china.tushare.ts", mock_ts):
                 with patch(
                     "tradingagents.dataflows.providers.china.tushare.TUSHARE_AVAILABLE",
                     True,
@@ -649,7 +647,9 @@ class TestTushareProviderAdditional:
         result1 = await provider.get_realtime_quotes_batch(["000001"])
 
         # 验证缓存状态
-        from tradingagents.dataflows.providers.china.tushare import _is_batch_cache_valid
+        from tradingagents.dataflows.providers.china.tushare import (
+            _is_batch_cache_valid,
+        )
 
         # 缓存应该有效
         assert _is_batch_cache_valid() is True
