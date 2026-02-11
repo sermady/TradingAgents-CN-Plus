@@ -3,6 +3,7 @@
 自选股服务
 """
 
+import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from bson import ObjectId
@@ -10,6 +11,8 @@ from bson import ObjectId
 from app.core.database import get_mongo_db
 from app.models.user import FavoriteStock
 from app.services.quotes_service import get_quotes_service
+
+logger = logging.getLogger("webapi")
 
 
 class FavoritesService:
@@ -55,8 +58,69 @@ class FavoritesService:
             "volume": None,
         }
 
+    def _infer_exchange_from_code(self, code: str) -> str:
+        """根据股票代码推断交易所。
+
+        A股代码规则：
+        - 600/601/603/605/688/689 开头：上海证券交易所
+        - 000/001/002/003/300/301/303 开头：深圳证券交易所
+        - 430/83/87/88 开头：北京证券交易所
+        """
+        if not code:
+            return "-"
+
+        code = str(code).zfill(6)
+
+        # 上海证券交易所
+        if code.startswith(("600", "601", "603", "605", "688", "689")):
+            return "上海证券交易所"
+
+        # 深圳证券交易所
+        if code.startswith(("000", "001", "002", "003", "300", "301", "303")):
+            return "深圳证券交易所"
+
+        # 北京证券交易所
+        if code.startswith(("430", "83", "87", "88")):
+            return "北京证券交易所"
+
+        return "-"
+
+    def _infer_board_from_code(self, code: str) -> str:
+        """根据股票代码推断板块。
+
+        A股代码规则：
+        - 600/601/603/605/000/001 开头：主板
+        - 002/003 开头：中小板（现为主板）
+        - 300/301/303 开头：创业板
+        - 688/689 开头：科创板
+        - 430/83/87/88 开头：北交所
+        """
+        if not code:
+            return "-"
+
+        code = str(code).zfill(6)
+
+        # 科创板
+        if code.startswith(("688", "689")):
+            return "科创板"
+
+        # 创业板
+        if code.startswith(("300", "301", "303")):
+            return "创业板"
+
+        # 北交所
+        if code.startswith(("430", "83", "87", "88")):
+            return "北交所"
+
+        # 主板（包括原中小板）
+        if code.startswith(("600", "601", "603", "605", "000", "001", "002", "003")):
+            return "主板"
+
+        return "-"
+
     async def get_user_favorites(self, user_id: str) -> List[Dict[str, Any]]:
         """获取用户自选股列表，并批量拉取实时行情进行富集（兼容字符串ID与ObjectId）。"""
+        logger.info(f"🔍 get_user_favorites 被调用，user_id={user_id}")
         db = await self._get_db()
 
         favorites: List[Dict[str, Any]] = []
@@ -79,41 +143,58 @@ class FavoritesService:
         # [类型安全] 确保codes是list类型（支持list/set等可迭代类型）
         if not isinstance(codes, list):
             codes = list(codes)
+        logger.info(f"🔍 获取自选股基础信息，股票代码: {codes}")
         if codes:
             try:
                 # 🔥 获取数据源优先级配置
                 from app.core.unified_config_service import get_config_manager
 
                 config = get_config_manager()
-                data_source_configs = await config.get_data_source_configs_async()
+                data_source_configs = config.get_data_source_configs()
 
                 # 提取启用的数据源，按优先级排序
+                # 🔥 data_source_configs 是字典列表，不是对象列表
                 enabled_sources = [
-                    ds.type.lower()
+                    ds.get("type", "").lower()
                     for ds in data_source_configs
-                    if ds.enabled
-                    and ds.type.lower() in ["tushare", "akshare", "baostock"]
+                    if ds.get("enabled")
+                    and ds.get("type", "").lower() in ["tushare", "akshare", "baostock"]
                 ]
 
                 if not enabled_sources:
                     enabled_sources = ["tushare", "akshare", "baostock"]
 
-                preferred_source = enabled_sources[0] if enabled_sources else "tushare"
-
-                # 从 stock_basic_info 获取板块信息（只查询优先级最高的数据源）
+                # 从 stock_basic_info 获取板块信息（按数据源优先级依次查询）
                 basic_info_coll = db["stock_basic_info"]
                 # [分页] 限制返回数量，防止内存溢出（用户自选股通常<500只）
                 max_codes = min(len(codes), 500)
-                cursor = basic_info_coll.find(
-                    {
-                        "code": {"$in": codes[:max_codes]},
-                        "source": preferred_source,
-                    },  # [火] 添加数据源筛选
-                    {"code": 1, "sse": 1, "market": 1, "_id": 0},
-                ).limit(max_codes)
-                basic_docs = await cursor.to_list(length=max_codes)
-                basic_map = {str(d.get("code")).zfill(6): d for d in (basic_docs or [])}
 
+                # 🔥 按优先级依次查询各数据源，直到找到所有股票的信息
+                basic_map = {}
+                remaining_codes = codes[:max_codes].copy()
+
+                for source in enabled_sources:
+                    if not remaining_codes:
+                        break
+
+                    cursor = basic_info_coll.find(
+                        {
+                            "code": {"$in": remaining_codes},
+                            "source": source,
+                        },
+                        {"code": 1, "sse": 1, "market": 1, "_id": 0},
+                    ).limit(max_codes)
+                    docs = await cursor.to_list(length=max_codes)
+
+                    for doc in docs:
+                        code = str(doc.get("code")).zfill(6)
+                        if code not in basic_map:
+                            basic_map[code] = doc
+                            if code in remaining_codes:
+                                remaining_codes.remove(code)
+
+                # 填充板块和交易所信息
+                logger.info(f"🔍 开始填充板块和交易所信息，共 {len(items)} 只股票")
                 for it in items:
                     code = it.get("stock_code")
                     basic = basic_map.get(code)
@@ -122,10 +203,18 @@ class FavoritesService:
                         it["board"] = basic.get("market", "-")
                         # sse 字段表示交易所（上海证券交易所、深圳证券交易所等）
                         it["exchange"] = basic.get("sse", "-")
+                        logger.debug(
+                            f"✅ 从数据库获取 {code}: board={it['board']}, exchange={it['exchange']}"
+                        )
                     else:
-                        it["board"] = "-"
-                        it["exchange"] = "-"
+                        # 🔥 从股票代码推断交易所和板块
+                        it["exchange"] = self._infer_exchange_from_code(code)
+                        it["board"] = self._infer_board_from_code(code)
+                        logger.info(
+                            f"🔥 从代码推断 {code}: board={it['board']}, exchange={it['exchange']}"
+                        )
             except Exception as e:
+                logger.error(f"❌ 获取板块交易所信息失败: {e}")
                 # 查询失败时设置默认值
                 for it in items:
                     it["board"] = "-"
