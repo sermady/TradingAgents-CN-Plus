@@ -527,7 +527,7 @@ async function handleSync() {
 
   syncLoading.value = true
   try {
-    const res = await stockSyncApi.syncSingle({
+    const data = await stockSyncApi.syncSingle({
       symbol: code.value,
       sync_realtime: syncForm.syncTypes.includes('realtime'),
       sync_historical: syncForm.syncTypes.includes('historical'),
@@ -537,8 +537,9 @@ async function handleSync() {
       days: syncForm.days
     }) as any
 
-    if (res.success) {
-      const data = res.data
+    // 🔥 修复：ApiClient.post 已经解包了响应，直接返回 data 部分
+    // 使用 overall_success 判断同步是否成功
+    if (data.overall_success !== false) {
       let message = `股票 ${code.value} 数据同步完成\n`
 
       if (data.realtime_sync) {
@@ -585,7 +586,7 @@ async function handleSync() {
       await fetchQuote()
       await fetchFundamentals()
     } else {
-      ElMessage.error(res.message || '同步失败')
+      ElMessage.error('同步失败')
     }
   } catch (error: any) {
     console.error('同步失败:', error)

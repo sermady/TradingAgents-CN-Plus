@@ -547,7 +547,7 @@ const handleBatchSync = async () => {
   try {
     const symbols = selectedStocks.value.map(stock => stock.stock_code)
 
-    const res = await stockSyncApi.syncBatch({
+    const data = await stockSyncApi.syncBatch({
       symbols,
       sync_historical: form.syncTypes.includes('historical'),
       sync_financial: form.syncTypes.includes('financial'),
@@ -555,8 +555,9 @@ const handleBatchSync = async () => {
       days: form.days
     }) as any
 
-    if (res.success) {
-      const data = res.data
+    // 🔥 修复：ApiClient.post 已经解包了响应，直接返回 data 部分
+    // 使用 total_success 判断批量同步是否成功
+    if (data.total_success > 0) {
       let message = `批量同步完成 (共 ${symbols.length} 只股票)\n`
 
       if (data.historical_sync) {
@@ -575,7 +576,7 @@ const handleBatchSync = async () => {
       batchSyncDialogVisible.value = false
       await loadFavorites()
     } else {
-      ElMessage.error((res as any).message || '批量同步失败')
+      ElMessage.error('批量同步失败')
     }
   } catch (error: any) {
     console.error('批量同步失败:', error)
@@ -605,7 +606,7 @@ const handleSingleSync = async () => {
 
   singleSyncLoading.value = true
   try {
-    const res = await stockSyncApi.syncSingle({
+    const data = await stockSyncApi.syncSingle({
       symbol: currentSyncStock.value.stock_code,
       sync_realtime: form.syncTypes.includes('realtime'),
       sync_historical: form.syncTypes.includes('historical'),
@@ -614,8 +615,9 @@ const handleSingleSync = async () => {
       days: form.days
     }) as any
 
-    if (res.success) {
-      const data = res.data
+    // 🔥 修复：ApiClient.post 已经解包了响应，直接返回 data 部分
+    // 使用 overall_success 判断同步是否成功
+    if (data.overall_success !== false) {
       let message = `股票 ${currentSyncStock.value.stock_code} 数据同步完成\n`
 
       if (data.realtime_sync) {
@@ -654,7 +656,7 @@ const handleSingleSync = async () => {
       singleSyncDialogVisible.value = false
       await loadFavorites()
     } else {
-      ElMessage.error((res as any).message || '同步失败')
+      ElMessage.error('同步失败')
     }
   } catch (error: any) {
     console.error('同步失败:', error)
