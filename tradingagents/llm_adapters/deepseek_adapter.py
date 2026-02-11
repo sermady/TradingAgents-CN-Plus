@@ -25,6 +25,7 @@ from tradingagents.utils.llm_cache import get_llm_cache
 
 # 导入超时处理
 import signal
+import platform
 from contextlib import contextmanager
 
 
@@ -36,18 +37,23 @@ class TimeoutException(Exception):
 
 @contextmanager
 def timeout_context(seconds: int):
-    """超时上下文管理器"""
+    """超时上下文管理器（支持Unix和Windows）"""
 
     def timeout_handler(signum, frame):
         raise TimeoutException(f"LLM调用超时 ({seconds}秒)")
 
-    # 设置信号处理器（仅在Unix系统有效）
+    # Windows不支持signal.SIGALRM，直接yield
+    if platform.system() == "Windows":
+        yield
+        return
+
+    # Unix/Linux/Mac系统使用signal实现超时
     try:
         old_handler = signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(seconds)
         yield
     except ValueError:
-        # Windows不支持signal.SIGALRM，使用time-based检查
+        # 如果signal不可用，直接yield
         yield
     finally:
         try:
