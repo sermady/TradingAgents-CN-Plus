@@ -331,22 +331,24 @@ def bridge_config_to_env():
                     logger.info(f"  🔍 实际传入的连接字符串: {mongodb_conn}")
                     logger.info(f"  🔍 实际传入的数据库名称: {mongodb_db}")
 
-                    config_manager.mongodb_storage = MongoDBStorage(
+                    # 🔧 修复：直接操作私有属性，避免 property 没有 setter 的问题
+                    config_manager._mongodb_storage = MongoDBStorage(
                         connection_string=mongodb_conn, database_name=mongodb_db
                     )
-                    if config_manager.mongodb_storage.is_connected():
+                    config_manager._mongodb_initialized = True
+                    if config_manager._mongodb_storage.is_connected():
                         logger.info("✅ tradingagents MongoDB 存储已启用")
                     else:
                         logger.warning(
                             "⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储"
                         )
-                        config_manager.mongodb_storage = None
+                        config_manager._mongodb_storage = None
                 except Exception as e:
                     logger.error(f"❌ 创建 MongoDBStorage 实例失败: {e}")
                     import traceback
 
                     logger.error(traceback.format_exc())
-                    config_manager.mongodb_storage = None
+                    config_manager._mongodb_storage = None
             else:
                 logger.info("ℹ️ USE_MONGODB_STORAGE 未启用，将使用 JSON 文件存储")
         except Exception as e:

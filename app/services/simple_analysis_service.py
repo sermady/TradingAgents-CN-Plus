@@ -1001,14 +1001,16 @@ class SimpleAnalysisService:
             )
 
             # 在线程池中创建Redis进度跟踪器（避免阻塞事件循环）
+            # 🔥 修复：提供默认参数，避免 request.parameters 为 None 时出错
+            parameters = request.parameters or AnalysisParameters()
+
             def create_progress_tracker():
                 """在线程中创建进度跟踪器"""
                 logger.info(f"📊 [线程] 创建进度跟踪器: {task_id}")
                 tracker = RedisProgressTracker(
                     task_id=task_id,
-                    analysts=request.parameters.selected_analysts
-                    or ["market", "fundamentals"],
-                    research_depth=request.parameters.research_depth or "标准",
+                    analysts=parameters.selected_analysts or ["market", "fundamentals"],
+                    research_depth=parameters.research_depth or "标准",
                     llm_provider="dashscope",
                 )
                 logger.info(f"✅ [线程] 进度跟踪器创建完成: {task_id}")
@@ -3326,6 +3328,7 @@ class SimpleAnalysisService:
             # 导入报告摘要生成器
             try:
                 from tradingagents.utils.report_summarizer import summarize_report
+
                 summarizer_available = True
             except ImportError:
                 summarizer_available = False
@@ -3349,17 +3352,28 @@ class SimpleAnalysisService:
                             if module_key == "investment_debate_state":
                                 # 研究团队决策报告 - 生成摘要
                                 summary, full_content = summarize_report(
-                                    report_content, "research", stock_symbol, stock_symbol
+                                    report_content,
+                                    "research",
+                                    stock_symbol,
+                                    stock_symbol,
                                 )
                                 # 保存完整版
-                                full_path = reports_dir / "research_team_decision_full.md"
+                                full_path = (
+                                    reports_dir / "research_team_decision_full.md"
+                                )
                                 with open(full_path, "w", encoding="utf-8") as f:
                                     f.write(full_content)
-                                saved_files["research_team_decision_full"] = str(full_path)
-                                logger.info(f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)")
+                                saved_files["research_team_decision_full"] = str(
+                                    full_path
+                                )
+                                logger.info(
+                                    f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)"
+                                )
                                 # 使用摘要版作为主文件
                                 report_content = summary
-                                logger.info(f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+                                logger.info(
+                                    f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary) / len(full_content) * 100:.1f}%)"
+                                )
 
                             elif module_key == "risk_debate_state":
                                 # 风险管理决策报告 - 生成摘要
@@ -3367,14 +3381,22 @@ class SimpleAnalysisService:
                                     report_content, "risk", stock_symbol, stock_symbol
                                 )
                                 # 保存完整版
-                                full_path = reports_dir / "risk_management_decision_full.md"
+                                full_path = (
+                                    reports_dir / "risk_management_decision_full.md"
+                                )
                                 with open(full_path, "w", encoding="utf-8") as f:
                                     f.write(full_content)
-                                saved_files["risk_management_decision_full"] = str(full_path)
-                                logger.info(f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)")
+                                saved_files["risk_management_decision_full"] = str(
+                                    full_path
+                                )
+                                logger.info(
+                                    f"✅ 保存完整版报告: {full_path} ({len(full_content):,} 字符)"
+                                )
                                 # 使用摘要版作为主文件
                                 report_content = summary
-                                logger.info(f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary)/len(full_content)*100:.1f}%)")
+                                logger.info(
+                                    f"📝 生成摘要版: {len(summary):,} 字符 (压缩率: {len(summary) / len(full_content) * 100:.1f}%)"
+                                )
 
                         # 保存到文件 - 使用web目录的文件名
                         file_path = reports_dir / filename
