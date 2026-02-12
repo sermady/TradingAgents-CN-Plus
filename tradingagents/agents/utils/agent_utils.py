@@ -879,13 +879,39 @@ class Toolkit:
 
                 if not stock_data.empty:
                     row = stock_data.iloc[0]
+
+                    # 获取PS和PS_TTM值
+                    ps_value = row.get("ps", "N/A")
+                    ps_ttm_value = row.get("ps_ttm", "N/A")
+
+                    # 检查PS_TTM是否可用
+                    ps_ttm_available = pd.notna(ps_ttm_value) and ps_ttm_value != "N/A"
+
                     report_lines.extend(
                         [
                             f"市盈率 (PE): {row.get('pe', 'N/A')}",
                             f"滚动市盈率 (PE_TTM): {row.get('pe_ttm', 'N/A')}",
                             f"市净率 (PB): {row.get('pb', 'N/A')}",
-                            f"市销率 (PS): {row.get('ps', 'N/A')}",
-                            f"滚动市销率 (PS_TTM): {row.get('ps_ttm', 'N/A')}",
+                            "",
+                            "## 📊 市销率（PS）指标说明",
+                            f"市销率 (PS静态): {ps_value}",
+                            f"滚动市销率 (PS_TTM): {ps_ttm_value}",
+                        ]
+                    )
+
+                    # 添加PS指标使用建议
+                    if ps_ttm_available:
+                        report_lines.append(
+                            "✅ **建议**：PS_TTM数据可用，估值分析时优先使用PS_TTM（更能反映最近12个月营收水平）"
+                        )
+                    else:
+                        report_lines.append(
+                            "⚠️ **注意**：PS_TTM数据不可用，估值分析时将使用PS静态指标，请明确说明使用的是单期营收数据"
+                        )
+
+                    report_lines.extend(
+                        [
+                            "",
                             f"股息率 (%): {row.get('dv_ratio', 'N/A')}",
                             f"总市值 (万元): {row.get('total_mv', 'N/A'):,.0f}"
                             if pd.notna(row.get("total_mv"))

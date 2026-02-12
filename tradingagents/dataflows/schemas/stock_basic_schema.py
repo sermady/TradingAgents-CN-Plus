@@ -158,12 +158,110 @@ STOCK_BASIC_OPTIONAL_FIELDS = {
     "bps": {"type": "number", "description": "每股净资产", "example": 12.8},
     "ocfps": {"type": "number", "description": "每股经营现金流", "example": 3.2},
     "capital_rese_ps": {"type": "number", "description": "每股公积金", "example": 5.5},
-    "undist_profit_ps": {"type": "number", "description": "每股未分配利润", "example": 8.3},
+    "undist_profit_ps": {
+        "type": "number",
+        "description": "每股未分配利润",
+        "example": 8.3,
+    },
     # 同比增速指标 (2026-02-10 新增)
-    "or_yoy": {"type": "number", "description": "营业收入同比增长率(%)", "example": 15.5},
-    "q_profit_yoy": {"type": "number", "description": "净利润同比增长率(%)", "example": 20.3},
-    "eps_yoy": {"type": "number", "description": "每股收益同比增长率(%)", "example": 10.2},
-    "roe_yoy": {"type": "number", "description": "净资产收益率同比增长率(%)", "example": 5.8},
+    "or_yoy": {
+        "type": "number",
+        "description": "营业收入同比增长率(%)",
+        "example": 15.5,
+    },
+    "q_profit_yoy": {
+        "type": "number",
+        "description": "净利润同比增长率(%)",
+        "example": 20.3,
+    },
+    "eps_yoy": {
+        "type": "number",
+        "description": "每股收益同比增长率(%)",
+        "example": 10.2,
+    },
+    "roe_yoy": {
+        "type": "number",
+        "description": "净资产收益率同比增长率(%)",
+        "example": 5.8,
+    },
+    "profit_dedt_yoy": {
+        "type": "number",
+        "description": "扣非净利润同比增长率(%)",
+        "example": 18.5,
+    },
+    # 盈利能力指标 (2026-02-12 新增)
+    "roe": {
+        "type": "number",
+        "description": "净资产收益率(%)",
+        "example": 15.2,
+    },
+    "roe_waa": {
+        "type": "number",
+        "description": "加权平均净资产收益率(%)",
+        "example": 15.5,
+    },
+    "roe_dt": {
+        "type": "number",
+        "description": "扣除非经常性损益后的净资产收益率(%)",
+        "example": 14.8,
+    },
+    "roa": {
+        "type": "number",
+        "description": "总资产收益率(%)",
+        "example": 8.5,
+    },
+    "roa2": {
+        "type": "number",
+        "description": "扣除非经常性损益后的总资产收益率(%)",
+        "example": 8.2,
+    },
+    "grossprofit_margin": {
+        "type": "number",
+        "description": "销售毛利率(%)",
+        "example": 35.5,
+    },
+    "netprofit_margin": {
+        "type": "number",
+        "description": "销售净利率(%)",
+        "example": 12.3,
+    },
+    # 偿债能力指标 (2026-02-12 新增)
+    "debt_to_assets": {
+        "type": "number",
+        "description": "资产负债率(%)",
+        "example": 45.5,
+    },
+    "current_ratio": {
+        "type": "number",
+        "description": "流动比率",
+        "example": 1.85,
+    },
+    "quick_ratio": {
+        "type": "number",
+        "description": "速动比率",
+        "example": 1.45,
+    },
+    "cash_ratio": {
+        "type": "number",
+        "description": "现金比率",
+        "example": 0.85,
+    },
+    # 营运能力指标 (2026-02-12 新增)
+    "inv_turn": {
+        "type": "number",
+        "description": "存货周转率(次)",
+        "example": 5.2,
+    },
+    "ar_turn": {
+        "type": "number",
+        "description": "应收账款周转率(次)",
+        "example": 8.5,
+    },
+    "assets_turn": {
+        "type": "number",
+        "description": "总资产周转率(次)",
+        "example": 0.65,
+    },
     "last_sync": {
         "type": "string",
         "description": "最后同步时间",
@@ -390,6 +488,24 @@ class StockBasicData:
     q_profit_yoy: Optional[float] = None  # 净利润同比增长率
     eps_yoy: Optional[float] = None  # 每股收益同比增长率
     roe_yoy: Optional[float] = None  # 净资产收益率同比增长率
+    profit_dedt_yoy: Optional[float] = None  # 扣非净利润同比增长率（2026-02-12新增）
+    # 盈利能力指标 (2026-02-12新增: 四大类核心指标)
+    roe: Optional[float] = None  # 净资产收益率
+    roe_waa: Optional[float] = None  # 加权平均ROE
+    roe_dt: Optional[float] = None  # 扣非ROE
+    roa: Optional[float] = None  # 总资产收益率
+    roa2: Optional[float] = None  # 扣非ROA
+    grossprofit_margin: Optional[float] = None  # 毛利率
+    netprofit_margin: Optional[float] = None  # 净利率
+    # 偿债能力指标 (2026-02-12新增)
+    debt_to_assets: Optional[float] = None  # 资产负债率
+    current_ratio: Optional[float] = None  # 流动比率
+    quick_ratio: Optional[float] = None  # 速动比率
+    cash_ratio: Optional[float] = None  # 现金比率
+    # 营运能力指标 (2026-02-12新增)
+    inv_turn: Optional[float] = None  # 存货周转率
+    ar_turn: Optional[float] = None  # 应收账款周转率
+    assets_turn: Optional[float] = None  # 总资产周转率
 
     last_sync: str = ""
     data_version: int = 1
@@ -467,6 +583,24 @@ class StockBasicData:
             q_profit_yoy=convert_to_float(raw_data.get("q_profit_yoy")),
             eps_yoy=convert_to_float(raw_data.get("eps_yoy")),
             roe_yoy=convert_to_float(raw_data.get("roe_yoy")),
+            profit_dedt_yoy=convert_to_float(raw_data.get("profit_dedt_yoy")),
+            # 盈利能力指标 (2026-02-12 新增: 四大类核心指标)
+            roe=convert_to_float(raw_data.get("roe")),
+            roe_waa=convert_to_float(raw_data.get("roe_waa")),
+            roe_dt=convert_to_float(raw_data.get("roe_dt")),
+            roa=convert_to_float(raw_data.get("roa")),
+            roa2=convert_to_float(raw_data.get("roa2")),
+            grossprofit_margin=convert_to_float(raw_data.get("grossprofit_margin")),
+            netprofit_margin=convert_to_float(raw_data.get("netprofit_margin")),
+            # 偿债能力指标 (2026-02-12 新增)
+            debt_to_assets=convert_to_float(raw_data.get("debt_to_assets")),
+            current_ratio=convert_to_float(raw_data.get("current_ratio")),
+            quick_ratio=convert_to_float(raw_data.get("quick_ratio")),
+            cash_ratio=convert_to_float(raw_data.get("cash_ratio")),
+            # 营运能力指标 (2026-02-12 新增)
+            inv_turn=convert_to_float(raw_data.get("inv_turn")),
+            ar_turn=convert_to_float(raw_data.get("ar_turn")),
+            assets_turn=convert_to_float(raw_data.get("assets_turn")),
             last_sync=datetime.now().isoformat(),
             data_source=data_source,
             data_version=1,

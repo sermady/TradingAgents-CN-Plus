@@ -550,23 +550,63 @@ class TushareProvider(BaseStockDataProvider):
                     self.logger.warning(f"获取 daily_basic 财务指标失败: {daily_e}")
 
                 try:
-                    # 获取每股指标数据（基本每股收益、每股净资产、每股现金流等）
+                    # 获取财务指标数据（盈利能力、成长能力、偿债能力、每股指标）
+                    # 🔥 2026-02-12: 增强字段获取，包含四大类核心指标
                     fina_df = await asyncio.to_thread(
                         self.api.fina_indicator,
                         ts_code=ts_code,
-                        fields="ts_code,q_profit_yoy,or_yoy,eps_yoy,roe_yoy,diluted2_eps,bps,ocfps,capital_rese_ps,undist_profit_ps",
+                        fields="ts_code,roe,roe_waa,roe_dt,roa,roa2,grossprofit_margin,netprofit_margin,"
+                        "q_profit_yoy,or_yoy,eps_yoy,roe_yoy,profit_dedt_yoy,"
+                        "debt_to_assets,current_ratio,quick_ratio,cash_ratio,"
+                        "inv_turn,ar_turn,assets_turn,"
+                        "diluted2_eps,bps,ocfps,capital_rese_ps,undist_profit_ps",
                         limit=1,
                     )
                     if fina_df is not None and not fina_df.empty:
                         row = fina_df.iloc[0]
-                        basic_data["q_profit_yoy"] = row.get("q_profit_yoy")
-                        # 营业收入同比增长率
-                        basic_data["or_yoy"] = row.get("or_yoy")
-                        # 每股收益同比增长率
-                        basic_data["eps_yoy"] = row.get("eps_yoy")
-                        # 净资产收益率同比增长率
-                        basic_data["roe_yoy"] = row.get("roe_yoy")
-                        # 每股指标数据
+
+                        # === 盈利能力指标 ===
+                        basic_data["roe"] = row.get("roe")  # 净资产收益率
+                        basic_data["roe_waa"] = row.get("roe_waa")  # 加权平均ROE
+                        basic_data["roe_dt"] = row.get("roe_dt")  # 扣非ROE
+                        basic_data["roa"] = row.get("roa")  # 总资产收益率
+                        basic_data["roa2"] = row.get("roa2")  # 扣非ROA
+                        basic_data["grossprofit_margin"] = row.get(
+                            "grossprofit_margin"
+                        )  # 毛利率
+                        basic_data["netprofit_margin"] = row.get(
+                            "netprofit_margin"
+                        )  # 净利率
+
+                        # === 成长能力指标 ===
+                        basic_data["q_profit_yoy"] = row.get(
+                            "q_profit_yoy"
+                        )  # 净利润同比增长率
+                        basic_data["or_yoy"] = row.get("or_yoy")  # 营业收入同比增长率
+                        basic_data["eps_yoy"] = row.get("eps_yoy")  # 每股收益同比增长率
+                        basic_data["roe_yoy"] = row.get("roe_yoy")  # ROE同比增长率
+                        basic_data["profit_dedt_yoy"] = row.get(
+                            "profit_dedt_yoy"
+                        )  # 扣非净利润同比增长率
+
+                        # === 偿债能力指标 ===
+                        basic_data["debt_to_assets"] = row.get(
+                            "debt_to_assets"
+                        )  # 资产负债率
+                        basic_data["current_ratio"] = row.get(
+                            "current_ratio"
+                        )  # 流动比率
+                        basic_data["quick_ratio"] = row.get("quick_ratio")  # 速动比率
+                        basic_data["cash_ratio"] = row.get("cash_ratio")  # 现金比率
+
+                        # === 营运能力指标 ===
+                        basic_data["inv_turn"] = row.get("inv_turn")  # 存货周转率
+                        basic_data["ar_turn"] = row.get("ar_turn")  # 应收账款周转率
+                        basic_data["assets_turn"] = row.get(
+                            "assets_turn"
+                        )  # 总资产周转率
+
+                        # === 每股指标 ===
                         basic_data["eps"] = row.get("diluted2_eps")  # 稀释每股收益
                         basic_data["bps"] = row.get("bps")  # 每股净资产
                         basic_data["ocfps"] = row.get("ocfps")  # 每股经营现金流
@@ -576,8 +616,11 @@ class TushareProvider(BaseStockDataProvider):
                         basic_data["undist_profit_ps"] = row.get(
                             "undist_profit_ps"
                         )  # 每股未分配利润
+
                         self.logger.info(
-                            f"🔍 [Tushare] 获取到 {ts_code} 每股指标: EPS={basic_data.get('eps')}, BPS={basic_data.get('bps')}, OCFPS={basic_data.get('ocfps')}, 营收同比={basic_data.get('or_yoy')}"
+                            f"🔍 [Tushare] 获取到 {ts_code} 财务指标: "
+                            f"ROE={basic_data.get('roe')}%, 毛利率={basic_data.get('grossprofit_margin')}%, "
+                            f"资产负债率={basic_data.get('debt_to_assets')}%, 营收同比={basic_data.get('or_yoy')}%"
                         )
                     else:
                         self.logger.warning(
@@ -1794,6 +1837,18 @@ class TushareProvider(BaseStockDataProvider):
             "circ_mv": self._convert_to_float(raw_data.get("circ_mv")),
             "turnover_rate": self._convert_to_float(raw_data.get("turnover_rate")),
             "volume_ratio": self._convert_to_float(raw_data.get("volume_ratio")),
+            # 盈利能力指标 (2026-02-12 新增: ROE、ROA、毛利率、净利率)
+            "roe": self._convert_to_float(raw_data.get("roe")),  # 净资产收益率
+            "roe_waa": self._convert_to_float(raw_data.get("roe_waa")),  # 加权平均ROE
+            "roe_dt": self._convert_to_float(raw_data.get("roe_dt")),  # 扣非ROE
+            "roa": self._convert_to_float(raw_data.get("roa")),  # 总资产收益率
+            "roa2": self._convert_to_float(raw_data.get("roa2")),  # 扣非ROA
+            "grossprofit_margin": self._convert_to_float(
+                raw_data.get("grossprofit_margin")
+            ),  # 毛利率
+            "netprofit_margin": self._convert_to_float(
+                raw_data.get("netprofit_margin")
+            ),  # 净利率
             # 每股指标 (2026-02-02 新增: 基本每股收益、每股净资产、每股现金流等)
             "eps": self._convert_to_float(raw_data.get("eps")),  # 稀释每股收益
             "bps": self._convert_to_float(raw_data.get("bps")),  # 每股净资产
@@ -1811,6 +1866,31 @@ class TushareProvider(BaseStockDataProvider):
             "roe_yoy": self._convert_to_float(
                 raw_data.get("roe_yoy")
             ),  # 净资产收益率同比增长率（%）
+            "profit_dedt_yoy": self._convert_to_float(
+                raw_data.get("profit_dedt_yoy")
+            ),  # 扣非净利润同比增长率（%）
+            # 偿债能力指标 (2026-02-12 新增)
+            "debt_to_assets": self._convert_to_float(
+                raw_data.get("debt_to_assets")
+            ),  # 资产负债率
+            "current_ratio": self._convert_to_float(
+                raw_data.get("current_ratio")
+            ),  # 流动比率
+            "quick_ratio": self._convert_to_float(
+                raw_data.get("quick_ratio")
+            ),  # 速动比率
+            "cash_ratio": self._convert_to_float(
+                raw_data.get("cash_ratio")
+            ),  # 现金比率
+            # 营运能力指标 (2026-02-12 新增)
+            "inv_turn": self._convert_to_float(raw_data.get("inv_turn")),  # 存货周转率
+            "ar_turn": self._convert_to_float(
+                raw_data.get("ar_turn")
+            ),  # 应收账款周转率
+            "assets_turn": self._convert_to_float(
+                raw_data.get("assets_turn")
+            ),  # 总资产周转率
+            # 每股指标
             "capital_rese_ps": self._convert_to_float(
                 raw_data.get("capital_rese_ps")
             ),  # 每股公积金
