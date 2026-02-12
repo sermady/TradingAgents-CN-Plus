@@ -20,6 +20,7 @@
 10. [实时行情判断逻辑修复](#实时行情判断逻辑修复)
 11. [增速字段解析修复](#增速字段解析修复)
 12. [数据源网络连接问题](#数据源网络连接问题)
+13. [PS_TTM 和股息率字段缺失问题](#ps_ttm-和股息率字段缺失问题)
 
 ---
 
@@ -425,6 +426,85 @@ BAOSTOCK_UNIFIED_ENABLED=true
 **相关技能**: [数据源网络连接问题诊断](network-diagnostics.md)
 
 **诊断脚本**: `diagnose_network.py`
+
+---
+
+## PS_TTM 和股息率字段缺失问题
+
+**日期**: 2026-02-12
+**状态**: 🟢 已修复
+
+**问题现象**: 
+基本面分析报告中显示 **"PS_TTM数据缺失"** 和 **"股息率数据不可用"**，但 Tushare API 实际提供了这些数据。
+
+**根本原因**: 
+`_get_valuation_indicators()` 方法只返回了部分字段，遗漏了 `ps_ttm`、`dv_ratio`、`dv_ttm` 等新添加的字段。
+
+```python
+# 修复前 - 字段不完整
+def _get_valuation_indicators(self, symbol: str) -> Dict:
+    return {
+        "pe": result.get("pe"),
+        "pb": result.get("pb"),
+        "pe_ttm": result.get("pe_ttm"),
+        "total_mv": result.get("total_mv"),
+        "circ_mv": result.get("circ_mv"),
+        # ❌ 缺少 ps_ttm, dv_ratio, dv_ttm, total_share, float_share
+    }
+```
+
+**修复方案**:
+
+```python
+# 修复后 - 完整字段
+def _get_valuation_indicators(self, symbol: str) -> Dict:
+    return {
+        "pe": result.get("pe"),
+        "pb": result.get("pb"),
+        "pe_ttm": result.get("pe_ttm"),
+        "ps": result.get("ps"),
+        "ps_ttm": result.get("ps_ttm"),  # ✅ 新增
+        "total_mv": result.get("total_mv"),
+        "circ_mv": result.get("circ_mv"),
+        "dv_ratio": result.get("dv_ratio"),  # ✅ 新增
+        "dv_ttm": result.get("dv_ttm"),  # ✅ 新增
+        "total_share": result.get("total_share"),  # ✅ 新增
+        "float_share": result.get("float_share"),  # ✅ 新增
+    }
+```
+
+**新增字段说明**:
+
+| 字段名 | 中文名 | 数据源 | 用途 |
+|--------|--------|--------|------|
+| `ps_ttm` | 市销率TTM | Tushare daily_basic | 估值分析优先指标 |
+| `dv_ratio` | 股息率 | Tushare daily_basic | 当前分红收益率 |
+| `dv_ttm` | 股息率TTM | Tushare daily_basic | 近12个月分红收益率 |
+| `total_share` | 总股本 | Tushare daily_basic | 公司股本结构 |
+| `float_share` | 流通股本 | Tushare daily_basic | 流通股数量 |
+
+**修改文件**:
+1. `tradingagents/dataflows/data_source_manager.py:3887-3915` - 更新 `_get_valuation_indicators()`
+2. `tradingagents/dataflows/providers/china/tushare.py:535` - 添加字段获取
+3. `tradingagents/dataflows/schemas/stock_basic_schema.py` - 添加字段定义
+4. `tradingagents/dataflows/cache/app_adapter.py` - 添加缓存映射
+5. `tradingagents/agents/utils/agent_utils.py` - 添加报告显示
+
+**验证方法**:
+```python
+# 检查 MongoDB 中的字段
+python -c "
+from app.core.database import get_database
+db = get_database()
+doc = db.stock_basic_info.find_one({'ts_code': '000001.SZ'})
+if doc:
+    print(f'ps_ttm: {doc.get(\"ps_ttm\")}')
+    print(f'dv_ttm: {doc.get(\"dv_ttm\")}')
+    print(f'total_share: {doc.get(\"total_share\")}')
+"
+```
+
+**相关技能**: [数据源字段名映射不匹配问题](data-source-field-mapping.md)
 
 ---
 

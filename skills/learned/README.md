@@ -192,12 +192,30 @@ async def get_data():
 | 营收同比增速 | `or_yoy` | `revenue_yoy` |
 | 净利润同比增速 | `q_profit_yoy` | `net_income_yoy` |
 | 筹资性现金流 | `n_cashflow_fin_act` | `financing_cashflow` |
+| 市销率TTM | `ps_ttm` | - |
+| 股息率TTM | `dv_ttm` | - |
 
 **修复方案**: 添加多字段名映射支持，优先使用 Tushare 字段名
 
 ---
 
-### 12. [数据源网络连接问题诊断](network-diagnostics.md) ⭐⭐ NEW
+### 12. [TTM指标使用规范](ttm-indicator-usage.md) ⭐⭐⭐ NEW
+**适用场景**: PE_TTM/PS_TTM与静态指标混淆、估值分析不规范
+
+**核心要点**:
+- **PE_TTM** (总市值/TTM净利润) - 估值分析必须使用
+- **PS_TTM** (总市值/TTM营收) - 估值分析优先使用
+- **严禁**仅用静态指标进行估值判断
+- 验算时必须使用TTM口径数据
+
+**检查清单**:
+- [ ] 报告明确列出 PE_TTM 并标注"【估值分析使用此指标】"
+- [ ] 报告明确列出 PS_TTM 并标注"【估值分析使用此指标】"
+- [ ] 禁止仅使用静态指标进行估值判断
+
+---
+
+### 13. [数据源网络连接问题诊断](network-diagnostics.md) ⭐⭐ NEW
 **适用场景**: ConnectionResetError、DNS 解析失败、多数据源同步失败
 
 **诊断步骤**:
@@ -272,19 +290,21 @@ const wsUrl = `ws://localhost:8000/api/ws/notifications?token=${token}`;
 ### 按问题类型
 - **启动错误**: #1, #2
 - **WebSocket问题**: #3, #7
-- **数据/API问题**: #4, #8, #10, #11, #12
+- **数据/API问题**: #4, #8, #10, #11, #12, #13
 - **测试问题**: #5
 - **并发问题**: #9
 - **数据质量**: #6, #10
 - **网络连接**: #12
 - **字段映射**: #11
+- **TTM指标规范**: #13
 
 ### 按技术栈
-- **Python**: #1, #4, #5, #6, #8, #9, #10, #11, #12
+- **Python**: #1, #4, #5, #6, #8, #9, #10, #11, #12, #13
 - **TypeScript/Vue**: #2, #3, #7
 - **配置管理**: #8, #12
 - **测试**: #5
 - **网络诊断**: #12
+- **财务分析**: #10, #13
 
 ---
 
@@ -311,6 +331,17 @@ const wsUrl = `ws://localhost:8000/api/ws/notifications?token=${token}`;
   - data-source-field-mapping.md (字段名映射不匹配)
   - network-diagnostics.md (数据源网络连接诊断)
 - 更新 known-issues.md 添加新的问题记录
+
+### 2026-02-12 (第四批) ⭐⭐⭐
+- 基于PS_TTM和股息率字段添加工作新增技能
+  - ttm-indicator-usage.md (TTM指标使用规范与PE/PS区分)
+- 更新 data-source-field-mapping.md 添加估值指标字段映射
+- 更新 known-issues.md 添加PS_TTM字段缺失问题记录
+- 重点内容:
+  - PE_TTM vs PE静态的区别与使用规范
+  - PS_TTM vs PS静态的区别与使用规范
+  - 股息率(dv_ratio/dv_ttm)字段的添加和使用
+  - 估值指标数据获取修复方案
 
 ---
 
