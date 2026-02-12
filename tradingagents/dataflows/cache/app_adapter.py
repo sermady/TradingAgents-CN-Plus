@@ -58,10 +58,18 @@ def _standardize_cached_data(doc: Dict[str, Any]) -> Dict[str, Any]:
         "pe": doc.get("pe"),
         "pe_ttm": doc.get("pe_ttm"),
         "pb": doc.get("pb"),
+        "ps": doc.get("ps"),
+        "ps_ttm": doc.get("ps_ttm"),
         "total_mv": doc.get("total_mv"),
         "circ_mv": doc.get("circ_mv"),
         "turnover_rate": doc.get("turnover_rate"),
         "volume_ratio": doc.get("volume_ratio"),
+        # 股息率指标 (2026-02-12 新增)
+        "dv_ratio": doc.get("dv_ratio"),
+        "dv_ttm": doc.get("dv_ttm"),
+        # 股本数据 (2026-02-12 新增)
+        "total_share": doc.get("total_share"),
+        "float_share": doc.get("float_share"),
         # 每股指标 (2026-02-02 新增)
         "eps": doc.get("eps"),
         "bps": doc.get("bps"),

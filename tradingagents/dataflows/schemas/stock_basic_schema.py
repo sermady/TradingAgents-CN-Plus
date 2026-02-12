@@ -139,6 +139,11 @@ STOCK_BASIC_OPTIONAL_FIELDS = {
         "description": "市销率（股价/每股销售额）",
         "example": 1.20,
     },
+    "ps_ttm": {
+        "type": "number",
+        "description": "市销率TTM（基于近12个月营业收入）",
+        "example": 1.15,
+    },
     "pcf": {
         "type": "number",
         "description": "市现率（股价/每股现金流）",
@@ -153,6 +158,24 @@ STOCK_BASIC_OPTIONAL_FIELDS = {
     "circ_mv": {"type": "number", "description": "流通市值（亿元）", "example": 1480.2},
     "turnover_rate": {"type": "number", "description": "换手率（%）", "example": 0.85},
     "volume_ratio": {"type": "number", "description": "量比", "example": 1.2},
+    # 股息率指标 (2026-02-12 新增)
+    "dv_ratio": {"type": "number", "description": "股息率（%）", "example": 2.5},
+    "dv_ttm": {
+        "type": "number",
+        "description": "股息率TTM（近12个月，%）",
+        "example": 2.8,
+    },
+    # 股本数据 (2026-02-12 新增)
+    "total_share": {
+        "type": "number",
+        "description": "总股本（万股）",
+        "example": 100000,
+    },
+    "float_share": {
+        "type": "number",
+        "description": "流通股本（万股）",
+        "example": 80000,
+    },
     # 每股指标 (2026-02-02 新增)
     "eps": {"type": "number", "description": "每股收益", "example": 2.5},
     "bps": {"type": "number", "description": "每股净资产", "example": 12.8},
