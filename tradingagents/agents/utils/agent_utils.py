@@ -909,19 +909,57 @@ class Toolkit:
                             "⚠️ **注意**：PS_TTM数据不可用，估值分析时将使用PS静态指标，请明确说明使用的是单期营收数据"
                         )
 
-                    report_lines.extend(
-                        [
-                            "",
-                            f"股息率 (%): {row.get('dv_ratio', 'N/A')}",
-                            f"总市值 (万元): {row.get('total_mv', 'N/A'):,.0f}"
-                            if pd.notna(row.get("total_mv"))
-                            else "总市值 (万元): N/A",
-                            f"流通市值 (万元): {row.get('circ_mv', 'N/A'):,.0f}"
-                            if pd.notna(row.get("circ_mv"))
-                            else "流通市值 (万元): N/A",
-                            "",
-                        ]
-                    )
+                    # 股息率显示（2026-02-12 增强）
+                    dv_ratio = row.get("dv_ratio")
+                    dv_ttm = row.get("dv_ttm")
+                    if pd.notna(dv_ratio) or pd.notna(dv_ttm):
+                        report_lines.append("")
+                        report_lines.append("## 💰 股息率指标")
+                        if pd.notna(dv_ttm):
+                            report_lines.append(
+                                f"股息率TTM (%): {dv_ttm:.2f} [近12个月股息率，优先参考]"
+                            )
+                        if pd.notna(dv_ratio):
+                            report_lines.append(f"股息率 (%): {dv_ratio:.2f}")
+                        # 股息率评估
+                        if pd.notna(dv_ttm) and dv_ttm > 3:
+                            report_lines.append(
+                                f"✅ **股息率评估**：{dv_ttm:.2f}% 属于较高水平，具备较好的分红收益"
+                            )
+                        elif pd.notna(dv_ttm) and dv_ttm > 1:
+                            report_lines.append(
+                                f"📊 **股息率评估**：{dv_ttm:.2f}% 处于中等水平，有一定分红收益"
+                            )
+                        elif pd.notna(dv_ttm):
+                            report_lines.append(
+                                f"⚠️ **股息率评估**：{dv_ttm:.2f}% 较低，分红收益有限"
+                            )
+                    else:
+                        report_lines.extend(["", "股息率 (%): N/A (数据不可用)"])
+
+                    # 市值和股本信息
+                    report_lines.append("")
+                    report_lines.append("## 📊 市值与股本信息")
+                    if pd.notna(row.get("total_mv")):
+                        report_lines.append(
+                            f"总市值 (万元): {row.get('total_mv'):,.0f}"
+                        )
+                    else:
+                        report_lines.append("总市值 (万元): N/A")
+                    if pd.notna(row.get("circ_mv")):
+                        report_lines.append(
+                            f"流通市值 (万元): {row.get('circ_mv'):,.0f}"
+                        )
+                    else:
+                        report_lines.append("流通市值 (万元): N/A")
+                    # 股本数据（2026-02-12 新增）
+                    total_share = row.get("total_share")
+                    float_share = row.get("float_share")
+                    if pd.notna(total_share):
+                        report_lines.append(f"总股本 (万股): {total_share:,.0f}")
+                    if pd.notna(float_share):
+                        report_lines.append(f"流通股本 (万股): {float_share:,.0f}")
+                    report_lines.append("")
 
             # 从 fina_indicator 获取盈利指标
             report_lines.extend(
