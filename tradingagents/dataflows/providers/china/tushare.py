@@ -532,7 +532,8 @@ class TushareProvider(BaseStockDataProvider):
                     daily_df = await asyncio.to_thread(
                         self.api.daily_basic,
                         ts_code=ts_code,
-                        fields="ts_code,total_mv,circ_mv,pe,pb,ps,turnover_rate,volume_ratio,pe_ttm,pb_mrq",
+                        fields="ts_code,total_mv,circ_mv,pe,pb,ps,turnover_rate,volume_ratio,pe_ttm,pb_mrq,ps_ttm,"
+                        "dv_ratio,dv_ttm,total_share,float_share",
                         limit=1,
                     )
 
@@ -542,10 +543,17 @@ class TushareProvider(BaseStockDataProvider):
                         basic_data["pb"] = row["pb"]
                         basic_data["ps"] = row["ps"]
                         basic_data["pe_ttm"] = row["pe_ttm"]
+                        basic_data["ps_ttm"] = row.get("ps_ttm")
                         basic_data["total_mv"] = row["total_mv"]
                         basic_data["circ_mv"] = row["circ_mv"]
                         basic_data["turnover_rate"] = row["turnover_rate"]
                         basic_data["volume_ratio"] = row["volume_ratio"]
+                        # 股息率指标（2026-02-12 新增）
+                        basic_data["dv_ratio"] = row.get("dv_ratio")
+                        basic_data["dv_ttm"] = row.get("dv_ttm")
+                        # 股本数据（2026-02-12 新增）
+                        basic_data["total_share"] = row.get("total_share")
+                        basic_data["float_share"] = row.get("float_share")
                 except Exception as daily_e:
                     self.logger.warning(f"获取 daily_basic 财务指标失败: {daily_e}")
 
@@ -1119,7 +1127,8 @@ class TushareProvider(BaseStockDataProvider):
             df = await asyncio.to_thread(
                 self.api.daily_basic,
                 trade_date=date_str,
-                fields="ts_code,total_mv,circ_mv,pe,pb,turnover_rate,volume_ratio,pe_ttm,pb_mrq",
+                fields="ts_code,total_mv,circ_mv,pe,pb,ps,turnover_rate,volume_ratio,pe_ttm,pb_mrq,ps_ttm,"
+                "dv_ratio,dv_ttm,total_share,float_share",
             )
 
             if df is not None and not df.empty:
