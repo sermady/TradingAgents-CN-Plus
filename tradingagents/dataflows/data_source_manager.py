@@ -3905,8 +3905,14 @@ class DataSourceManager:
                     "pe": result.get("pe"),
                     "pb": result.get("pb"),
                     "pe_ttm": result.get("pe_ttm"),
+                    "ps": result.get("ps"),
+                    "ps_ttm": result.get("ps_ttm"),
                     "total_mv": result.get("total_mv"),
                     "circ_mv": result.get("circ_mv"),
+                    "dv_ratio": result.get("dv_ratio"),
+                    "dv_ttm": result.get("dv_ttm"),
+                    "total_share": result.get("total_share"),
+                    "float_share": result.get("float_share"),
                 }
             return {}
 
@@ -4017,6 +4023,23 @@ class DataSourceManager:
                     report += (
                         f"   市销率TTM(PS_TTM): {ps_ttm:.2f} [估值分析优先使用此指标]\n"
                     )
+
+                # 股息率指标（从财务数据获取）
+                dv_ttm = latest.get("dv_ttm")
+                if dv_ttm is not None:
+                    report += f"   股息率TTM: {dv_ttm:.2f}% [近12个月分红收益]\n"
+                elif latest.get("dv_ratio") is not None:
+                    dv_ratio = latest.get("dv_ratio")
+                    report += f"   股息率: {dv_ratio:.2f}%\n"
+
+                # 股本数据（从财务数据获取）
+                total_share = latest.get("total_share")
+                if total_share is not None:
+                    report += f"   总股本: {total_share:.2f}万股\n"
+
+                float_share = latest.get("float_share")
+                if float_share is not None:
+                    report += f"   流通股本: {float_share:.2f}万股\n"
 
             # 盈利能力
             report += "\n💹 盈利能力:\n"
