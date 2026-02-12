@@ -1313,8 +1313,16 @@ class DataSourceManager:
             volume_latest = self._get_volume_safely(display_data)
 
             # 5日均量和10日均量
-            volume_avg_5 = display_data['volume'].tail(5).mean() if len(display_data) >= 5 else volume_latest
-            volume_avg_10 = display_data['volume'].tail(10).mean() if len(display_data) >= 10 else volume_latest
+            volume_avg_5 = (
+                display_data["volume"].tail(5).mean()
+                if len(display_data) >= 5
+                else volume_latest
+            )
+            volume_avg_10 = (
+                display_data["volume"].tail(10).mean()
+                if len(display_data) >= 10
+                else volume_latest
+            )
 
             result += f"\n📊 成交量分析:\n"
             result += f"   单日成交量: {volume_latest:,.0f}手\n"
@@ -3960,6 +3968,12 @@ class DataSourceManager:
                 if pe_ttm is not None:
                     report += f"   市盈率TTM(PE_TTM): {pe_ttm:.2f}\n"
 
+                ps_ttm = valuation_data.get("ps_ttm")
+                if ps_ttm is not None:
+                    report += (
+                        f"   市销率TTM(PS_TTM): {ps_ttm:.2f} [估值分析优先使用此指标]\n"
+                    )
+
                 total_mv = valuation_data.get("total_mv")
                 if total_mv is not None:
                     report += f"   总市值: {total_mv:.2f}亿元\n"
@@ -3967,6 +3981,23 @@ class DataSourceManager:
                 circ_mv = valuation_data.get("circ_mv")
                 if circ_mv is not None:
                     report += f"   流通市值: {circ_mv:.2f}亿元\n"
+
+                # 股息率指标（2026-02-12 新增）
+                dv_ttm = valuation_data.get("dv_ttm")
+                if dv_ttm is not None:
+                    report += f"   股息率TTM: {dv_ttm:.2f}% [近12个月分红收益]\n"
+                elif valuation_data.get("dv_ratio") is not None:
+                    dv_ratio = valuation_data.get("dv_ratio")
+                    report += f"   股息率: {dv_ratio:.2f}%\n"
+
+                # 股本数据（2026-02-12 新增）
+                total_share = valuation_data.get("total_share")
+                if total_share is not None:
+                    report += f"   总股本: {total_share:.2f}万股\n"
+
+                float_share = valuation_data.get("float_share")
+                if float_share is not None:
+                    report += f"   流通股本: {float_share:.2f}万股\n"
             else:
                 # 如果无法从stock_basic_info获取，尝试从财务数据计算
                 pe = latest.get("pe")
@@ -3979,7 +4010,13 @@ class DataSourceManager:
 
                 ps = latest.get("ps")
                 if ps is not None:
-                    report += f"   市销率(PS): {ps:.2f}\n"
+                    report += f"   市销率(PS静态): {ps:.2f}\n"
+
+                ps_ttm = latest.get("ps_ttm")
+                if ps_ttm is not None:
+                    report += (
+                        f"   市销率TTM(PS_TTM): {ps_ttm:.2f} [估值分析优先使用此指标]\n"
+                    )
 
             # 盈利能力
             report += "\n💹 盈利能力:\n"
@@ -4670,9 +4707,9 @@ class DataSourceManager:
 
             # 获取 Redis 客户端（安全：不记录连接信息）
             redis_client = None
-            if hasattr(self.cache_manager, 'db_manager'):
+            if hasattr(self.cache_manager, "db_manager"):
                 redis_client = self.cache_manager.db_manager.get_redis_client()
-            elif hasattr(self.cache_manager, 'redis_client'):
+            elif hasattr(self.cache_manager, "redis_client"):
                 redis_client = self.cache_manager.redis_client
 
             if not redis_client:
@@ -4691,11 +4728,11 @@ class DataSourceManager:
             }
 
             # 使用 Redis List 存储历史记录（最多100条）
-            redis_client.lpush(
-                redis_key, str(record)
-            )
+            redis_client.lpush(redis_key, str(record))
             redis_client.ltrim(
-                redis_key, 0, 99  # 只保留最近100条
+                redis_key,
+                0,
+                99,  # 只保留最近100条
             )
 
             # 设置过期时间（7天）
@@ -4739,9 +4776,9 @@ class DataSourceManager:
         try:
             # 获取 Redis 客户端
             redis_client = None
-            if hasattr(self.cache_manager, 'db_manager'):
+            if hasattr(self.cache_manager, "db_manager"):
                 redis_client = self.cache_manager.db_manager.get_redis_client()
-            elif hasattr(self.cache_manager, 'redis_client'):
+            elif hasattr(self.cache_manager, "redis_client"):
                 redis_client = self.cache_manager.redis_client
 
             if not redis_client:
@@ -4813,9 +4850,9 @@ class DataSourceManager:
             try:
                 # 获取 Redis 客户端
                 redis_client = None
-                if hasattr(self.cache_manager, 'db_manager'):
+                if hasattr(self.cache_manager, "db_manager"):
                     redis_client = self.cache_manager.db_manager.get_redis_client()
-                elif hasattr(self.cache_manager, 'redis_client'):
+                elif hasattr(self.cache_manager, "redis_client"):
                     redis_client = self.cache_manager.redis_client
 
                 if not redis_client:
@@ -4823,7 +4860,9 @@ class DataSourceManager:
 
                 redis_key = f"source_reliability:{source}:{metric}"
                 records = redis_client.lrange(
-                    redis_key, 0, 9  # 最近10次
+                    redis_key,
+                    0,
+                    9,  # 最近10次
                 )
 
                 if records and len(records) >= 5:  # 至少5次记录
@@ -4842,7 +4881,7 @@ class DataSourceManager:
                     if failure_rate > 0.7:  # 70%失败率
                         logger.warning(
                             f"⚠️ [数据源降级] {source} 最近{len(records)}次调用失败率过高 "
-                            f"({failure_rate*100:.1f}%)"
+                            f"({failure_rate * 100:.1f}%)"
                         )
                         return True
 
@@ -4872,8 +4911,7 @@ class DataSourceManager:
         """
         # 排除失败的数据源
         candidates = [
-            s for s in available_sources
-            if s.value.lower() != failed_source.lower()
+            s for s in available_sources if s.value.lower() != failed_source.lower()
         ]
 
         if not candidates:
