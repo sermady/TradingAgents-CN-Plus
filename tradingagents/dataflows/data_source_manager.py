@@ -415,12 +415,13 @@ class DataSourceManager:
 
         try:
             # 根据数据源调用相应的获取方法
+            safe_symbol = symbol or ""
             if self.current_source == ChinaDataSource.MONGODB:
-                result = self._get_mongodb_news(symbol, hours_back, limit)
+                result = self._get_mongodb_news(safe_symbol, hours_back, limit)
             elif self.current_source == ChinaDataSource.TUSHARE:
-                result = self._get_tushare_news(symbol, hours_back, limit)
+                result = self._get_tushare_news(safe_symbol, hours_back, limit)
             elif self.current_source == ChinaDataSource.AKSHARE:
-                result = self._get_akshare_news(symbol, hours_back, limit)
+                result = self._get_akshare_news(safe_symbol, hours_back, limit)
             else:
                 # 其他数据源暂不支持新闻数据
                 logger.warning(f"⚠️ 数据源 {self.current_source.value} 不支持新闻数据")
@@ -452,7 +453,7 @@ class DataSourceManager:
                         "event_type": "news_fetch_fallback",
                     },
                 )
-                return self._try_fallback_news(symbol, hours_back, limit)
+                return self._try_fallback_news(safe_symbol, hours_back, limit)
 
         except Exception as e:
             duration = time.time() - start_time
@@ -467,7 +468,7 @@ class DataSourceManager:
                 },
                 exc_info=True,
             )
-            return self._try_fallback_news(symbol, hours_back, limit)
+            return self._try_fallback_news(safe_symbol, hours_back, limit)
 
     def _check_available_sources(self) -> List[ChinaDataSource]:
         """
@@ -849,7 +850,9 @@ class DataSourceManager:
         stock_name: str,
         start_date: str,
         end_date: str,
-        realtime_quote: Dict[str, Any] = None,  # 🆕 修改：接收完整实时行情字典
+        realtime_quote: Optional[
+            Dict[str, Any]
+        ] = None,  # 🆕 修改：接收完整实时行情字典
     ) -> str:
         """
         格式化股票数据响应（包含技术指标）
@@ -1387,17 +1390,23 @@ class DataSourceManager:
                 from .providers.china.tushare import get_tushare_provider
 
                 provider = get_tushare_provider()
-                df = provider.get_daily_data(symbol, start_date, end_date)
+                df = self._run_async_safe(
+                    provider.get_historical_data(symbol, start_date, end_date)
+                )
             elif self.current_source == ChinaDataSource.AKSHARE:
                 from .providers.china.akshare import get_akshare_provider
 
                 provider = get_akshare_provider()
-                df = provider.get_stock_data(symbol, start_date, end_date)
+                df = self._run_async_safe(
+                    provider.get_historical_data(symbol, start_date, end_date)
+                )
             elif self.current_source == ChinaDataSource.BAOSTOCK:
                 from .providers.china.baostock import get_baostock_provider
 
                 provider = get_baostock_provider()
-                df = provider.get_stock_data(symbol, start_date, end_date)
+                df = self._run_async_safe(
+                    provider.get_historical_data(symbol, start_date, end_date)
+                )
 
             if df is not None and not df.empty:
                 logger.info(
@@ -1426,17 +1435,23 @@ class DataSourceManager:
                         from .providers.china.tushare import get_tushare_provider
 
                         provider = get_tushare_provider()
-                        df = provider.get_daily_data(symbol, start_date, end_date)
+                        df = self._run_async_safe(
+                            provider.get_historical_data(symbol, start_date, end_date)
+                        )
                     elif source == ChinaDataSource.AKSHARE:
                         from .providers.china.akshare import get_akshare_provider
 
                         provider = get_akshare_provider()
-                        df = provider.get_stock_data(symbol, start_date, end_date)
+                        df = self._run_async_safe(
+                            provider.get_historical_data(symbol, start_date, end_date)
+                        )
                     elif source == ChinaDataSource.BAOSTOCK:
                         from .providers.china.baostock import get_baostock_provider
 
                         provider = get_baostock_provider()
-                        df = provider.get_stock_data(symbol, start_date, end_date)
+                        df = self._run_async_safe(
+                            provider.get_historical_data(symbol, start_date, end_date)
+                        )
 
                     if df is not None and not df.empty:
                         logger.info(
@@ -1885,10 +1900,10 @@ class DataSourceManager:
     def get_stock_data(
         self,
         symbol: str,
-        start_date: str = None,
-        end_date: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         period: str = "daily",
-        analysis_date: str = None,
+        analysis_date: Optional[str] = None,
     ) -> str:
         """
         获取股票数据的统一接口，支持多周期数据
@@ -2270,7 +2285,7 @@ class DataSourceManager:
         start_date: str,
         end_date: str,
         period: str = "daily",
-        realtime_quote: Dict[str, Any] = None,
+        realtime_quote: Optional[Dict[str, Any]] = None,
     ) -> str:
         """使用Tushare获取多周期数据 - 使用provider + 统一缓存"""
         logger.debug(
@@ -2404,7 +2419,7 @@ class DataSourceManager:
         start_date: str,
         end_date: str,
         period: str = "daily",
-        realtime_quote: Dict[str, Any] = None,
+        realtime_quote: Optional[Dict[str, Any]] = None,
     ) -> str:
         """使用AKShare获取多周期数据 - 包含技术指标计算"""
         logger.debug(
@@ -2668,7 +2683,7 @@ class DataSourceManager:
         start_date: str,
         end_date: str,
         period: str = "daily",
-        realtime_quote: Dict[str, Any] = None,
+        realtime_quote: Optional[Dict[str, Any]] = None,
     ) -> tuple[str, str | None]:
         """
         从在线数据源获取数据并保存到 MongoDB
@@ -3100,7 +3115,7 @@ class DataSourceManager:
                     self.current_source = original_source
 
                     if adapter and hasattr(adapter, "get_stock_info"):
-                        result = adapter.get_stock_info(symbol)
+                        result = self._run_async_safe(adapter.get_stock_info(symbol))
                     else:
                         logger.warning(f"⚠️ [股票信息] {source_name}不支持股票信息获取")
                         continue

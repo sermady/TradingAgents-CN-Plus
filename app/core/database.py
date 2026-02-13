@@ -5,13 +5,11 @@
 """
 
 import logging
-import asyncio
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import MongoClient
 from pymongo.database import Database
 from redis.asyncio import Redis, ConnectionPool
-from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
 from .config import settings
 
 logger = logging.getLogger(__name__)

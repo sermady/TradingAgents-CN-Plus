@@ -667,50 +667,6 @@ class ConfigService:
             print(traceback.format_exc())
             return False
 
-    async def set_default_llm(self, model_name: str) -> bool:
-        """设置默认大模型"""
-        try:
-            config = await self.get_system_config()
-            if not config:
-                return False
-
-            # 检查指定的模型是否存在
-            model_exists = any(
-                llm.model_name == model_name for llm in config.llm_configs
-            )
-
-            if not model_exists:
-                return False
-
-            config.default_llm = model_name
-            return await self.save_system_config(config)
-
-        except Exception as e:
-            print(f"设置默认LLM失败: {e}")
-            return False
-
-    async def set_default_data_source(self, data_source_name: str) -> bool:
-        """设置默认数据源"""
-        try:
-            config = await self.get_system_config()
-            if not config:
-                return False
-
-            # 检查指定的数据源是否存在
-            source_exists = any(
-                ds.name == data_source_name for ds in config.data_source_configs
-            )
-
-            if not source_exists:
-                return False
-
-            config.default_data_source = data_source_name
-            return await self.save_system_config(config)
-
-        except Exception as e:
-            print(f"设置默认数据源失败: {e}")
-            return False
-
     async def update_system_settings(self, settings: Dict[str, Any]) -> bool:
         """更新系统设置"""
         try:

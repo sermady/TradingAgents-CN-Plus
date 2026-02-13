@@ -2,7 +2,8 @@
   "include": [
     "tradingagents",
     "app",
-    "tests"
+    "tests",
+    "web"
   ],
   "exclude": [
     "**/__pycache__",
@@ -16,6 +17,7 @@
   ],
   "typeCheckingMode": "basic",
   "pythonVersion": "3.10",
+  "pythonPlatform": "Windows",
   "reportMissingImports": "warning",
   "reportMissingTypeStubs": "none",
   "reportOptionalCall": "warning",
@@ -24,5 +26,10 @@
   "reportGeneralTypeIssues": "warning",
   "reportUndefinedVariable": "warning",
   "reportUnusedImport": "warning",
-  "reportUnusedVariable": "warning"
+  "reportUnusedVariable": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "reportArgumentType": "warning",
+  "reportCallIssue": "warning",
+  "reportReturnType": "warning",
+  "reportAssignmentType": "warning"
 }

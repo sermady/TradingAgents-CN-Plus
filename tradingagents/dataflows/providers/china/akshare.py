@@ -1187,7 +1187,11 @@ class AKShareProvider(BaseStockDataProvider):
             return ""
 
     async def get_historical_data(
-        self, code: str, start_date: str, end_date: str, period: str = "daily"
+        self,
+        code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        period: str = "daily",
     ) -> Optional[pd.DataFrame]:
         """
         获取历史行情数据

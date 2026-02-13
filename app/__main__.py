@@ -83,7 +83,7 @@ def check_env_file():
                     with open(env_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
                     logger.info(f"📄 .env文件内容预览 (共{len(lines)}行):")
-                    for i, line in enumerate(lines[:10]):  # 只显示前10行
+                    for line in lines[:10]:  # 只显示前10行
                         line = line.strip()
                         if line and not line.startswith("#"):
                             # 隐藏敏感信息

@@ -991,7 +991,7 @@ class TushareProvider(BaseStockDataProvider):
     async def get_historical_data(
         self,
         symbol: str,
-        start_date: Union[str, date],
+        start_date: Optional[Union[str, date]] = None,
         end_date: Optional[Union[str, date]] = None,
         period: str = "daily",
     ) -> Optional[pd.DataFrame]:

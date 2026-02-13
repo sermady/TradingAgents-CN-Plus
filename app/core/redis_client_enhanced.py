@@ -43,7 +43,7 @@ def retry_on_failure(max_retries=3, delay=1.0, backoff=2.0):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            last_exception = None
+            last_exception: Optional[Exception] = None
             current_delay = delay
 
             for attempt in range(max_retries):
@@ -278,7 +278,7 @@ class RedisService:
         return None
 
     @retry_on_failure(max_retries=3)
-    async def set_json(self, key: str, value: dict, ttl: int = None):
+    async def set_json(self, key: str, value: dict, ttl: Optional[int] = None):
         """设置JSON格式的值"""
         import json
 
@@ -348,7 +348,8 @@ class RedisService:
         """检查是否在集合中"""
         if not await self._ensure_connection():
             return False
-        return await self.redis.sismember(set_key, value)
+        result = await self.redis.sismember(set_key, value)
+        return bool(result)
 
     @retry_on_failure(max_retries=3)
     async def get_set_size(self, set_key: str) -> int:
@@ -382,7 +383,7 @@ class RedisService:
             return 0
         end
         """
-        result = await self.redis.eval(lua_script, 1, lock_key, lock_value)
+        result = await self.redis.eval(lua_script, 1, [lock_key], [lock_value])
         return bool(result)
 
     @retry_on_failure(max_retries=3)

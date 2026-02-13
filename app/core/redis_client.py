@@ -123,7 +123,7 @@ class RedisService:
             return json.loads(value)
         return None
 
-    async def set_json(self, key: str, value: dict, ttl: int = None):
+    async def set_json(self, key: str, value: dict, ttl: Optional[int] = None):
         """设置JSON格式的值"""
         import json
 
@@ -151,7 +151,7 @@ class RedisService:
         """从队列弹出项目"""
         import json
 
-        result = await self.redis.brpop(queue_key, timeout=timeout)
+        result = await self.redis.brpop([queue_key], timeout=timeout)
         if result:
             return json.loads(result[1])
         return None
@@ -195,7 +195,7 @@ class RedisService:
             return 0
         end
         """
-        return await self.redis.eval(lua_script, 1, lock_key, lock_value)
+        return await self.redis.eval(lua_script, 1, [lock_key], [lock_value])
 
 
 # 全局Redis服务实例

@@ -135,6 +135,19 @@ class BaseStockDataProvider(ABC):
         # 默认实现返回None，子类可以重写
         return None
 
+    async def get_stock_info(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        获取股票信息
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            股票信息字典，包含名称、行业等基本信息
+        """
+        # 默认实现返回None，子类可以重写
+        return None
+
     # ==================== 数据标准化方法 ====================
 
     def standardize_basic_info(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:

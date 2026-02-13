@@ -555,7 +555,7 @@ class AnalysisService:
                 provider = get_provider_by_model_name(model_name)
 
                 # 记录使用情况
-                self._record_token_usage(task, result, provider, model_name)
+                await self._record_token_usage(task, result, provider, model_name)
             except Exception as e:
                 logger.error(f"⚠️  记录 token 使用失败: {e}")
 

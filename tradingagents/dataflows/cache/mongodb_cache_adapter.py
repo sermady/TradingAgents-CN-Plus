@@ -183,8 +183,8 @@ class MongoDBCacheAdapter:
     def get_historical_data(
         self,
         symbol: str,
-        start_date: str = None,
-        end_date: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         period: str = "daily",
     ) -> Optional[pd.DataFrame]:
         """
@@ -429,6 +429,17 @@ class MongoDBCacheAdapter:
         except Exception as e:
             logger.warning(f"⚠️ 获取行情数据失败: {e}")
             return None
+
+    async def get_stock_info(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """获取股票信息（兼容接口，委托给 get_stock_basic_info）
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            股票信息字典，包含名称、行业等基本信息
+        """
+        return self.get_stock_basic_info(symbol)
 
 
 # 全局实例
