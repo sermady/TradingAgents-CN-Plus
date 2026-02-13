@@ -10,6 +10,7 @@
 - 错误处理
 """
 
+import asyncio
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 import pandas as pd
@@ -160,7 +161,7 @@ class TestProviderCommonPatterns:
 
             # 测试无效股票代码
             with pytest.raises((ValueError, Exception)):
-                provider.get_stock_info("INVALID")
+                asyncio.run(provider.get_stock_info("INVALID"))
         except Exception as e:
             pytest.skip(f"测试需要提供者环境: {e}")
 
@@ -195,13 +196,14 @@ class TestProviderCommonPatterns:
         try:
             provider = AKShareProvider()
 
-            # 模拟API错误
-            with patch.object(provider, "get_stock_info") as mock_get_info:
-                mock_get_info.side_effect = Exception("API错误")
+            # 模拟API错误 - 异步函数需要返回 coroutine
+            async def mock_async_error(*args, **kwargs):
+                raise Exception("API错误")
 
+            with patch.object(provider, "get_stock_info", side_effect=mock_async_error):
                 # 应该抛出异常或返回错误信息
                 with pytest.raises(Exception):
-                    provider.get_stock_info("000001")
+                    asyncio.run(provider.get_stock_info("000001"))
         except Exception as e:
             pytest.skip(f"测试需要提供者环境: {e}")
 

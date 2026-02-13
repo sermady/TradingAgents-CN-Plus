@@ -57,13 +57,15 @@ class QueueService:
         user_id: str,
         symbol: str,
         params: Dict[str, Any],
-        batch_id: Optional[str] = None
+        batch_id: Optional[str] = None,
     ) -> str:
         """任务入队，支持并发控制（开源版FIFO队列）"""
 
         # 检查用户并发限制
         if not await self._check_user_concurrent_limit(user_id):
-            raise ValueError(f"用户 {user_id} 达到并发限制 ({self.user_concurrent_limit})")
+            raise ValueError(
+                f"用户 {user_id} 达到并发限制 ({self.user_concurrent_limit})"
+            )
 
         # 检查全局并发限制
         if not await self._check_global_concurrent_limit():
@@ -80,7 +82,7 @@ class QueueService:
             "status": "queued",
             "created_at": str(now),
             "params": json.dumps(params or {}),
-            "enqueued_at": str(now)
+            "enqueued_at": str(now),
         }
 
         if batch_id:
@@ -102,9 +104,12 @@ class QueueService:
         """从FIFO队列中取出任务"""
         try:
             # 从FIFO队列获取任务
-            task_id = await self.r.rpop(READY_LIST)
-            if not task_id:
+            task_id_result = await self.r.rpop(READY_LIST)
+            if not task_id_result:
                 return None
+
+            # 确保 task_id 是字符串类型
+            task_id = str(task_id_result)
 
             # 获取任务详情
             task_data = await self.get_task(task_id)
@@ -113,6 +118,9 @@ class QueueService:
                 return None
 
             user_id = task_data.get("user")
+            if not user_id:
+                logger.warning(f"任务数据中没有用户ID: {task_id}")
+                return None
 
             # 再次检查并发限制（防止竞态条件）
             if not await self._check_user_concurrent_limit(user_id):
@@ -128,11 +136,14 @@ class QueueService:
             await self._set_visibility_timeout(task_id, worker_id)
 
             # 更新任务状态
-            await self.r.hset(TASK_PREFIX + task_id, mapping={
-                "status": "processing",
-                "worker_id": worker_id,
-                "started_at": str(int(time.time()))
-            })
+            await self.r.hset(
+                TASK_PREFIX + task_id,
+                mapping={
+                    "status": "processing",
+                    "worker_id": worker_id,
+                    "started_at": str(int(time.time())),
+                },
+            )
 
             logger.info(f"任务已出队: {task_id} -> Worker: {worker_id}")
             return task_data
@@ -151,6 +162,9 @@ class QueueService:
             user_id = task_data.get("user")
             worker_id = task_data.get("worker_id")
 
+            if not user_id:
+                user_id = "unknown"
+
             # 从处理中集合移除
             await self._unmark_task_processing(task_id, user_id)
 
@@ -159,10 +173,10 @@ class QueueService:
 
             # 更新任务状态
             status = "completed" if success else "failed"
-            await self.r.hset(TASK_PREFIX + task_id, mapping={
-                "status": status,
-                "completed_at": str(int(time.time()))
-            })
+            await self.r.hset(
+                TASK_PREFIX + task_id,
+                mapping={"status": status, "completed_at": str(int(time.time()))},
+            )
 
             # 添加到相应的集合
             if success:
@@ -177,19 +191,26 @@ class QueueService:
             logger.error(f"确认任务失败: {e}")
             return False
 
-    async def create_batch(self, user_id: str, symbols: List[str], params: Dict[str, Any]) -> tuple[str, int]:
+    async def create_batch(
+        self, user_id: str, symbols: List[str], params: Dict[str, Any]
+    ) -> tuple[str, int]:
         batch_id = str(uuid.uuid4())
         now = int(time.time())
         batch_key = BATCH_PREFIX + batch_id
-        await self.r.hset(batch_key, mapping={
-            "id": batch_id,
-            "user": user_id,
-            "status": "queued",
-            "submitted": str(len(symbols)),
-            "created_at": str(now),
-        })
+        await self.r.hset(
+            batch_key,
+            mapping={
+                "id": batch_id,
+                "user": user_id,
+                "status": "queued",
+                "submitted": str(len(symbols)),
+                "created_at": str(now),
+            },
+        )
         for s in symbols:
-            await self.enqueue_task(user_id=user_id, symbol=s, params=params, batch_id=batch_id)
+            await self.enqueue_task(
+                user_id=user_id, symbol=s, params=params, batch_id=batch_id
+            )
         return batch_id, len(symbols)
 
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -238,7 +259,9 @@ class QueueService:
     # 新增：并发控制方法
     async def _check_user_concurrent_limit(self, user_id: str) -> bool:
         """检查用户并发限制（委托 helpers）"""
-        return await check_user_concurrent_limit(self.r, user_id, self.user_concurrent_limit)
+        return await check_user_concurrent_limit(
+            self.r, user_id, self.user_concurrent_limit
+        )
 
     async def _check_global_concurrent_limit(self) -> bool:
         """检查全局并发限制（委托 helpers）"""
@@ -254,7 +277,9 @@ class QueueService:
 
     async def _set_visibility_timeout(self, task_id: str, worker_id: str):
         """设置可见性超时（委托 helpers）"""
-        await set_visibility_timeout(self.r, task_id, worker_id, self.visibility_timeout)
+        await set_visibility_timeout(
+            self.r, task_id, worker_id, self.visibility_timeout
+        )
 
     async def _clear_visibility_timeout(self, task_id: str):
         """清除可见性超时"""
@@ -268,7 +293,9 @@ class QueueService:
         return {
             "processing": int(processing_count or 0),
             "concurrent_limit": self.user_concurrent_limit,
-            "available_slots": max(0, self.user_concurrent_limit - int(processing_count or 0))
+            "available_slots": max(
+                0, self.user_concurrent_limit - int(processing_count or 0)
+            ),
         }
 
     async def cleanup_expired_tasks(self):
@@ -307,6 +334,8 @@ class QueueService:
                 return
 
             user_id = task_data.get("user")
+            if not user_id:
+                user_id = "unknown"
 
             # 从处理中集合移除
             await self._unmark_task_processing(task_id, user_id)
@@ -318,11 +347,14 @@ class QueueService:
             await self.r.lpush(READY_LIST, task_id)
 
             # 更新任务状态
-            await self.r.hset(TASK_PREFIX + task_id, mapping={
-                "status": "queued",
-                "worker_id": "",
-                "requeued_at": str(int(time.time()))
-            })
+            await self.r.hset(
+                TASK_PREFIX + task_id,
+                mapping={
+                    "status": "queued",
+                    "worker_id": "",
+                    "requeued_at": str(int(time.time())),
+                },
+            )
 
             logger.warning(f"过期任务重新入队: {task_id}")
 
@@ -338,6 +370,8 @@ class QueueService:
 
             status = task_data.get("status")
             user_id = task_data.get("user")
+            if not user_id:
+                user_id = "unknown"
 
             if status == "processing":
                 # 如果正在处理中，从处理集合移除
@@ -348,10 +382,10 @@ class QueueService:
                 await self.r.lrem(READY_LIST, 0, task_id)
 
             # 更新任务状态
-            await self.r.hset(TASK_PREFIX + task_id, mapping={
-                "status": "cancelled",
-                "cancelled_at": str(int(time.time()))
-            })
+            await self.r.hset(
+                TASK_PREFIX + task_id,
+                mapping={"status": "cancelled", "cancelled_at": str(int(time.time()))},
+            )
 
             logger.info(f"任务已取消: {task_id}")
             return True

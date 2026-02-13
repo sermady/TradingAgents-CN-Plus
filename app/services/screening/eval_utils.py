@@ -3,6 +3,7 @@
 Utility functions for screening evaluation and DSL parsing.
 Extracted from ScreeningService to separate concerns while keeping API unchanged.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Iterable
@@ -10,7 +11,9 @@ import pandas as pd
 import numpy as np
 
 
-def collect_fields_from_conditions(node: Dict[str, Any], allowed_fields: Iterable[str]) -> List[str]:
+def collect_fields_from_conditions(
+    node: Dict[str, Any], allowed_fields: Iterable[str]
+) -> List[str]:
     if not node:
         return []
     if node.get("op") == "group" or "children" in node:
@@ -29,7 +32,9 @@ def collect_fields_from_conditions(node: Dict[str, Any], allowed_fields: Iterabl
     return out
 
 
-def evaluate_fund_conditions(snap: Dict[str, Any], node: Dict[str, Any], fund_fields: Iterable[str]) -> bool:
+def evaluate_fund_conditions(
+    snap: Dict[str, Any], node: Dict[str, Any], fund_fields: Iterable[str]
+) -> bool:
     if not node:
         return True
     # group
@@ -41,7 +46,7 @@ def evaluate_fund_conditions(snap: Dict[str, Any], node: Dict[str, Any], fund_fi
     # leaf
     field = node.get("field")
     op = node.get("op")
-    if field not in fund_fields:
+    if field is None or field not in fund_fields:
         return True  # 非基本面字段在纯基本面路径中跳过
     left = snap.get(field)
     if left is None:
@@ -66,7 +71,11 @@ def evaluate_fund_conditions(snap: Dict[str, Any], node: Dict[str, Any], fund_fi
             return float(left) != float(right)
         if op == "between":
             lo_hi = right if isinstance(right, (list, tuple)) else (None, None)
-            lo, hi = lo_hi if isinstance(lo_hi, (list, tuple)) and len(lo_hi) == 2 else (None, None)
+            lo, hi = (
+                lo_hi
+                if isinstance(lo_hi, (list, tuple)) and len(lo_hi) == 2
+                else (None, None)
+            )
             if lo is None or hi is None:
                 return False
             v = float(left)
@@ -90,19 +99,26 @@ def evaluate_conditions(
         children = node.get("children", [])
         if logic not in {"AND", "OR"}:
             logic = "AND"
-        flags = [evaluate_conditions(df, c, allowed_fields, allowed_ops) for c in children]
+        flags = [
+            evaluate_conditions(df, c, allowed_fields, allowed_ops) for c in children
+        ]
         return all(flags) if logic == "AND" else any(flags)
 
     # 叶子：字段比较
     field = node.get("field")
     op = node.get("op")
-    if field not in allowed_fields or op not in set(allowed_ops):
+    if (
+        field is None
+        or field not in allowed_fields
+        or op is None
+        or op not in set(allowed_ops)
+    ):
         return False
 
     # 需要最近两行（交叉）
     if op in {"cross_up", "cross_down"}:
         right_field = node.get("right_field")
-        if right_field not in allowed_fields:
+        if right_field is None or right_field not in allowed_fields:
             return False
         if len(df) < 2:
             return False
@@ -127,7 +143,7 @@ def evaluate_conditions(
 
     if node.get("right_field"):
         rf = node.get("right_field")
-        if rf not in allowed_fields:
+        if rf is None or rf not in allowed_fields:
             return False
         right = t0.get(rf)
     else:
@@ -148,7 +164,11 @@ def evaluate_conditions(
             return float(left) != float(right)
         if op == "between":
             lo_hi = right if isinstance(right, (list, tuple)) else (None, None)
-            lo, hi = lo_hi if isinstance(lo_hi, (list, tuple)) and len(lo_hi) == 2 else (None, None)
+            lo, hi = (
+                lo_hi
+                if isinstance(lo_hi, (list, tuple)) and len(lo_hi) == 2
+                else (None, None)
+            )
             if lo is None or hi is None:
                 return False
             v = float(left)
@@ -165,4 +185,3 @@ def safe_float(v: Any) -> Optional[float]:
         return float(v)
     except Exception:
         return None
-

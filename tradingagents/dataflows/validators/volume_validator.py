@@ -339,6 +339,13 @@ class VolumeValidator(BaseDataValidator):
 
         if all([turnover_rate, share_count, volume]):
             try:
+                # 确保类型正确
+                turnover_rate = (
+                    float(turnover_rate) if turnover_rate is not None else 0.0
+                )
+                share_count = float(share_count) if share_count is not None else 1.0
+                volume = float(volume) if volume is not None else 0.0
+
                 # 假设volume是股
                 rate_as_shares = (volume / share_count) * 100
                 diff_shares = abs(rate_as_shares - turnover_rate)

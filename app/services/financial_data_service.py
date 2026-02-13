@@ -201,6 +201,9 @@ class FinancialDataService:
         if self.db is None:
             await self.initialize()
 
+        if self.db is None:
+            raise Exception("数据库未初始化")
+
         try:
             collection = self.db[self.collection_name]
 
@@ -245,6 +248,9 @@ class FinancialDataService:
         """获取财务数据统计信息"""
         if self.db is None:
             await self.initialize()
+
+        if self.db is None:
+            raise RuntimeError("数据库未初始化")
 
         try:
             collection = self.db[self.collection_name]

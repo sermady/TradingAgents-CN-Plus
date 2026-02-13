@@ -3121,7 +3121,7 @@ class DataSourceManager:
                         continue
 
                 # 检查是否获取到有效信息
-                if result.get("name") and result["name"] != f"股票{symbol}":
+                if result and result.get("name") and result["name"] != f"股票{symbol}":
                     logger.info(
                         f"✅ [数据来源: 备用数据源] 降级成功获取股票信息: {source_name}"
                     )

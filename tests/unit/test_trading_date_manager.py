@@ -10,7 +10,10 @@
 
 import unittest
 from datetime import datetime, timedelta
-from tradingagents.utils.trading_date_manager import get_trading_date_manager, TradingDateManager
+from tradingagents.utils.trading_date_manager import (
+    get_trading_date_manager,
+    TradingDateManager,
+)
 
 
 class TestTradingDateManager(unittest.TestCase):
@@ -34,7 +37,7 @@ class TestTradingDateManager(unittest.TestCase):
         # 测试周一到周五
         for weekday in range(5):  # 0=周一, 4=周五
             base_date = datetime(2025, 1, 6 + weekday)  # 2025-01-06 是周一
-            test_date = base_date.strftime('%Y-%m-%d')
+            test_date = base_date.strftime("%Y-%m-%d")
             result = mgr.get_latest_trading_date(test_date)
             self.assertEqual(result, test_date, f"工作日 {test_date} 应保持不变")
 
@@ -85,6 +88,7 @@ class TestTradingDateManager(unittest.TestCase):
 
         # 等待一小段时间确保缓存过期
         import time
+
         time.sleep(0.1)
 
         # 缓存应过期，但结果应相同
@@ -100,7 +104,7 @@ class TestTradingDateManager(unittest.TestCase):
 
         # 结果应该是今天或最近的交易日
         self.assertIsNotNone(result, "应返回有效日期")
-        self.assertIn('-', result, "日期格式应包含连字符")
+        self.assertIn("-", result, "日期格式应包含连字符")
 
 
 class TestPriceConsistencyIntegration(unittest.TestCase):
@@ -109,6 +113,7 @@ class TestPriceConsistencyIntegration(unittest.TestCase):
     def setUp(self):
         """测试前准备：清除缓存"""
         from tradingagents.utils.price_cache import get_price_cache
+
         mgr = get_trading_date_manager()
         mgr.clear_cache()
         cache = get_price_cache()
@@ -131,8 +136,10 @@ class TestPriceConsistencyIntegration(unittest.TestCase):
         # 验证缓存价格
         price_info = price_cache.get_price_info("000001")
         self.assertIsNotNone(price_info, "应返回价格信息")
-        self.assertEqual(price_info['price'], 59.95, "价格应匹配")
-        self.assertEqual(price_info['currency'], "¥", "货币应匹配")
+        if price_info is None:
+            self.fail("价格信息不应为 None")
+        self.assertEqual(price_info["price"], 59.95, "价格应匹配")
+        self.assertEqual(price_info["currency"], "¥", "货币应匹配")
 
     def test_cross_analyst_price_consistency(self):
         """测试跨分析师价格一致性"""
@@ -145,8 +152,8 @@ class TestPriceConsistencyIntegration(unittest.TestCase):
         # 模拟基本面分析师读取缓存
         price_info = price_cache.get_price_info("002938")
         self.assertIsNotNone(price_info, "基本面分析师应能读取缓存")
-        self.assertEqual(price_info['price'], 58.29, "价格应一致")
+        self.assertEqual(price_info["price"], 58.29, "价格应一致")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

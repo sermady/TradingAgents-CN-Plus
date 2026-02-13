@@ -761,9 +761,21 @@ class FinancialSituationMemory:
             # 处理查询结果
             memories = []
             if results and "documents" in results and results["documents"]:
-                documents = results["documents"][0]
-                metadatas = results.get("metadatas", [[]])[0]
-                distances = results.get("distances", [[]])[0]
+                docs_list = results["documents"]
+                if docs_list and len(docs_list) > 0 and docs_list[0]:
+                    documents = docs_list[0]
+                    metadatas_list = results.get("metadatas", [[]])
+                    metadatas = (
+                        metadatas_list[0]
+                        if metadatas_list and len(metadatas_list) > 0
+                        else []
+                    )
+                    distances_list = results.get("distances", [[]])
+                    distances = (
+                        distances_list[0]
+                        if distances_list and len(distances_list) > 0
+                        else []
+                    )
 
                 for i, doc in enumerate(documents):
                     metadata = metadatas[i] if i < len(metadatas) else {}

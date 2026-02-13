@@ -352,10 +352,11 @@ class IntegratedCacheManager:
                         "fundamentals_data",
                     ]:
                         result = mongodb_db[collection_name].delete_many({})
-                        cleared_count += result.deleted_count
-                        self.logger.info(
-                            f"🧹 MongoDB {collection_name} 清空了 {result.deleted_count} 条记录"
-                        )
+                        if result:
+                            cleared_count += result.deleted_count
+                            self.logger.info(
+                                f"🧹 MongoDB {collection_name} 清空了 {result.deleted_count} 条记录"
+                            )
                 else:
                     # 清理过期数据
                     cutoff_time = datetime.now(
@@ -369,10 +370,11 @@ class IntegratedCacheManager:
                         result = mongodb_db[collection_name].delete_many(
                             {"created_at": {"$lt": cutoff_time}}
                         )
-                        cleared_count += result.deleted_count
-                        self.logger.info(
-                            f"🧹 MongoDB {collection_name} 清理了 {result.deleted_count} 条记录"
-                        )
+                        if result:
+                            cleared_count += result.deleted_count
+                            self.logger.info(
+                                f"🧹 MongoDB {collection_name} 清理了 {result.deleted_count} 条记录"
+                            )
             except Exception as e:
                 self.logger.error(f"⚠️ MongoDB 缓存清理失败: {e}")
 

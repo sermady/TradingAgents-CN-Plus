@@ -11,6 +11,7 @@
 - 缓存统计和监控
 """
 
+import asyncio
 import json
 import hashlib
 import logging
@@ -22,10 +23,29 @@ import redis
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-from app.core.database import get_mongo_db, get_redis_client
+from app.core.database import get_mongo_db_sync, get_redis_client
+from redis.asyncio.client import Redis as AsyncRedis
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async(coro):
+    """在同步上下文中运行异步协程"""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # 如果事件循环已经在运行，使用 run_coroutine_threadsafe
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result()
+        else:
+            return loop.run_until_complete(coro)
+    except RuntimeError:
+        # 没有事件循环，创建一个新的
+        return asyncio.run(coro)
 
 
 class CacheEntry:
@@ -84,7 +104,7 @@ class UnifiedCacheService:
         self._memory_lock = Lock()
 
         # Redis客户端
-        self._redis_client = None
+        self._redis_client: Optional[AsyncRedis] = None
         self._redis_prefix = "tradingagents:cache:"
 
         # MongoDB客户端
@@ -200,7 +220,7 @@ class UnifiedCacheService:
         category: str = "general",
         ttl: int = 3600,
         refresh_ttl: int = 30,
-        levels: List[str] = None,
+        levels: Optional[List[str]] = None,
     ) -> Tuple[Optional[Any], str]:
         """获取缓存值，并在需要时自动刷新（防雪崩版本）
 
@@ -329,7 +349,7 @@ class UnifiedCacheService:
 
     # ==================== Redis缓存 ====================
 
-    def _get_redis_client(self) -> Optional[redis.Redis]:
+    def _get_redis_client(self) -> Optional[AsyncRedis]:
         """获取Redis客户端
 
         带健康检查和降级策略的Redis连接管理
@@ -384,11 +404,11 @@ class UnifiedCacheService:
 
         try:
             full_key = self._redis_prefix + key
-            data = client.get(full_key)
+            data = _run_async(client.get(full_key))
 
             if data:
                 value = json.loads(data)
-                client.expire(full_key, 3600)  # 刷新TTL
+                _run_async(client.expire(full_key, 3600))  # 刷新TTL
 
                 with self._stats_lock:
                     self._stats["hits"] += 1
@@ -414,7 +434,7 @@ class UnifiedCacheService:
         try:
             full_key = self._redis_prefix + key
             data = json.dumps(value, ensure_ascii=False)
-            client.setex(full_key, ttl, data)
+            _run_async(client.setex(full_key, ttl, data))
 
             with self._stats_lock:
                 self._stats["sets"] += 1
@@ -431,8 +451,8 @@ class UnifiedCacheService:
 
         try:
             full_key = self._redis_prefix + key
-            result = client.delete(full_key)
-            if result > 0:
+            result = _run_async(client.delete(full_key))
+            if int(result or 0) > 0:
                 with self._stats_lock:
                     self._stats["deletes"] += 1
                 return True
@@ -590,7 +610,7 @@ class UnifiedCacheService:
     # ==================== 统一接口 ====================
 
     def get(
-        self, key: str, category: str = "general", levels: List[str] = None
+        self, key: str, category: str = "general", levels: Optional[List[str]] = None
     ) -> Tuple[Optional[Any], str]:
         """
         获取缓存值
@@ -634,7 +654,7 @@ class UnifiedCacheService:
         value: Any,
         ttl: int = 3600,
         category: str = "general",
-        levels: List[str] = None,
+        levels: Optional[List[str]] = None,
     ):
         """
         设置缓存值
@@ -662,7 +682,7 @@ class UnifiedCacheService:
                 self._set_to_file(key, value, ttl, category)
 
     def delete(
-        self, key: str, category: str = "general", levels: List[str] = None
+        self, key: str, category: str = "general", levels: Optional[List[str]] = None
     ) -> int:
         """
         删除缓存
@@ -692,7 +712,7 @@ class UnifiedCacheService:
         logger.info(f"🗑️ 删除缓存: {key} ({deleted}个级别)")
         return deleted
 
-    def clear_category(self, category: str, levels: List[str] = None) -> int:
+    def clear_category(self, category: str, levels: Optional[List[str]] = None) -> int:
         """
         清除类别缓存
 
@@ -734,9 +754,17 @@ class UnifiedCacheService:
             if client:
                 try:
                     pattern = self._redis_prefix + category + ":*"
-                    keys = list(client.scan_iter(match=pattern))
+
+                    # 使用异步迭代器收集keys
+                    async def collect_keys():
+                        keys = []
+                        async for key in client.scan_iter(match=pattern):
+                            keys.append(key)
+                        return keys
+
+                    keys = _run_async(collect_keys())
                     if keys:
-                        deleted += client.delete(*keys)
+                        deleted += _run_async(client.delete(*keys))
                 except Exception as e:
                     logger.warning(f"⚠️ 清除Redis缓存失败: {e}")
 
@@ -754,7 +782,7 @@ class UnifiedCacheService:
         fallback_value: Any = None,
         fallback_ttl: int = 60,
         max_retries: int = 3,
-        levels: List[str] = None,
+        levels: Optional[List[str]] = None,
     ) -> Tuple[Any, str]:
         """获取或设置缓存，带缓存击穿保护
 

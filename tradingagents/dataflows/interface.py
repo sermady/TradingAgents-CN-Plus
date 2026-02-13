@@ -206,6 +206,7 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ stockstats工具不可用: {e}")
     STOCKSTATS_AVAILABLE = False
+    StockstatsUtils = None  # type: ignore
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -834,20 +835,22 @@ def get_stockstats_indicator(
     ],
     online: Annotated[bool, "to fetch data online or offline"],
 ) -> str:
-    curr_date = datetime.strptime(curr_date, "%Y-%m-%d")
-    curr_date = curr_date.strftime("%Y-%m-%d")
+    parsed_date = datetime.strptime(curr_date, "%Y-%m-%d")
+    formatted_date = parsed_date.strftime("%Y-%m-%d")
 
     try:
+        if not STOCKSTATS_AVAILABLE or StockstatsUtils is None:
+            return ""
         indicator_value = StockstatsUtils.get_stock_stats(
             symbol,
             indicator,
-            curr_date,
+            formatted_date,
             os.path.join(DATA_DIR, "market_data", "price_data"),
             online=online,
         )
     except Exception as e:
         print(
-            f"Error getting stockstats indicator data for indicator {indicator} on {curr_date}: {e}"
+            f"Error getting stockstats indicator data for indicator {indicator} on {formatted_date}: {e}"
         )
         return ""
 
@@ -1007,7 +1010,17 @@ def get_stock_news_openai(ticker, curr_date):
         store=True,
     )
 
-    return response.output[1].content[0].text
+    # 提取响应文本，处理 Union 类型
+    try:
+        output_item = response.output[1]
+        content = getattr(output_item, "content", None)
+        if content and len(content) > 0:
+            text = getattr(content[0], "text", None)
+            if text:
+                return text
+    except (IndexError, AttributeError):
+        pass
+    return ""
 
 
 def get_global_news_openai(curr_date):
@@ -1042,7 +1055,17 @@ def get_global_news_openai(curr_date):
         store=True,
     )
 
-    return response.output[1].content[0].text
+    # 提取响应文本，处理 Union 类型
+    try:
+        output_item = response.output[1]
+        content = getattr(output_item, "content", None)
+        if content and len(content) > 0:
+            text = getattr(content[0], "text", None)
+            if text:
+                return text
+    except (IndexError, AttributeError):
+        pass
+    return ""
 
 
 def get_fundamentals_finnhub(ticker, curr_date):
@@ -1449,7 +1472,17 @@ def _get_fundamentals_openai_impl(ticker, curr_date, config, cache):
             store=True,
         )
 
-        result = response.output[1].content[0].text
+        # 提取响应文本，处理 Union 类型
+        result = ""
+        try:
+            output_item = response.output[1]
+            content = getattr(output_item, "content", None)
+            if content and len(content) > 0:
+                text = getattr(content[0], "text", None)
+                if text:
+                    result = text
+        except (IndexError, AttributeError):
+            pass
 
         # 保存到缓存
         if result and len(result) > 100:  # 只有当结果有实际内容时才缓存
@@ -1690,7 +1723,7 @@ def get_china_stock_data_unified(
             and "错误" not in result
         )
 
-        if is_success:
+        if is_success and result:
             logger.info(
                 f"✅ [统一接口] 中国股票数据获取成功",
                 extra={
@@ -1700,7 +1733,7 @@ def get_china_stock_data_unified(
                     "end_date": end_date,
                     "duration": duration,
                     "result_length": result_length,
-                    "result_preview": result[:300] + "..."
+                    "result_preview": (result[:300] + "...")
                     if result_length > 300
                     else result,
                     "event_type": "unified_data_call_success",

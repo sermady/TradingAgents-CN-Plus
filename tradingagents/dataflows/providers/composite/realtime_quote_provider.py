@@ -367,8 +367,16 @@ class RealtimeQuoteProvider:
 
             # 涨跌幅计算
             if "price" in quote and "prev_close" in quote:
-                prev = quote["prev_close"]
-                curr = quote["price"]
+                prev = (
+                    float(quote["prev_close"])
+                    if isinstance(quote["prev_close"], str)
+                    else quote["prev_close"]
+                )
+                curr = (
+                    float(quote["price"])
+                    if isinstance(quote["price"], str)
+                    else quote["price"]
+                )
                 if prev > 0:
                     quote["change"] = curr - prev
                     quote["change_pct"] = (curr - prev) / prev * 100

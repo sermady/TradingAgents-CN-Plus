@@ -4,6 +4,7 @@
 测试Tushare rt_k和AKShare缓存机制
 """
 
+import asyncio
 import pytest
 import sys
 import os
@@ -46,7 +47,7 @@ class TestTushareBatchQuotes:
 
         # 设置缓存
         test_data = {"000001": {"close": 10.5}}
-        _set_cached_batch_quotes(test_data)
+        asyncio.run(_set_cached_batch_quotes(test_data))
 
         # 应该有缓存了
         cached = _get_cached_batch_quotes()
@@ -54,7 +55,7 @@ class TestTushareBatchQuotes:
         assert cached["000001"]["close"] == 10.5
 
         # 使缓存失效
-        _invalidate_batch_cache()
+        asyncio.run(_invalidate_batch_cache())
         assert _get_cached_batch_quotes() is None
 
     def test_cache_status(self):
@@ -73,14 +74,14 @@ class TestTushareBatchQuotes:
         assert status["cached"] is False
 
         # 设置缓存
-        _set_cached_batch_quotes({"000001": {"close": 10.5}})
+        asyncio.run(_set_cached_batch_quotes({"000001": {"close": 10.5}}))
         status = provider.get_batch_cache_status()
         assert status["cached"] is True
         assert status["count"] == 1
         assert status["ttl_seconds"] == 30
 
         # 清理
-        _invalidate_batch_cache()
+        asyncio.run(_invalidate_batch_cache())
 
 
 class TestAkShareQuotes:

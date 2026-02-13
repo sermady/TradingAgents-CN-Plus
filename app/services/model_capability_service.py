@@ -250,9 +250,6 @@ class ModelCapabilityService:
             # 关闭连接
             client.close()
 
-        except Exception as e:
-            logger.warning(f"从 MongoDB 读取模型信息失败: {e}", exc_info=True)
-
         # 2. 从默认映射表读取（直接匹配）
         if model_name in DEFAULT_MODEL_CAPABILITIES:
             return DEFAULT_MODEL_CAPABILITIES[model_name]

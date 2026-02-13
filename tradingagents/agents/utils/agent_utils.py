@@ -116,9 +116,9 @@ class Toolkit:
 
         end_date_str = end_date
 
-        end_date = datetime.strptime(end_date, "%Y-%m-%d")
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        look_back_days = (end_date - start_date).days
+        end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        look_back_days = (end_date_dt - start_date_dt).days
 
         finnhub_news_result = interface.get_finnhub_news(
             ticker, end_date_str, look_back_days
