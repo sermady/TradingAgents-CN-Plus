@@ -4,11 +4,11 @@
 将统一配置系统的配置桥接到环境变量，供 TradingAgents 核心库使用
 """
 
-import os
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
 logger = logging.getLogger("app.config_bridge")
 
@@ -47,9 +47,7 @@ def bridge_config_to_env():
         mongodb_conn_str = os.getenv("MONGODB_CONNECTION_STRING")
         if mongodb_conn_str:
             os.environ["MONGODB_CONNECTION_STRING"] = mongodb_conn_str
-            logger.info(
-                f"  ✓ 桥接 MONGODB_CONNECTION_STRING (长度: {len(mongodb_conn_str)})"
-            )
+            logger.info(f"  ✓ 桥接 MONGODB_CONNECTION_STRING (长度: {len(mongodb_conn_str)})")
             bridged_count += 1
 
         # 桥接 MongoDB 数据库名称
@@ -65,6 +63,7 @@ def bridge_config_to_env():
         try:
             # 使用同步 MongoDB 客户端读取厂家配置
             from pymongo import MongoClient
+
             from app.core.config import settings
             from app.models.config import LLMProvider
 
@@ -132,75 +131,13 @@ def bridge_config_to_env():
                         )
                         bridged_count += 1
                     else:
-                        logger.warning(
-                            f"  ⚠️  {env_key} 在 .env 和 JSON 文件中都是占位符，跳过"
-                        )
+                        logger.warning(f"  ⚠️  {env_key} 在 .env 和 JSON 文件中都是占位符，跳过")
                 else:
                     logger.debug(f"  ⏭️  {env_key} 未配置")
 
         # 2. 桥接默认模型配置
-        # 辅助函数：确保模型值是字符串
-        def _ensure_model_str(model_value: Any) -> Optional[str]:
-            """确保模型值是字符串"""
-            if model_value is None:
-                return None
-            if isinstance(model_value, str):
-                return model_value
-            if isinstance(model_value, dict):
-                # 如果是字典，尝试从多个可能的字段名中提取模型名称
-                # 支持多种字段名以适应不同的配置结构
-                for key in [
-                    "model_name",
-                    "name",
-                    "deep_think_llm",
-                    "quick_think_llm",
-                    "default_model",
-                ]:
-                    if key in model_value:
-                        value = model_value[key]
-                        # 如果值本身就是字符串，直接返回
-                        if isinstance(value, str):
-                            return value
-                        # 如果值是对象（如LLMConfig），提取model_name
-                        elif hasattr(value, "model_name"):
-                            return value.model_name
-                # 如果所有尝试都失败，返回None
-                return None
-            # 尝试转换为字符串
-            return str(model_value)
-
-        default_model = unified_config.get_default_model()
-        default_model_str = _ensure_model_str(default_model)
-        if default_model_str:
-            os.environ["TRADINGAGENTS_DEFAULT_MODEL"] = default_model_str
-            logger.info(f"  ✓ 桥接默认模型: {default_model_str}")
-            bridged_count += 1
-        elif default_model is not None:
-            logger.warning(
-                f"  ⚠️  默认模型配置格式错误: {type(default_model).__name__}, 值: {default_model}"
-            )
-
-        quick_model = unified_config.get_quick_analysis_model()
-        quick_model_str = _ensure_model_str(quick_model)
-        if quick_model_str:
-            os.environ["TRADINGAGENTS_QUICK_MODEL"] = quick_model_str
-            logger.info(f"  ✓ 桥接快速分析模型: {quick_model_str}")
-            bridged_count += 1
-        elif quick_model is not None:
-            logger.warning(
-                f"  ⚠️  快速分析模型配置格式错误: {type(quick_model).__name__}, 值: {quick_model}"
-            )
-
-        deep_model = unified_config.get_deep_analysis_model()
-        deep_model_str = _ensure_model_str(deep_model)
-        if deep_model_str:
-            os.environ["TRADINGAGENTS_DEEP_MODEL"] = deep_model_str
-            logger.info(f"  ✓ 桥接深度分析模型: {deep_model_str}")
-            bridged_count += 1
-        elif deep_model is not None:
-            logger.warning(
-                f"  ⚠️  深度分析模型配置格式错误: {type(deep_model).__name__}, 值: {deep_model}"
-            )
+        # 桥接模型配置
+        bridged_count += _bridge_model_configs(unified_config)
 
         # 3. 桥接数据源配置（基础 API 密钥）
         # 🔧 [优先级] .env 文件 > 数据库配置
@@ -208,6 +145,7 @@ def bridge_config_to_env():
         try:
             # 使用同步 MongoDB 客户端读取系统配置
             from pymongo import MongoClient
+
             from app.core.config import settings
             from app.models.config import SystemConfig
 
@@ -217,16 +155,12 @@ def bridge_config_to_env():
             config_collection = db.system_configs
 
             # 查询最新的系统配置
-            config_data = config_collection.find_one(
-                {"is_active": True}, sort=[("version", -1)]
-            )
+            config_data = config_collection.find_one({"is_active": True}, sort=[("version", -1)])
 
             if config_data and config_data.get("data_source_configs"):
                 system_config = SystemConfig(**config_data)
                 data_source_configs = system_config.data_source_configs
-                logger.info(
-                    f"  📊 从数据库读取到 {len(data_source_configs)} 个数据源配置"
-                )
+                logger.info(f"  📊 从数据库读取到 {len(data_source_configs)} 个数据源配置")
             else:
                 logger.warning("  ⚠️  数据库中没有数据源配置，使用 JSON 文件配置")
                 data_source_configs = unified_config.get_data_source_configs()
@@ -259,13 +193,9 @@ def bridge_config_to_env():
                         logger.info(
                             f"  ✓ 使用 .env 文件中的 TUSHARE_TOKEN (长度: {len(existing_token)})"
                         )
-                        logger.info(
-                            f"  ℹ️  数据库中未配置有效的 TUSHARE_TOKEN，使用 .env 降级方案"
-                        )
+                        logger.info(f"  ℹ️  数据库中未配置有效的 TUSHARE_TOKEN，使用 .env 降级方案")
                     else:
-                        logger.warning(
-                            f"  ⚠️  TUSHARE_TOKEN 在数据库和 .env 中都未配置有效值"
-                        )
+                        logger.warning(f"  ⚠️  TUSHARE_TOKEN 在数据库和 .env 中都未配置有效值")
                         continue
                     bridged_count += 1
 
@@ -291,9 +221,7 @@ def bridge_config_to_env():
                             f"  ℹ️  数据库中未配置有效的 FINNHUB_API_KEY，使用 .env 降级方案"
                         )
                     else:
-                        logger.warning(
-                            f"  ⚠️  FINNHUB_API_KEY 在数据库和 .env 中都未配置有效值"
-                        )
+                        logger.warning(f"  ⚠️  FINNHUB_API_KEY 在数据库和 .env 中都未配置有效值")
                         continue
                     bridged_count += 1
 
@@ -339,9 +267,7 @@ def bridge_config_to_env():
                     if config_manager._mongodb_storage.is_connected():
                         logger.info("✅ tradingagents MongoDB 存储已启用")
                     else:
-                        logger.warning(
-                            "⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储"
-                        )
+                        logger.warning("⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储")
                         config_manager._mongodb_storage = None
                 except Exception as e:
                     logger.error(f"❌ 创建 MongoDBStorage 实例失败: {e}")
@@ -398,7 +324,11 @@ def _bridge_datasource_details(data_source_configs) -> int:
             continue
 
         # 注意：字段名是 type 而不是 source_type
-        source_type = ds_config.type.value.upper()
+        try:
+            source_type = ds_config.type.value.upper()
+        except AttributeError as e:
+            logger.error(f"配置项缺少 type 字段: {ds_config}, error: {e}")
+            continue
 
         # 超时时间
         if ds_config.timeout:
@@ -418,9 +348,7 @@ def _bridge_datasource_details(data_source_configs) -> int:
         if ds_config.config_params and "max_retries" in ds_config.config_params:
             env_key = f"{source_type}_MAX_RETRIES"
             os.environ[env_key] = str(ds_config.config_params["max_retries"])
-            logger.debug(
-                f"  ✓ 桥接 {env_key}: {ds_config.config_params['max_retries']}"
-            )
+            logger.debug(f"  ✓ 桥接 {env_key}: {ds_config.config_params['max_retries']}")
             bridged_count += 1
 
         # 缓存 TTL（从 config_params 中获取）
@@ -434,15 +362,74 @@ def _bridge_datasource_details(data_source_configs) -> int:
         if ds_config.config_params and "cache_enabled" in ds_config.config_params:
             env_key = f"{source_type}_CACHE_ENABLED"
             os.environ[env_key] = str(ds_config.config_params["cache_enabled"]).lower()
-            logger.debug(
-                f"  ✓ 桥接 {env_key}: {ds_config.config_params['cache_enabled']}"
-            )
+            logger.debug(f"  ✓ 桥接 {env_key}: {ds_config.config_params['cache_enabled']}")
             bridged_count += 1
 
     if bridged_count > 0:
         logger.info(f"  ✓ 桥接数据源细节配置: {bridged_count} 项")
 
     return bridged_count
+
+
+def _ensure_model_str(model_value: Any) -> Optional[str]:
+    """确保模型值是字符串"""
+    if model_value is None:
+        return None
+    if isinstance(model_value, str):
+        return model_value
+    if isinstance(model_value, dict):
+        for key in ["model_name", "name", "deep_think_llm", "quick_think_llm", "default_model"]:
+            if key in model_value:
+                value = model_value[key]
+                if isinstance(value, str):
+                    return value
+                elif hasattr(value, "model_name"):
+                    return value.model_name
+        return None
+    return str(model_value)
+
+
+def _bridge_model_config(model_value: Any, env_key: str, model_name: str) -> int:
+    """
+    桥接单模型配置到环境变量
+
+    Args:
+        model_value: 模型配置值
+        env_key: 环境变量名
+        model_name: 模型名称（用于日志）
+
+    Returns:
+        1 如果桥接成功，0 否则
+    """
+    model_str = _ensure_model_str(model_value)
+    if model_str:
+        os.environ[env_key] = model_str
+        logger.info(f"  ✓ 桥接{model_name}: {model_str}")
+        return 1
+    elif model_value is not None:
+        logger.warning(
+            f"  ⚠️  {model_name}配置格式错误: {type(model_value).__name__}, 值: {model_value}"
+        )
+    return 0
+
+
+def _bridge_model_configs(unified_config) -> int:
+    """
+    桥接所有模型配置到环境变量
+
+    Args:
+        unified_config: 统一配置管理器
+
+    Returns:
+        桥接的配置项数量
+    """
+    configs = [
+        (unified_config.get_default_model(), "TRADINGAGENTS_DEFAULT_MODEL", "默认模型"),
+        (unified_config.get_quick_analysis_model(), "TRADINGAGENTS_QUICK_MODEL", "快速分析模型"),
+        (unified_config.get_deep_analysis_model(), "TRADINGAGENTS_DEEP_MODEL", "深度分析模型"),
+    ]
+
+    return sum(_bridge_model_config(value, env_key, name) for value, env_key, name in configs)
 
 
 def _bridge_system_settings() -> int:
@@ -455,6 +442,7 @@ def _bridge_system_settings() -> int:
     try:
         # 使用同步的 MongoDB 客户端
         from pymongo import MongoClient
+
         from app.core.config import settings
 
         # 创建同步客户端
@@ -488,65 +476,40 @@ def _bridge_system_settings() -> int:
         logger.debug(f"  📋 获取到 {len(system_settings)} 个系统设置")
         bridged_count = 0
 
-        # TradingAgents 运行时配置
-        ta_settings = {
-            "ta_hk_min_request_interval_seconds": "TA_HK_MIN_REQUEST_INTERVAL_SECONDS",
-            "ta_hk_timeout_seconds": "TA_HK_TIMEOUT_SECONDS",
-            "ta_hk_max_retries": "TA_HK_MAX_RETRIES",
-            "ta_hk_rate_limit_wait_seconds": "TA_HK_RATE_LIMIT_WAIT_SECONDS",
-            "ta_hk_cache_ttl_seconds": "TA_HK_CACHE_TTL_SECONDS",
-            "ta_use_app_cache": "TA_USE_APP_CACHE",
-        }
+        # 运行时配置映射：(设置键, 环境变量名, 是否优先使用.env)
+        settings_mappings = [
+            ("ta_hk_min_request_interval_seconds", "TA_HK_MIN_REQUEST_INTERVAL_SECONDS", True),
+            ("ta_hk_timeout_seconds", "TA_HK_TIMEOUT_SECONDS", True),
+            ("ta_hk_max_retries", "TA_HK_MAX_RETRIES", True),
+            ("ta_hk_rate_limit_wait_seconds", "TA_HK_RATE_LIMIT_WAIT_SECONDS", True),
+            ("ta_hk_cache_ttl_seconds", "TA_HK_CACHE_TTL_SECONDS", True),
+            ("ta_use_app_cache", "TA_USE_APP_CACHE", True),
+            ("enable_cost_tracking", "ENABLE_COST_TRACKING", False),
+            ("auto_save_usage", "AUTO_SAVE_USAGE", False),
+            ("app_timezone", "APP_TIMEZONE", False),
+            ("currency_preference", "CURRENCY_PREFERENCE", False),
+        ]
 
-        # Token 使用统计配置
-        token_tracking_settings = {
-            "enable_cost_tracking": "ENABLE_COST_TRACKING",
-            "auto_save_usage": "AUTO_SAVE_USAGE",
-        }
-
-        for setting_key, env_key in ta_settings.items():
-            # 检查 .env 文件中是否已经设置了该环境变量
+        for setting_key, env_key, env_priority in settings_mappings:
             env_value = os.getenv(env_key)
-            if env_value is not None:
-                # .env 文件中已设置，优先使用 .env 的值
+
+            if env_priority and env_value is not None:
+                # .env 优先：使用 .env 的值
                 logger.info(f"  ✓ 使用 .env 文件中的 {env_key}: {env_value}")
                 bridged_count += 1
             elif setting_key in system_settings:
-                # .env 文件中未设置，使用数据库中的值
+                # 使用数据库中的值
                 value = system_settings[setting_key]
-                os.environ[env_key] = (
-                    str(value).lower() if isinstance(value, bool) else str(value)
+                os.environ[env_key] = str(value).lower() if isinstance(value, bool) else str(value)
+                log_func = (
+                    logger.info
+                    if setting_key.startswith(("ta_", "enable_", "auto_"))
+                    else logger.debug
                 )
-                logger.info(f"  ✓ 桥接 {env_key}: {value}")
+                log_func(f"  ✓ 桥接 {env_key}: {value}")
                 bridged_count += 1
             else:
                 logger.debug(f"  ⚠️  配置键 {setting_key} 不存在于系统设置中")
-
-        # 桥接 Token 使用统计配置
-        for setting_key, env_key in token_tracking_settings.items():
-            if setting_key in system_settings:
-                value = system_settings[setting_key]
-                os.environ[env_key] = (
-                    str(value).lower() if isinstance(value, bool) else str(value)
-                )
-                logger.info(f"  ✓ 桥接 {env_key}: {value}")
-                bridged_count += 1
-            else:
-                logger.debug(f"  ⚠️  配置键 {setting_key} 不存在于系统设置中")
-
-        # 时区配置
-        if "app_timezone" in system_settings:
-            os.environ["APP_TIMEZONE"] = system_settings["app_timezone"]
-            logger.debug(f"  ✓ 桥接 APP_TIMEZONE: {system_settings['app_timezone']}")
-            bridged_count += 1
-
-        # 货币偏好
-        if "currency_preference" in system_settings:
-            os.environ["CURRENCY_PREFERENCE"] = system_settings["currency_preference"]
-            logger.debug(
-                f"  ✓ 桥接 CURRENCY_PREFERENCE: {system_settings['currency_preference']}"
-            )
-            bridged_count += 1
 
         if bridged_count > 0:
             logger.info(f"  ✓ 桥接系统运行时配置: {bridged_count} 项")
@@ -787,9 +750,7 @@ async def _sync_pricing_config_from_db():
         db = get_mongo_db()
 
         # 获取最新的激活配置
-        config = await db["system_configs"].find_one(
-            {"is_active": True}, sort=[("version", -1)]
-        )
+        config = await db["system_configs"].find_one({"is_active": True}, sort=[("version", -1)])
 
         if not config:
             logger.warning("⚠️  未找到激活的配置")
