@@ -3,9 +3,10 @@
 Tushare data source adapter
 """
 
-from typing import Optional, Dict
 import logging
 from datetime import datetime, timedelta
+from typing import Dict, Optional
+
 import pandas as pd
 
 from .base import DataSourceAdapter
@@ -24,9 +25,7 @@ class TushareAdapter(DataSourceAdapter):
     def _initialize(self):
         """Initialize Tushare provider"""
         try:
-            from tradingagents.dataflows.providers.china.tushare import (
-                get_tushare_provider,
-            )
+            from tradingagents.dataflows.providers.china.tushare import get_tushare_provider
 
             self._provider = get_tushare_provider()
         except Exception as e:
@@ -89,7 +88,7 @@ class TushareAdapter(DataSourceAdapter):
         if not self.is_available():
             return None
         try:
-            # 🔥 新增 ps, ps_ttm, total_share, float_share 字段
+            # [HOT] 新增 ps, ps_ttm, total_share, float_share 字段
             fields = "ts_code,total_mv,circ_mv,pe,pb,ps,turnover_rate,volume_ratio,pe_ttm,pb_mrq,ps_ttm,total_share,float_share"
             df = self._provider.api.daily_basic(trade_date=trade_date, fields=fields)
             if df is not None and not df.empty:
@@ -125,27 +124,17 @@ class TushareAdapter(DataSourceAdapter):
                 close = (
                     self._safe_float(row.get("close"))
                     if hasattr(self, "_safe_float")
-                    else float(row.get("close"))
-                    if row.get("close") is not None
-                    else None
+                    else float(row.get("close")) if row.get("close") is not None else None
                 )
                 pre_close = (
                     self._safe_float(row.get("pre_close"))
                     if hasattr(self, "_safe_float")
-                    else (
-                        float(row.get("pre_close"))
-                        if row.get("pre_close") is not None
-                        else None
-                    )
+                    else (float(row.get("pre_close")) if row.get("pre_close") is not None else None)
                 )
                 amount = (
                     self._safe_float(row.get("amount"))
                     if hasattr(self, "_safe_float")
-                    else (
-                        float(row.get("amount"))
-                        if row.get("amount") is not None
-                        else None
-                    )
+                    else (float(row.get("amount")) if row.get("amount") is not None else None)
                 )
                 # pct_chg may not be provided; compute if possible
                 pct_chg = None
@@ -171,37 +160,17 @@ class TushareAdapter(DataSourceAdapter):
                 vol = None
                 try:
                     if "open" in df.columns:
-                        op = (
-                            float(row.get("open"))
-                            if row.get("open") is not None
-                            else None
-                        )
+                        op = float(row.get("open")) if row.get("open") is not None else None
                     if "high" in df.columns:
-                        hi = (
-                            float(row.get("high"))
-                            if row.get("high") is not None
-                            else None
-                        )
+                        hi = float(row.get("high")) if row.get("high") is not None else None
                     if "low" in df.columns:
-                        lo = (
-                            float(row.get("low"))
-                            if row.get("low") is not None
-                            else None
-                        )
+                        lo = float(row.get("low")) if row.get("low") is not None else None
                     # tushare 实时快照可能为 'vol' 或 'volume'
-                    # 🔥 成交量单位：直接使用原始单位"手"（Tushare返回的是手）
+                    # [HOT] 成交量单位：直接使用原始单位"手"（Tushare返回的是手）
                     if "vol" in df.columns:
-                        vol = (
-                            float(row.get("vol"))
-                            if row.get("vol") is not None
-                            else None
-                        )
+                        vol = float(row.get("vol")) if row.get("vol") is not None else None
                     elif "volume" in df.columns:
-                        vol = (
-                            float(row.get("volume"))
-                            if row.get("volume") is not None
-                            else None
-                        )
+                        vol = float(row.get("volume")) if row.get("volume") is not None else None
                 except Exception:
                     op = op or None
                     hi = hi or None
@@ -226,9 +195,7 @@ class TushareAdapter(DataSourceAdapter):
                 logger.error(f"Failed to fetch realtime quotes from Tushare rt_k: {e}")
             return None
 
-    def get_daily_quotes(
-        self, trade_date: str
-    ) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
+    def get_daily_quotes(self, trade_date: str) -> Optional[Dict[str, Dict[str, Optional[float]]]]:
         """获取指定日期的全市场行情快照"""
         if not self.is_available():
             return None
@@ -312,11 +279,7 @@ class TushareAdapter(DataSourceAdapter):
             if prov is None or prov.api is None:
                 return None
             # normalize ts_code
-            ts_code = (
-                prov._normalize_symbol(code)
-                if hasattr(prov, "_normalize_symbol")
-                else code
-            )
+            ts_code = prov._normalize_symbol(code) if hasattr(prov, "_normalize_symbol") else code
             # map period -> freq
             freq_map = {
                 "day": "D",
@@ -353,9 +316,7 @@ class TushareAdapter(DataSourceAdapter):
             tcol = (
                 "trade_time"
                 if "trade_time" in df.columns
-                else "trade_date"
-                if "trade_date" in df.columns
-                else None
+                else "trade_date" if "trade_date" in df.columns else None
             )
             if tcol is None:
                 logger.error(f"Tushare pro_bar missing time column: {list(df.columns)}")
@@ -369,24 +330,16 @@ class TushareAdapter(DataSourceAdapter):
                     items.append(
                         {
                             "time": time_str,
-                            "open": float(row.get("open"))
-                            if row.get("open") is not None
-                            else None,
-                            "high": float(row.get("high"))
-                            if row.get("high") is not None
-                            else None,
-                            "low": float(row.get("low"))
-                            if row.get("low") is not None
-                            else None,
-                            "close": float(row.get("close"))
-                            if row.get("close") is not None
-                            else None,
-                            "volume": float(row.get("vol"))
-                            if row.get("vol") is not None
-                            else None,
-                            "amount": float(row.get("amount"))
-                            if row.get("amount") is not None
-                            else None,
+                            "open": float(row.get("open")) if row.get("open") is not None else None,
+                            "high": float(row.get("high")) if row.get("high") is not None else None,
+                            "low": float(row.get("low")) if row.get("low") is not None else None,
+                            "close": (
+                                float(row.get("close")) if row.get("close") is not None else None
+                            ),
+                            "volume": float(row.get("vol")) if row.get("vol") is not None else None,
+                            "amount": (
+                                float(row.get("amount")) if row.get("amount") is not None else None
+                            ),
                         }
                     )
                 except Exception:
@@ -433,18 +386,14 @@ class TushareAdapter(DataSourceAdapter):
         # Attempt announcements first (if requested)
         try:
             if include_announcements and hasattr(api, "anns"):
-                df_anns = api.anns(
-                    ts_code=ts_code, start_date=start_str, end_date=end_str
-                )
+                df_anns = api.anns(ts_code=ts_code, start_date=start_str, end_date=end_str)
                 if df_anns is not None and not df_anns.empty:
                     for _, row in df_anns.head(limit).iterrows():
                         items.append(
                             {
                                 "title": row.get("title") or row.get("ann_title") or "",
                                 "source": "tushare",
-                                "time": str(
-                                    row.get("ann_date") or row.get("pub_date") or ""
-                                ),
+                                "time": str(row.get("ann_date") or row.get("pub_date") or ""),
                                 "url": row.get("url") or row.get("ann_url") or "",
                                 "type": "announcement",
                             }
@@ -454,18 +403,14 @@ class TushareAdapter(DataSourceAdapter):
         # Attempt news
         try:
             if hasattr(api, "news"):
-                df_news = api.news(
-                    ts_code=ts_code, start_date=start_str, end_date=end_str
-                )
+                df_news = api.news(ts_code=ts_code, start_date=start_str, end_date=end_str)
                 if df_news is not None and not df_news.empty:
                     for _, row in df_news.head(max(0, limit - len(items))).iterrows():
                         items.append(
                             {
                                 "title": row.get("title") or "",
                                 "source": row.get("src") or "tushare",
-                                "time": str(
-                                    row.get("pub_time") or row.get("pub_date") or ""
-                                ),
+                                "time": str(row.get("pub_time") or row.get("pub_date") or ""),
                                 "url": row.get("url") or "",
                                 "type": "news",
                             }
@@ -483,9 +428,7 @@ class TushareAdapter(DataSourceAdapter):
             for delta in range(0, 10):  # up to 10 days back
                 d = (today - timedelta(days=delta)).strftime("%Y%m%d")
                 try:
-                    db = self._provider.api.daily_basic(
-                        trade_date=d, fields="ts_code,total_mv"
-                    )
+                    db = self._provider.api.daily_basic(trade_date=d, fields="ts_code,total_mv")
                     if db is not None and not db.empty:
                         logger.info(f"Tushare: Found latest trade date: {d}")
                         return d

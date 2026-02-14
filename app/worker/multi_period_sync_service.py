@@ -6,7 +6,6 @@
 """
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
@@ -14,6 +13,10 @@ from app.services.historical_data_service import get_historical_data_service
 from app.worker.tushare_sync_service import TushareSyncService
 from app.worker.akshare_sync_service import AKShareSyncService
 from app.worker.baostock_sync_service import BaoStockSyncService
+from tradingagents.utils.time_utils import (
+    get_today_str, get_days_ago_str, get_timestamp,
+    get_iso_timestamp, CacheTime
+)
 
 logger = logging.getLogger(__name__)
 
@@ -264,10 +267,8 @@ class MultiPeriodSyncService:
     async def _get_full_history_date_range(self) -> tuple[str, str]:
         """获取全历史数据的日期范围"""
         try:
-            from datetime import datetime, timedelta
-
             # 结束日期：今天
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            end_date = get_today_str()
 
             # 开始日期：根据数据源确定
             # Tushare: 1990年开始
@@ -282,8 +283,8 @@ class MultiPeriodSyncService:
         except Exception as e:
             logger.error(f"❌ 获取全历史日期范围失败: {e}")
             # 默认返回最近5年的数据
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
+            end_date = get_today_str()
+            start_date = get_days_ago_str(days=365*5)
             return start_date, end_date
     
     async def get_sync_statistics(self) -> Dict[str, Any]:
@@ -326,7 +327,7 @@ class MultiPeriodSyncService:
             
             return {
                 "period_statistics": stats,
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": get_iso_timestamp()
             }
             
         except Exception as e:

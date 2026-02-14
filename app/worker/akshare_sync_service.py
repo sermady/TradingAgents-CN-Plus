@@ -12,12 +12,14 @@ from typing import Dict, Any, List, Optional
 from app.core.database import get_mongo_db
 from app.services.historical_data_service import get_historical_data_service
 from app.services.news_data_service import get_news_data_service
+from app.services.base_sync_service import BaseSyncService
 from tradingagents.dataflows.providers.china.akshare import get_akshare_provider
+from tradingagents.utils.time_utils import get_today_str, get_days_ago_str
 
 logger = logging.getLogger(__name__)
 
 
-class AKShareSyncService:
+class AKShareSyncService(BaseSyncService):
     """
     AKShare数据同步服务
 
@@ -28,7 +30,13 @@ class AKShareSyncService:
     - 财务数据同步
     """
 
+    @property
+    def data_source(self) -> str:
+        """数据源标识符"""
+        return "akshare"
+
     def __init__(self):
+        super().__init__()
         self.provider = None
         self.historical_service = None  # 延迟初始化
         self.news_service = None  # 延迟初始化
@@ -620,7 +628,7 @@ class AKShareSyncService:
         try:
             # 1. 确定全局结束日期
             if not end_date:
-                end_date = datetime.now().strftime("%Y-%m-%d")
+                end_date = get_today_str()
 
             # 2. 确定要同步的股票列表
             if symbols is None:
@@ -639,9 +647,7 @@ class AKShareSyncService:
                 if incremental:
                     global_start_date = "各股票最后日期"
                 else:
-                    global_start_date = (datetime.now() - timedelta(days=365)).strftime(
-                        "%Y-%m-%d"
-                    )
+                    global_start_date = get_days_ago_str(365)
 
             logger.info(
                 f"📊 历史数据同步: 结束日期={end_date}, 股票数量={len(symbols)}, 模式={'增量' if incremental else '全量'}"
@@ -719,9 +725,7 @@ class AKShareSyncService:
                         logger.debug(f"📅 {symbol}: 从 {symbol_start_date} 开始同步")
                     else:
                         # 全量同步：最近1年
-                        symbol_start_date = (
-                            datetime.now() - timedelta(days=365)
-                        ).strftime("%Y-%m-%d")
+                        symbol_start_date = get_days_ago_str(365)
 
                 # 获取历史数据
                 hist_data = await self.provider.get_historical_data(
@@ -765,65 +769,6 @@ class AKShareSyncService:
                 )
 
         return batch_stats
-
-    async def _get_last_sync_date(self, symbol: str = None) -> str:
-        """
-        获取最后同步日期
-
-        Args:
-            symbol: 股票代码，如果提供则返回该股票的最后日期+1天
-
-        Returns:
-            日期字符串 (YYYY-MM-DD)
-        """
-        try:
-            if self.historical_service is None:
-                self.historical_service = await get_historical_data_service()
-
-            if symbol:
-                # 获取特定股票的最新日期
-                latest_date = await self.historical_service.get_latest_date(
-                    symbol, "akshare"
-                )
-                if latest_date:
-                    # 返回最后日期的下一天（避免重复同步）
-                    try:
-                        last_date_obj = datetime.strptime(latest_date, "%Y-%m-%d")
-                        next_date = last_date_obj + timedelta(days=1)
-                        return next_date.strftime("%Y-%m-%d")
-                    except ValueError:
-                        # 如果日期格式不对，直接返回
-                        return latest_date
-                else:
-                    # 🔥 没有历史数据时，从上市日期开始全量同步
-                    stock_info = await self.db.stock_basic_info.find_one(
-                        {"code": symbol}, {"list_date": 1}
-                    )
-                    if stock_info and stock_info.get("list_date"):
-                        list_date = stock_info["list_date"]
-                        # 处理不同的日期格式
-                        if isinstance(list_date, str):
-                            # 格式可能是 "20100101" 或 "2010-01-01"
-                            if len(list_date) == 8 and list_date.isdigit():
-                                return (
-                                    f"{list_date[:4]}-{list_date[4:6]}-{list_date[6:]}"
-                                )
-                            else:
-                                return list_date
-                        else:
-                            return list_date.strftime("%Y-%m-%d")
-
-                    # 如果没有上市日期，从1990年开始
-                    logger.warning(f"⚠️ {symbol}: 未找到上市日期，从1990-01-01开始同步")
-                    return "1990-01-01"
-
-            # 默认返回30天前（确保不漏数据）
-            return (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-
-        except Exception as e:
-            logger.error(f"❌ 获取最后同步日期失败 {symbol}: {e}")
-            # 出错时返回30天前，确保不漏数据
-            return (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
     async def sync_financial_data(
         self, symbols: List[str] = None, limit: int = None
@@ -968,31 +913,6 @@ class AKShareSyncService:
                 )
 
         return batch_stats
-
-    async def _save_financial_data(
-        self, symbol: str, financial_data: Dict[str, Any]
-    ) -> bool:
-        """保存财务数据"""
-        try:
-            # 使用统一的财务数据服务
-            from app.services.financial_data_service import get_financial_data_service
-
-            financial_service = await get_financial_data_service()
-
-            # 保存财务数据
-            saved_count = await financial_service.save_financial_data(
-                symbol=symbol,
-                financial_data=financial_data,
-                data_source="akshare",
-                market="CN",
-                report_type="quarterly",
-            )
-
-            return saved_count > 0
-
-        except Exception as e:
-            logger.error(f"❌ 保存 {symbol} 财务数据失败: {e}")
-            return False
 
     async def run_status_check(self) -> Dict[str, Any]:
         """运行状态检查"""
@@ -1192,53 +1112,6 @@ class AKShareSyncService:
             logger.error(f"❌ AKShare新闻数据同步失败: {e}")
             stats["errors"].append({"error": str(e), "context": "sync_news_data"})
             return stats
-
-    async def _process_news_batch(
-        self, batch: List[str], max_news_per_stock: int
-    ) -> Dict[str, Any]:
-        """处理新闻批次"""
-        batch_stats = {
-            "success_count": 0,
-            "error_count": 0,
-            "news_count": 0,
-            "errors": [],
-        }
-
-        for symbol in batch:
-            try:
-                # 从AKShare获取新闻数据
-                news_data = await self.provider.get_stock_news(
-                    symbol=symbol, limit=max_news_per_stock
-                )
-
-                if news_data:
-                    # 保存新闻数据
-                    saved_count = await self.news_service.save_news_data(
-                        news_data=news_data, data_source="akshare", market="CN"
-                    )
-
-                    batch_stats["success_count"] += 1
-                    batch_stats["news_count"] += saved_count
-
-                    logger.debug(f"✅ {symbol} 新闻同步成功: {saved_count}条")
-                else:
-                    logger.debug(f"⚠️ {symbol} 未获取到新闻数据")
-                    batch_stats["success_count"] += 1  # 没有新闻也算成功
-
-                # 🔥 API限流：成功后休眠
-                await asyncio.sleep(0.2)
-
-            except Exception as e:
-                batch_stats["error_count"] += 1
-                error_msg = f"{symbol}: {str(e)}"
-                batch_stats["errors"].append(error_msg)
-                logger.error(f"❌ {symbol} 新闻同步失败: {e}")
-
-                # 🔥 失败后也要休眠，避免"失败雪崩"
-                # 失败时休眠更长时间，给API服务器恢复的机会
-                await asyncio.sleep(1.0)
-
-        return batch_stats
 
 
 # 全局同步服务实例

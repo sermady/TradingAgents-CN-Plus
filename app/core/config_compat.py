@@ -14,6 +14,31 @@ from typing import Dict, Any, Optional, List
 import warnings
 
 
+def _run_async_safely(coro, default=None, warning_msg: Optional[str] = None):
+    """
+    安全地运行异步协程（用于在同步上下文中调用异步代码）
+
+    Args:
+        coro: 异步协程
+        default: 如果运行失败返回的默认值
+        warning_msg: 失败时的警告消息
+
+    Returns:
+        协程结果或默认值
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            if warning_msg:
+                warnings.warn(warning_msg, RuntimeWarning)
+            return default
+        return loop.run_until_complete(coro)
+    except Exception as e:
+        if warning_msg:
+            warnings.warn(f"{warning_msg}: {e}", RuntimeWarning)
+        return default
+
+
 class ConfigManagerCompat:
     """
     ConfigManager 兼容类
@@ -38,127 +63,64 @@ class ConfigManagerCompat:
             )
             self._warned = True
 
+    def _get_config_service(self):
+        """获取配置服务（延迟导入避免循环依赖）"""
+        from app.services.config_service import config_service
+        return config_service
+
     def get_data_dir(self) -> str:
-        """
-        获取数据目录
-
-        Returns:
-            str: 数据目录路径
-        """
-        # 优先从环境变量读取
-        data_dir = os.getenv("DATA_DIR")
-        if data_dir:
-            return data_dir
-
-        # 默认值
-        return "./data"
+        """获取数据目录"""
+        return os.getenv("DATA_DIR") or "./data"
 
     def load_settings(self) -> Dict[str, Any]:
-        """
-        加载系统设置
-
-        Returns:
-            Dict[str, Any]: 系统设置字典
-        """
-        try:
-            # 尝试从新配置系统加载
-            from app.services.config_service import config_service
-
-            # 在同步上下文中运行异步代码
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环正在运行，返回默认值
-                return self._get_default_settings()
-            else:
-                config = loop.run_until_complete(config_service.get_system_config())
-                if config and config.system_settings:
-                    return config.system_settings
-        except Exception:
-            pass
-
-        # 返回默认设置
+        """加载系统设置"""
+        config = _run_async_safely(
+            self._get_config_service().get_system_config(),
+            default=None
+        )
+        if config and config.system_settings:
+            return config.system_settings
         return self._get_default_settings()
 
     def save_settings(self, settings_dict: Dict[str, Any]) -> bool:
-        """
-        保存系统设置
-
-        Args:
-            settings_dict: 系统设置字典
-
-        Returns:
-            bool: 是否保存成功
-        """
-        try:
-            from app.services.config_service import config_service
-
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环正在运行，无法保存
-                warnings.warn(
-                    "Cannot save settings in running event loop", RuntimeWarning
-                )
-                return False
-            else:
-                loop.run_until_complete(
-                    config_service.update_system_settings(settings_dict)
-                )
-                return True
-        except Exception as e:
-            warnings.warn(f"Failed to save settings: {e}", RuntimeWarning)
-            return False
+        """保存系统设置"""
+        result = _run_async_safely(
+            self._get_config_service().update_system_settings(settings_dict),
+            default=False,
+            warning_msg="Cannot save settings in running event loop"
+        )
+        return result if result is not None else False
 
     def get_models(self) -> List[Dict[str, Any]]:
-        """
-        获取模型配置列表
-
-        Returns:
-            List[Dict[str, Any]]: 模型配置列表
-        """
-        try:
-            from app.services.config_service import config_service
-
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                return []
-            else:
-                config = loop.run_until_complete(config_service.get_system_config())
-                if config and config.llm_configs:
-                    return [
-                        {
-                            "provider": llm.provider,
-                            "model_name": llm.model_name,
-                            "api_key": llm.api_key or "",
-                            "base_url": llm.api_base,
-                            "max_tokens": llm.max_tokens,
-                            "temperature": llm.temperature,
-                            "enabled": llm.enabled,
-                        }
-                        for llm in config.llm_configs
-                    ]
-        except Exception:
-            pass
-
+        """获取模型配置列表"""
+        config = _run_async_safely(
+            self._get_config_service().get_system_config(),
+            default=None
+        )
+        if config and config.llm_configs:
+            return [
+                {
+                    "provider": llm.provider,
+                    "model_name": llm.model_name,
+                    "api_key": llm.api_key or "",
+                    "base_url": llm.api_base,
+                    "max_tokens": llm.max_tokens,
+                    "temperature": llm.temperature,
+                    "enabled": llm.enabled,
+                }
+                for llm in config.llm_configs
+            ]
         return []
 
     def get_model_config(
         self, provider: str, model_name: str
     ) -> Optional[Dict[str, Any]]:
-        """
-        获取指定模型的配置
-
-        Args:
-            provider: 提供商名称
-            model_name: 模型名称
-
-        Returns:
-            Optional[Dict[str, Any]]: 模型配置，如果不存在则返回 None
-        """
+        """获取指定模型的配置"""
         models = self.get_models()
-        for model in models:
-            if model["provider"] == provider and model["model_name"] == model_name:
-                return model
-        return None
+        return next(
+            (m for m in models if m["provider"] == provider and m["model_name"] == model_name),
+            None
+        )
 
     def _get_default_settings(self) -> Dict[str, Any]:
         """

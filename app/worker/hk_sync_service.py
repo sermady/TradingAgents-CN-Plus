@@ -18,7 +18,6 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from pymongo import UpdateOne
 
@@ -30,8 +29,13 @@ sys.path.insert(0, str(project_root))
 
 from tradingagents.dataflows.providers.hk.hk_stock import HKStockProvider
 from tradingagents.dataflows.providers.hk.improved_hk import ImprovedHKStockProvider
+from tradingagents.utils.time_utils import (
+    get_today_str, get_days_ago_str, get_timestamp,
+    get_iso_timestamp, CacheTime
+)
 from app.core.database import get_mongo_db
 from app.core.config import settings
+from app.utils.error_handler import handle_errors_none
 
 logger = logging.getLogger(__name__)
 
@@ -55,58 +59,54 @@ class HKDataService:
 
         # 港股列表缓存（从 AKShare 动态获取）
         self.hk_stock_list = []
-        self._stock_list_cache_time = None
+        self._stock_list_cache = CacheTime()
         self._stock_list_cache_ttl = 3600 * 24  # 缓存24小时
 
     async def initialize(self):
         """初始化同步服务"""
         logger.info("✅ 港股同步服务初始化完成")
 
-    def _get_hk_stock_list_from_akshare(self) -> List[str]:
+    @handle_errors_none(
+        error_message="从 AKShare 获取港股列表失败",
+        log_level="error"
+    )
+    def _get_hk_stock_list_from_akshare(self) -> Optional[List[str]]:
         """
         从 AKShare 获取所有港股列表
 
         Returns:
-            List[str]: 港股代码列表
+            List[str]: 港股代码列表，失败时返回None(调用方使用fallback)
         """
-        try:
-            import akshare as ak
-            from datetime import datetime, timedelta
+        import akshare as ak
 
-            # 检查缓存是否有效
-            if (self.hk_stock_list and self._stock_list_cache_time and
-                datetime.now() - self._stock_list_cache_time < timedelta(seconds=self._stock_list_cache_ttl)):
-                logger.debug(f"📦 使用缓存的港股列表: {len(self.hk_stock_list)} 只")
-                return self.hk_stock_list
+        # 检查缓存是否有效
+        if self.hk_stock_list and not self._stock_list_cache.is_expired(self._stock_list_cache_ttl):
+            logger.debug(f"📦 使用缓存的港股列表: {len(self.hk_stock_list)} 只")
+            return self.hk_stock_list
 
-            logger.info("🔄 从 AKShare 获取港股列表...")
+        logger.info("🔄 从 AKShare 获取港股列表...")
 
-            # 获取所有港股实时行情（包含代码和名称）
-            # 使用新浪财经接口（更稳定）
-            df = ak.stock_hk_spot()
+        # 获取所有港股实时行情（包含代码和名称）
+        # 使用新浪财经接口（更稳定）
+        df = ak.stock_hk_spot()
 
-            if df is None or df.empty:
-                logger.warning("⚠️ AKShare 返回空数据，使用备用列表")
-                return self._get_fallback_stock_list()
+        if df is None or df.empty:
+            logger.warning("⚠️ AKShare 返回空数据，使用备用列表")
+            return None  # 装饰器会处理这个返回值
 
-            # 提取股票代码列表
-            stock_codes = df['代码'].tolist()
+        # 提取股票代码列表
+        stock_codes = df['代码'].tolist()
 
-            # 标准化代码格式（确保是5位数字）
-            stock_codes = [code.zfill(5) for code in stock_codes if code]
+        # 标准化代码格式（确保是5位数字）
+        stock_codes = [code.zfill(5) for code in stock_codes if code]
 
-            logger.info(f"✅ 成功获取 {len(stock_codes)} 只港股")
+        logger.info(f"✅ 成功获取 {len(stock_codes)} 只港股")
 
-            # 更新缓存
-            self.hk_stock_list = stock_codes
-            self._stock_list_cache_time = datetime.now()
+        # 更新缓存
+        self.hk_stock_list = stock_codes
+        self._stock_list_cache.update()
 
-            return stock_codes
-
-        except Exception as e:
-            logger.error(f"❌ 从 AKShare 获取港股列表失败: {e}")
-            logger.info("📋 使用备用港股列表")
-            return self._get_fallback_stock_list()
+        return stock_codes
 
     def _get_fallback_stock_list(self) -> List[str]:
         """
@@ -165,11 +165,16 @@ class HKDataService:
 
         # 如果强制更新，清除缓存
         if force_update:
-            self._stock_list_cache_time = None
+            self._stock_list_cache._cache_time = None
             logger.info("🔄 强制刷新港股列表")
 
         # 获取港股列表（从 AKShare 或缓存）
         stock_list = self._get_hk_stock_list_from_akshare()
+
+        # 如果获取失败,使用fallback列表
+        if not stock_list:
+            logger.warning("⚠️ AKShare获取失败，使用备用港股列表")
+            stock_list = self._get_fallback_stock_list()
 
         if not stock_list:
             logger.error("❌ 无法获取港股列表")
@@ -195,7 +200,7 @@ class HKDataService:
                 normalized_info = self._normalize_stock_info(stock_info, source)
                 normalized_info["code"] = stock_code.lstrip('0').zfill(5)  # 标准化为5位代码
                 normalized_info["source"] = source
-                normalized_info["updated_at"] = datetime.now()
+                normalized_info["updated_at"] = get_timestamp()
 
                 # 批量更新操作
                 operations.append(
@@ -245,7 +250,6 @@ class HKDataService:
         """
         try:
             import akshare as ak
-            from datetime import datetime
 
             logger.info("🇭🇰 开始批量同步港股基础信息 (数据源: akshare)")
 
@@ -285,7 +289,7 @@ class HKDataService:
                         "market": "香港交易所",
                         "area": "香港",
                         "source": "akshare",
-                        "updated_at": datetime.now()
+                        "updated_at": get_timestamp()
                     }
 
                     # 可选字段：提取行情数据中的其他信息
@@ -416,7 +420,7 @@ class HKDataService:
                     "low": float(quote.get('low', 0)),
                     "volume": int(quote.get('volume', 0)),
                     "currency": "HKD",
-                    "updated_at": datetime.now()
+                    "updated_at": get_timestamp()
                 }
                 
                 # 计算涨跌幅
@@ -464,7 +468,7 @@ class HKDataService:
 
 _hk_sync_service = None
 
-async def get_hk_sync_service() -> HKSyncService:
+async def get_hk_sync_service() -> HKDataService:
     """获取港股同步服务实例"""
     global _hk_sync_service
     if _hk_sync_service is None:
@@ -523,7 +527,7 @@ async def run_hk_status_check():
             "status": "ok",
             "stock_count": len(stock_list),
             "data_sources": list(service.providers.keys()),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_iso_timestamp()
         }
         logger.info(f"✅ 港股状态检查完成: {result}")
         return result

@@ -3,15 +3,17 @@
 Data source manager that orchestrates multiple adapters with priority and optional consistency checks
 """
 
-from typing import List, Optional, Tuple, Dict
 import logging
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+
 import pandas as pd
 
-from .base import DataSourceAdapter
-from .tushare_adapter import TushareAdapter
 from .akshare_adapter import AKShareAdapter
 from .baostock_adapter import BaoStockAdapter
+from .base import DataSourceAdapter
+from .constants import NETWORK_ERROR_KEYWORDS
+from .tushare_adapter import TushareAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -27,36 +29,47 @@ class DataSourceManager:
     def __init__(self):
         # 检查各数据源的启用状态
         import os
+
         tushare_enabled = os.getenv("TUSHARE_ENABLED", "true").lower() in ("true", "1", "yes", "on")
-        akshare_enabled = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower() in ("true", "1", "yes", "on")
-        baostock_enabled = os.getenv("BAOSTOCK_UNIFIED_ENABLED", "false").lower() in ("true", "1", "yes", "on")
+        akshare_enabled = os.getenv("AKSHARE_UNIFIED_ENABLED", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
+        baostock_enabled = os.getenv("BAOSTOCK_UNIFIED_ENABLED", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+            "on",
+        )
 
         adapters_list = []
 
         # 仅在启用时添加各数据源适配器
         if tushare_enabled:
             adapters_list.append(TushareAdapter())
-            logger.info("✅ Tushare 数据源已启用")
+            logger.info("[OK] Tushare 数据源已启用")
         else:
-            logger.info("⏸️ Tushare 数据源已禁用（通过 TUSHARE_ENABLED 配置）")
+            logger.info("[SKIP] Tushare 数据源已禁用（通过 TUSHARE_ENABLED 配置）")
 
         if akshare_enabled:
             adapters_list.append(AKShareAdapter())
-            logger.info("✅ AKShare 数据源已启用")
+            logger.info("[OK] AKShare 数据源已启用")
         else:
-            logger.info("⏸️ AKShare 数据源已禁用（通过 AKSHARE_UNIFIED_ENABLED 配置）")
+            logger.info("[SKIP] AKShare 数据源已禁用（通过 AKSHARE_UNIFIED_ENABLED 配置）")
 
         if baostock_enabled:
             adapters_list.append(BaoStockAdapter())
-            logger.info("✅ BaoStock 数据源已启用")
+            logger.info("[OK] BaoStock 数据源已启用")
         else:
-            logger.info("⏸️ BaoStock 数据源已禁用（通过 BAOSTOCK_UNIFIED_ENABLED 配置）")
+            logger.info("[SKIP] BaoStock 数据源已禁用（通过 BAOSTOCK_UNIFIED_ENABLED 配置）")
 
         self.adapters: List[DataSourceAdapter] = adapters_list
 
         # 记录启用的数据源名称（用于数据库优先级查询过滤）
         self._enabled_adapter_names = {adapter.name for adapter in adapters_list}
-        logger.info(f"📊 启用的数据源: {self._enabled_adapter_names}")
+        logger.info(f"[DATA] 启用的数据源: {self._enabled_adapter_names}")
 
         # 从数据库加载优先级配置
         self._load_priority_from_database()
@@ -69,7 +82,7 @@ class DataSourceManager:
 
             self.consistency_checker = DataConsistencyChecker()
         except Exception:
-            logger.warning("⚠️ 数据一致性检查器不可用")
+            logger.warning("[WARN] 数据一致性检查器不可用")
             self.consistency_checker = None
 
     def _load_priority_from_database(self):
@@ -78,12 +91,12 @@ class DataSourceManager:
         优化：仅查询已启用的数据源配置，跳过禁用数据源的数据库查询
         优化：检查 CONFIG_SOURCE 参数，当设置为 env 时跳过数据库查询
         """
-        # 🔥 新增：检查 CONFIG_SOURCE 参数，跳过数据库配置查询
+        # [HOT] 新增：检查 CONFIG_SOURCE 参数，跳过数据库配置查询
         try:
             from app.core.config import settings
 
             if settings.CONFIG_SOURCE == "env" or settings.SKIP_DATABASE_CONFIG:
-                logger.info("⚡ 跳过数据库优先级加载，使用默认优先级")
+                logger.info("[FAST] 跳过数据库优先级加载，使用默认优先级")
                 # 使用默认优先级
                 for adapter in self.adapters:
                     adapter._priority = adapter._get_default_priority()
@@ -98,16 +111,16 @@ class DataSourceManager:
             db = get_mongo_db_sync()
             groupings_collection = db.datasource_groupings
 
-            # 🔥 优化：构建查询条件，仅查询已启用的数据源
+            # [HOT] 优化：构建查询条件，仅查询已启用的数据源
             # 这样可以跳过禁用数据源的数据库查询
             enabled_sources = list(self._enabled_adapter_names)
             query_conditions = {
                 "market_category_id": "a_shares",
                 "enabled": True,
-                "data_source_name": {"$in": enabled_sources}  # 🔥 仅查询已启用的数据源
+                "data_source_name": {"$in": enabled_sources},  # [HOT] 仅查询已启用的数据源
             }
 
-            logger.info(f"🔍 [优先级加载] 查询已启用的数据源配置: {enabled_sources}")
+            logger.info(f"[DEBUG] [优先级加载] 查询已启用的数据源配置: {enabled_sources}")
             groupings = list(groupings_collection.find(query_conditions))
 
             if groupings:
@@ -119,7 +132,7 @@ class DataSourceManager:
                     if data_source_name and priority is not None:
                         priority_map[data_source_name] = priority
                         logger.info(
-                            f"📊 从数据库读取 {data_source_name} 在 A股市场的优先级: {priority}"
+                            f"[DATA] 从数据库读取 {data_source_name} 在 A股市场的优先级: {priority}"
                         )
 
                 # 更新各个 Adapter 的优先级
@@ -127,22 +140,20 @@ class DataSourceManager:
                     if adapter.name in priority_map:
                         # 动态设置优先级
                         adapter._priority = priority_map[adapter.name]
-                        logger.info(
-                            f"✅ 设置 {adapter.name} 优先级: {adapter._priority}"
-                        )
+                        logger.info(f"[OK] 设置 {adapter.name} 优先级: {adapter._priority}")
                     else:
                         # 使用默认优先级
                         adapter._priority = adapter._get_default_priority()
                         logger.info(
-                            f"⚠️ 数据库中未找到 {adapter.name} 配置，使用默认优先级: {adapter._priority}"
+                            f"[WARN] 数据库中未找到 {adapter.name} 配置，使用默认优先级: {adapter._priority}"
                         )
             else:
-                logger.info("⚠️ 数据库中未找到 A股市场的数据源配置，使用默认优先级")
+                logger.info("[WARN] 数据库中未找到 A股市场的数据源配置，使用默认优先级")
                 # 使用默认优先级
                 for adapter in self.adapters:
                     adapter._priority = adapter._get_default_priority()
         except Exception as e:
-            logger.warning(f"⚠️ 从数据库加载优先级失败: {e}，使用默认优先级")
+            logger.warning(f"[WARN] 从数据库加载优先级失败: {e}，使用默认优先级")
             import traceback
 
             logger.warning(f"堆栈跟踪:\n{traceback.format_exc()}")
@@ -162,6 +173,67 @@ class DataSourceManager:
                 logger.warning(f"Data source {adapter.name} is not available")
         return available
 
+    def _reorder_adapters(
+        self,
+        available_adapters: List[DataSourceAdapter],
+        preferred_sources: Optional[List[str]] = None,
+    ) -> List[DataSourceAdapter]:
+        """
+        根据优先数据源重新排序适配器列表
+
+        Args:
+            available_adapters: 可用的适配器列表
+            preferred_sources: 优先使用的数据源列表
+
+        Returns:
+            重新排序后的适配器列表
+        """
+        if not preferred_sources:
+            return available_adapters
+
+        logger.info(f"Using preferred data sources: {preferred_sources}")
+        priority_map = {name: idx for idx, name in enumerate(preferred_sources)}
+        preferred = [a for a in available_adapters if a.name in priority_map]
+        others = [a for a in available_adapters if a.name not in priority_map]
+        preferred.sort(key=lambda a: priority_map.get(a.name, 999))
+        result = preferred + others
+        logger.info(f"Reordered adapters: {[a.name for a in result]}")
+        return result
+
+    def _execute_with_fallback(
+        self,
+        fetch_func,
+        log_message: str,
+        preferred_sources: Optional[List[str]] = None,
+    ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+        """
+        通用 fallback 执行方法
+
+        Args:
+            fetch_func: 接收 adapter 作为参数的获取函数，返回数据或 None
+            log_message: 日志消息模板，例如 "stock list from {name}"
+            preferred_sources: 优先使用的数据源列表
+
+        Returns:
+            (data, source_name) 或 (None, None)
+        """
+        available_adapters = self._reorder_adapters(
+            self.get_available_adapters(), preferred_sources
+        )
+
+        for adapter in available_adapters:
+            try:
+                logger.info(f"Trying to fetch {log_message.format(name=adapter.name)}")
+                result = fetch_func(adapter)
+                if result is not None and (
+                    not isinstance(result, pd.DataFrame) or not result.empty
+                ):
+                    return result, adapter.name
+            except Exception as e:
+                logger.error(f"Failed to fetch {log_message.format(name=adapter.name)}: {e}")
+                continue
+        return None, None
+
     def get_stock_list_with_fallback(
         self, preferred_sources: Optional[List[str]] = None
     ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
@@ -175,31 +247,11 @@ class DataSourceManager:
         Returns:
             (DataFrame, source_name) 或 (None, None)
         """
-        available_adapters = self.get_available_adapters()
-
-        # 如果指定了优先数据源，重新排序
-        if preferred_sources:
-            logger.info(f"Using preferred data sources: {preferred_sources}")
-            # 创建优先级映射
-            priority_map = {name: idx for idx, name in enumerate(preferred_sources)}
-            # 将指定的数据源排在前面，其他的保持原顺序
-            preferred = [a for a in available_adapters if a.name in priority_map]
-            others = [a for a in available_adapters if a.name not in priority_map]
-            # 按照 preferred_sources 的顺序排序
-            preferred.sort(key=lambda a: priority_map.get(a.name, 999))
-            available_adapters = preferred + others
-            logger.info(f"Reordered adapters: {[a.name for a in available_adapters]}")
-
-        for adapter in available_adapters:
-            try:
-                logger.info(f"Trying to fetch stock list from {adapter.name}")
-                df = adapter.get_stock_list()
-                if df is not None and not df.empty:
-                    return df, adapter.name
-            except Exception as e:
-                logger.error(f"Failed to fetch stock list from {adapter.name}: {e}")
-                continue
-        return None, None
+        return self._execute_with_fallback(
+            fetch_func=lambda adapter: adapter.get_stock_list(),
+            log_message="stock list from {name}",
+            preferred_sources=preferred_sources,
+        )
 
     def get_daily_basic_with_fallback(
         self, trade_date: str, preferred_sources: Optional[List[str]] = None
@@ -214,28 +266,11 @@ class DataSourceManager:
         Returns:
             (DataFrame, source_name) 或 (None, None)
         """
-        available_adapters = self.get_available_adapters()
-
-        # 如果指定了优先数据源，重新排序
-        if preferred_sources:
-            priority_map = {name: idx for idx, name in enumerate(preferred_sources)}
-            preferred = [a for a in available_adapters if a.name in priority_map]
-            others = [a for a in available_adapters if a.name not in priority_map]
-            preferred.sort(key=lambda a: priority_map.get(a.name, 999))
-            available_adapters = preferred + others
-
-        for adapter in available_adapters:
-            try:
-                logger.info(f"Trying to fetch daily basic data from {adapter.name}")
-                df = adapter.get_daily_basic(trade_date)
-                if df is not None and not df.empty:
-                    return df, adapter.name
-            except Exception as e:
-                logger.error(
-                    f"Failed to fetch daily basic data from {adapter.name}: {e}"
-                )
-                continue
-        return None, None
+        return self._execute_with_fallback(
+            fetch_func=lambda adapter: adapter.get_daily_basic(trade_date),
+            log_message="daily basic data from {name}",
+            preferred_sources=preferred_sources,
+        )
 
     def find_latest_trade_date_with_fallback(
         self, preferred_sources: Optional[List[str]] = None
@@ -249,25 +284,39 @@ class DataSourceManager:
         Returns:
             交易日期字符串（YYYYMMDD格式）或 None
         """
+        result, _ = self._execute_with_fallback(
+            fetch_func=lambda adapter: adapter.find_latest_trade_date(),
+            log_message="latest trade date from {name}",
+            preferred_sources=preferred_sources,
+        )
+        return result if result else (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+
+    def _execute_items_with_fallback(
+        self,
+        fetch_func,
+        log_message: str,
+    ) -> Tuple[Optional[List[Dict]], Optional[str]]:
+        """
+        通用 fallback 执行方法（用于返回列表数据的方法）
+
+        Args:
+            fetch_func: 接收 adapter 作为参数的获取函数，返回列表数据或 None
+            log_message: 日志消息模板
+
+        Returns:
+            (items_list, source_name) 或 (None, None)
+        """
         available_adapters = self.get_available_adapters()
-
-        # 如果指定了优先数据源，重新排序
-        if preferred_sources:
-            priority_map = {name: idx for idx, name in enumerate(preferred_sources)}
-            preferred = [a for a in available_adapters if a.name in priority_map]
-            others = [a for a in available_adapters if a.name not in priority_map]
-            preferred.sort(key=lambda a: priority_map.get(a.name, 999))
-            available_adapters = preferred + others
-
         for adapter in available_adapters:
             try:
-                trade_date = adapter.find_latest_trade_date()
-                if trade_date:
-                    return trade_date
+                logger.info(f"Trying to fetch {log_message.format(name=adapter.name)}")
+                result = fetch_func(adapter)
+                if result:
+                    return result, adapter.name
             except Exception as e:
-                logger.error(f"Failed to find trade date from {adapter.name}: {e}")
+                logger.error(f"Failed to fetch {log_message.format(name=adapter.name)}: {e}")
                 continue
-        return (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        return None, None
 
     def get_realtime_quotes_with_fallback(
         self,
@@ -290,12 +339,8 @@ class DataSourceManager:
             "total_duration": 0.0,
             "fallback_used": False,
             "proxy_status": {
-                "http_proxy": os.environ.get("HTTP_PROXY")
-                or os.environ.get("http_proxy")
-                or "",
-                "https_proxy": os.environ.get("HTTPS_PROXY")
-                or os.environ.get("https_proxy")
-                or "",
+                "http_proxy": os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or "",
+                "https_proxy": os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "",
             },
         }
 
@@ -309,7 +354,7 @@ class DataSourceManager:
             try:
                 logger.info(f"尝试从 {adapter.name} 获取实时行情...")
 
-                # 🔥 AKShare 支持多个数据源，eastmoney 失败时自动尝试 sina
+                # [HOT] AKShare 支持多个数据源，eastmoney 失败时自动尝试 sina
                 if adapter.name == "akshare":
                     # 先尝试 eastmoney
                     data = adapter.get_realtime_quotes(source="eastmoney")
@@ -348,17 +393,7 @@ class DataSourceManager:
             except Exception as e:
                 duration = time.time() - attempt_start
                 error_type = type(e).__name__
-                is_network_error = any(
-                    x in str(e).lower()
-                    for x in [
-                        "connection",
-                        "remote",
-                        "timeout",
-                        "aborted",
-                        "reset",
-                        "closed",
-                    ]
-                )
+                is_network_error = any(x in str(e).lower() for x in NETWORK_ERROR_KEYWORDS)
 
                 diagnostics["attempts"].append(
                     {
@@ -376,7 +411,7 @@ class DataSourceManager:
 
         diagnostics["total_duration"] = time.time() - start_time
         logger.error(
-            f"❌ 所有数据源获取失败: "
+            f"[ERROR] 所有数据源获取失败: "
             f"attempts={diagnostics['total_attempts']}, "
             f"duration={diagnostics['total_duration']:.2f}s"
         )
@@ -394,11 +429,11 @@ class DataSourceManager:
         """
         available_adapters = self.get_available_adapters()
         for adapter in available_adapters:
-            try:
-                # 检查该 adapter 是否实现了 get_daily_quotes
-                if not hasattr(adapter, "get_daily_quotes"):
-                    continue
+            # 检查该 adapter 是否实现了 get_daily_quotes
+            if not hasattr(adapter, "get_daily_quotes"):
+                continue
 
+            try:
                 logger.info(f"尝试从 {adapter.name} 获取 {trade_date} 的日线行情...")
                 data = adapter.get_daily_quotes(trade_date)
                 if data:
@@ -435,13 +470,13 @@ class DataSourceManager:
             logger.info(f"📅 目标交易日: {latest_date}")
             quotes, source = self.get_daily_quotes_with_fallback(latest_date)
             if quotes:
-                logger.info(f"✅ 成功从 {source} 获取到日线收盘数据作为快照")
+                logger.info(f"[OK] 成功从 {source} 获取到日线收盘数据作为快照")
                 return quotes, f"{source}_daily"
 
         except Exception as e:
-            logger.error(f"❌ 获取日线兜底数据失败: {e}")
+            logger.error(f"[ERROR] 获取日线兜底数据失败: {e}")
 
-        logger.error("❌ [Backfill策略] 所有途径均失败")
+        logger.error("[ERROR] [Backfill策略] 所有途径均失败")
         return None, None
 
     def get_daily_basic_with_consistency_check(
@@ -461,30 +496,26 @@ class DataSourceManager:
         secondary_adapter = available_adapters[1]
         try:
             logger.info(
-                f"🔍 获取数据进行一致性检查: {primary_adapter.name} vs {secondary_adapter.name}"
+                f"[DEBUG] 获取数据进行一致性检查: {primary_adapter.name} vs {secondary_adapter.name}"
             )
             primary_data = primary_adapter.get_daily_basic(trade_date)
             secondary_data = secondary_adapter.get_daily_basic(trade_date)
             if primary_data is None or primary_data.empty:
-                logger.warning(f"⚠️ 主数据源{primary_adapter.name}失败，使用fallback")
+                logger.warning(f"[WARN] 主数据源{primary_adapter.name}失败，使用fallback")
                 df, source = self.get_daily_basic_with_fallback(trade_date)
                 return df, source, None
             if secondary_data is None or secondary_data.empty:
-                logger.warning(f"⚠️ 次数据源{secondary_adapter.name}失败，使用主数据源")
+                logger.warning(f"[WARN] 次数据源{secondary_adapter.name}失败，使用主数据源")
                 return primary_data, primary_adapter.name, None
             if self.consistency_checker:
-                consistency_result = (
-                    self.consistency_checker.check_daily_basic_consistency(
-                        primary_data,
-                        secondary_data,
-                        primary_adapter.name,
-                        secondary_adapter.name,
-                    )
+                consistency_result = self.consistency_checker.check_daily_basic_consistency(
+                    primary_data,
+                    secondary_data,
+                    primary_adapter.name,
+                    secondary_adapter.name,
                 )
-                final_data, resolution_strategy = (
-                    self.consistency_checker.resolve_data_conflicts(
-                        primary_data, secondary_data, consistency_result
-                    )
+                final_data, resolution_strategy = self.consistency_checker.resolve_data_conflicts(
+                    primary_data, secondary_data, consistency_result
                 )
                 consistency_report = {
                     "is_consistent": consistency_result.is_consistent,
@@ -496,14 +527,14 @@ class DataSourceManager:
                     "secondary_source": secondary_adapter.name,
                 }
                 logger.info(
-                    f"📊 数据一致性检查完成: 置信度={consistency_result.confidence_score:.2f}, 策略={consistency_result.recommended_action}"
+                    f"[DATA] 数据一致性检查完成: 置信度={consistency_result.confidence_score:.2f}, 策略={consistency_result.recommended_action}"
                 )
                 return final_data, primary_adapter.name, consistency_report
             else:
-                logger.warning("⚠️ 一致性检查器不可用，使用主数据源")
+                logger.warning("[WARN] 一致性检查器不可用，使用主数据源")
                 return primary_data, primary_adapter.name, None
         except Exception as e:
-            logger.error(f"❌ 一致性检查失败: {e}")
+            logger.error(f"[ERROR] 一致性检查失败: {e}")
             df, source = self.get_daily_basic_with_fallback(trade_date)
             return df, source, None
 
@@ -515,19 +546,12 @@ class DataSourceManager:
         adj: Optional[str] = None,
     ) -> Tuple[Optional[List[Dict]], Optional[str]]:
         """按优先级尝试获取K线，返回(items, source)"""
-        available_adapters = self.get_available_adapters()
-        for adapter in available_adapters:
-            try:
-                logger.info(f"Trying to fetch kline from {adapter.name}")
-                items = adapter.get_kline(
-                    code=code, period=period, limit=limit, adj=adj
-                )
-                if items:
-                    return items, adapter.name
-            except Exception as e:
-                logger.error(f"Failed to fetch kline from {adapter.name}: {e}")
-                continue
-        return None, None
+        return self._execute_items_with_fallback(
+            fetch_func=lambda adapter: adapter.get_kline(
+                code=code, period=period, limit=limit, adj=adj
+            ),
+            log_message="kline from {name}",
+        )
 
     def get_news_with_fallback(
         self,
@@ -537,19 +561,12 @@ class DataSourceManager:
         include_announcements: bool = True,
     ) -> Tuple[Optional[List[Dict]], Optional[str]]:
         """按优先级尝试获取新闻与公告，返回(items, source)"""
-        available_adapters = self.get_available_adapters()
-        for adapter in available_adapters:
-            try:
-                logger.info(f"Trying to fetch news from {adapter.name}")
-                items = adapter.get_news(
-                    code=code,
-                    days=days,
-                    limit=limit,
-                    include_announcements=include_announcements,
-                )
-                if items:
-                    return items, adapter.name
-            except Exception as e:
-                logger.error(f"Failed to fetch news from {adapter.name}: {e}")
-                continue
-        return None, None
+        return self._execute_items_with_fallback(
+            fetch_func=lambda adapter: adapter.get_news(
+                code=code,
+                days=days,
+                limit=limit,
+                include_announcements=include_announcements,
+            ),
+            log_message="news from {name}",
+        )

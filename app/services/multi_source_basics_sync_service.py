@@ -21,6 +21,7 @@ from pymongo import UpdateOne
 
 from app.core.database import get_mongo_db
 from app.services.basics_sync import add_financial_metrics as _add_financial_metrics_util
+from app.utils.symbol_utils import SymbolGenerator
 
 
 logger = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ class MultiSourceBasicsSyncService:
                         daily_metrics = daily_data_map[ts_code]
 
                     # 生成 full_symbol（确保不为空）
-                    full_symbol = ts_code if ts_code else self._generate_full_symbol(code)
+                    full_symbol = ts_code if ts_code else SymbolGenerator.generate_full_symbol(code)
 
                     # 🔥 确定数据源标识
                     # 根据实际使用的数据源设置 source 字段
@@ -337,38 +338,6 @@ class MultiSourceBasicsSyncService:
     def _add_financial_metrics(self, doc: Dict, daily_metrics: Dict) -> None:
         """委托到 basics_sync.processing.add_financial_metrics"""
         return _add_financial_metrics_util(doc, daily_metrics)
-
-    def _generate_full_symbol(self, code: str) -> str:
-        """
-        根据股票代码生成完整标准化代码
-
-        Args:
-            code: 6位股票代码
-
-        Returns:
-            完整标准化代码，如果无法识别则返回原始代码（确保不为空）
-        """
-        # 确保 code 不为空
-        if not code:
-            return ""
-
-        # 标准化为字符串并去除空格
-        code = str(code).strip()
-
-        # 如果长度不是 6，返回原始代码
-        if len(code) != 6:
-            return code
-
-        # 根据代码前缀判断交易所
-        if code.startswith(('60', '68', '90')):  # 上海证券交易所
-            return f"{code}.SS"
-        elif code.startswith(('00', '30', '20')):  # 深圳证券交易所
-            return f"{code}.SZ"
-        elif code.startswith(('8', '4')):  # 北京证券交易所
-            return f"{code}.BJ"
-        else:
-            # 无法识别的代码，返回原始代码（确保不为空）
-            return code if code else ""
 
 
 # 全局服务实例

@@ -208,6 +208,50 @@ def get_next_trading_session(market_type: str = "A股") -> Optional[Tuple[str, s
     return TradingHoursChecker.get_next_trading_session(market_type)
 
 
+def is_weekend(check_date: datetime = None) -> bool:
+    """
+    判断指定日期是否是周末
+    P0 改进: 替代 .weekday() >= 5 的直接使用
+
+    Args:
+        check_date: 要检查的日期，默认今天
+
+    Returns:
+        bool: 是否是周末（周六或周日）
+
+    示例:
+        # 替代:
+        # if date.weekday() >= 5:
+        # 使用:
+        if is_weekend(date):
+    """
+    if check_date is None:
+        check_date = datetime.now()
+    return check_date.weekday() >= 5  # 周六=5, 周日=6
+
+
+def is_weekday(check_date: datetime = None) -> bool:
+    """
+    判断指定日期是否是工作日（周一至周五）
+    P0 改进: 替代 .weekday() < 5 的直接使用
+
+    Args:
+        check_date: 要检查的日期，默认今天
+
+    Returns:
+        bool: 是否是工作日
+
+    示例:
+        # 替代:
+        # if date.weekday() < 5:
+        # 使用:
+        if is_weekday(date):
+    """
+    if check_date is None:
+        check_date = datetime.now()
+    return check_date.weekday() < 5
+
+
 if __name__ == "__main__":
     # 测试代码
     print("=" * 50)

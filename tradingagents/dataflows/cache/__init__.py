@@ -17,7 +17,7 @@
 """
 
 import os
-from typing import Union
+from typing import Any, Union
 
 # 导入日志模块
 from tradingagents.utils.logging_manager import get_logger

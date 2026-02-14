@@ -17,7 +17,6 @@
 
 import asyncio
 import logging
-from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pymongo import UpdateOne
 
@@ -28,8 +27,13 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from tradingagents.dataflows.providers.us.yfinance import YFinanceUtils
+from tradingagents.utils.time_utils import (
+    get_today_str, get_days_ago_str, get_timestamp,
+    get_iso_timestamp, CacheTime
+)
 from app.core.database import get_mongo_db
 from app.core.config import settings
+from app.utils.error_handler import handle_errors_none
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ class USSyncService:
 
         # 美股列表缓存（从 Finnhub 动态获取）
         self.us_stock_list = []
-        self._stock_list_cache_time = None
+        self._stock_list_cache = CacheTime()
         self._stock_list_cache_ttl = 3600 * 24  # 缓存24小时
 
         # Finnhub 客户端（延迟初始化）
@@ -56,79 +60,71 @@ class USSyncService:
         """初始化同步服务"""
         logger.info("✅ 美股同步服务初始化完成")
 
+    @handle_errors_none(error_message="Finnhub 客户端初始化失败", log_level="warning")
     def _get_finnhub_client(self):
         """获取 Finnhub 客户端（延迟初始化）"""
         if self._finnhub_client is None:
-            try:
-                import finnhub
-                import os
+            import finnhub
+            import os
 
-                api_key = os.getenv('FINNHUB_API_KEY')
-                if not api_key:
-                    logger.warning("⚠️ 未配置 FINNHUB_API_KEY，无法使用 Finnhub 数据源")
-                    return None
-
-                self._finnhub_client = finnhub.Client(api_key=api_key)
-                logger.info("✅ Finnhub 客户端初始化成功")
-            except Exception as e:
-                logger.error(f"❌ Finnhub 客户端初始化失败: {e}")
+            api_key = os.getenv('FINNHUB_API_KEY')
+            if not api_key:
+                logger.warning("⚠️ 未配置 FINNHUB_API_KEY，无法使用 Finnhub 数据源")
                 return None
+
+            self._finnhub_client = finnhub.Client(api_key=api_key)
+            logger.info("✅ Finnhub 客户端初始化成功")
 
         return self._finnhub_client
 
-    def _get_us_stock_list_from_finnhub(self) -> List[str]:
+    @handle_errors_none(
+        error_message="从 Finnhub 获取美股列表失败",
+        log_level="error"
+    )
+    def _get_us_stock_list_from_finnhub(self) -> Optional[List[str]]:
         """
         从 Finnhub 获取所有美股列表
 
         Returns:
-            List[str]: 美股代码列表
+            List[str]: 美股代码列表，失败时返回None(调用方使用fallback)
         """
-        try:
-            from datetime import datetime, timedelta
+        # 检查缓存是否有效
+        if self.us_stock_list and not self._stock_list_cache.is_expired(self._stock_list_cache_ttl):
+            logger.debug(f"📦 使用缓存的美股列表: {len(self.us_stock_list)} 只")
+            return self.us_stock_list
 
-            # 检查缓存是否有效
-            if (self.us_stock_list and self._stock_list_cache_time and
-                datetime.now() - self._stock_list_cache_time < timedelta(seconds=self._stock_list_cache_ttl)):
-                logger.debug(f"📦 使用缓存的美股列表: {len(self.us_stock_list)} 只")
-                return self.us_stock_list
+        logger.info("🔄 从 Finnhub 获取美股列表...")
 
-            logger.info("🔄 从 Finnhub 获取美股列表...")
+        # 获取 Finnhub 客户端
+        client = self._get_finnhub_client()
+        if not client:
+            logger.warning("⚠️ Finnhub 客户端不可用，使用备用列表")
+            return None  # 装饰器会处理这个返回值
 
-            # 获取 Finnhub 客户端
-            client = self._get_finnhub_client()
-            if not client:
-                logger.warning("⚠️ Finnhub 客户端不可用，使用备用列表")
-                return self._get_fallback_stock_list()
+        # 获取美股列表（US 交易所）
+        symbols = client.stock_symbols('US')
 
-            # 获取美股列表（US 交易所）
-            symbols = client.stock_symbols('US')
+        if not symbols:
+            logger.warning("⚠️ Finnhub 返回空数据，使用备用列表")
+            return None  # 装饰器会处理这个返回值
 
-            if not symbols:
-                logger.warning("⚠️ Finnhub 返回空数据，使用备用列表")
-                return self._get_fallback_stock_list()
+        # 提取股票代码列表（只保留普通股票，过滤掉 ETF、基金等）
+        stock_codes = []
+        for symbol_info in symbols:
+            symbol = symbol_info.get('symbol', '')
+            symbol_type = symbol_info.get('type', '')
 
-            # 提取股票代码列表（只保留普通股票，过滤掉 ETF、基金等）
-            stock_codes = []
-            for symbol_info in symbols:
-                symbol = symbol_info.get('symbol', '')
-                symbol_type = symbol_info.get('type', '')
+            # 只保留普通股票（Common Stock）
+            if symbol and symbol_type == 'Common Stock':
+                stock_codes.append(symbol)
 
-                # 只保留普通股票（Common Stock）
-                if symbol and symbol_type == 'Common Stock':
-                    stock_codes.append(symbol)
+        logger.info(f"✅ 成功获取 {len(stock_codes)} 只美股（普通股）")
 
-            logger.info(f"✅ 成功获取 {len(stock_codes)} 只美股（普通股）")
+        # 更新缓存
+        self.us_stock_list = stock_codes
+        self._stock_list_cache.update()
 
-            # 更新缓存
-            self.us_stock_list = stock_codes
-            self._stock_list_cache_time = datetime.now()
-
-            return stock_codes
-
-        except Exception as e:
-            logger.error(f"❌ 从 Finnhub 获取美股列表失败: {e}")
-            logger.info("📋 使用备用美股列表")
-            return self._get_fallback_stock_list()
+        return stock_codes
 
     def _get_fallback_stock_list(self) -> List[str]:
         """
@@ -192,11 +188,16 @@ class USSyncService:
 
         # 如果强制更新，清除缓存
         if force_update:
-            self._stock_list_cache_time = None
+            self._stock_list_cache._cache_time = None
             logger.info("🔄 强制刷新美股列表")
 
         # 获取美股列表（从 Finnhub 或缓存）
         stock_list = self._get_us_stock_list_from_finnhub()
+
+        # 如果获取失败,使用fallback列表
+        if not stock_list:
+            logger.warning("⚠️ Finnhub获取失败，使用备用美股列表")
+            stock_list = self._get_fallback_stock_list()
 
         if not stock_list:
             logger.error("❌ 无法获取美股列表")
@@ -222,7 +223,7 @@ class USSyncService:
                 normalized_info = self._normalize_stock_info(stock_info, source)
                 normalized_info["code"] = stock_code.upper()
                 normalized_info["source"] = source
-                normalized_info["updated_at"] = datetime.now()
+                normalized_info["updated_at"] = get_timestamp()
                 
                 # 批量更新操作
                 operations.append(
@@ -339,7 +340,7 @@ class USSyncService:
                     "low": float(latest['Low']),
                     "volume": int(latest['Volume']),
                     "currency": "USD",
-                    "updated_at": datetime.now()
+                    "updated_at": get_timestamp()
                 }
                 
                 # 计算涨跌幅
@@ -434,7 +435,7 @@ async def run_us_status_check():
             "status": "ok",
             "stock_count": len(stock_list),
             "data_source": "yfinance + finnhub",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": get_iso_timestamp()
         }
         logger.info(f"✅ 美股状态检查完成: {result}")
         return result

@@ -22,6 +22,7 @@ from pymongo import UpdateOne
 
 from app.core.database import get_mongo_db
 from app.core.config import settings
+from app.utils.symbol_utils import SymbolGenerator
 
 from app.services.basics_sync import (
     fetch_stock_basic_df as _fetch_stock_basic_df_util,
@@ -271,7 +272,7 @@ class BasicsSyncService:
                         pass
 
                 # 生成 full_symbol（完整标准化代码）
-                full_symbol = self._generate_full_symbol(code)
+                full_symbol = SymbolGenerator.generate_full_symbol(code)
 
                 doc = {
                     "code": code,
@@ -374,38 +375,6 @@ class BasicsSyncService:
     def _fetch_latest_roe_map(self) -> Dict[str, Dict[str, float]]:
         """Delegate to basics_sync.utils (blocking)"""
         return _fetch_latest_roe_map_util()
-
-    def _generate_full_symbol(self, code: str) -> str:
-        """
-        根据股票代码生成完整标准化代码
-
-        Args:
-            code: 6位股票代码
-
-        Returns:
-            完整标准化代码（如 000001.SZ），如果代码无效则返回原始代码（确保不为空）
-        """
-        # 确保 code 不为空
-        if not code:
-            return ""
-
-        # 标准化为字符串并去除空格
-        code = str(code).strip()
-
-        # 如果长度不是 6，返回原始代码（避免返回 None）
-        if len(code) != 6:
-            return code
-
-        # 根据代码判断交易所
-        if code.startswith(('60', '68', '90')):
-            return f"{code}.SS"  # 上海证券交易所
-        elif code.startswith(('00', '30', '20')):
-            return f"{code}.SZ"  # 深圳证券交易所
-        elif code.startswith(('8', '4')):
-            return f"{code}.BJ"  # 北京证券交易所
-        else:
-            # 无法识别的代码，返回原始代码（确保不为空）
-            return code if code else ""
 
 
 # Singleton accessor

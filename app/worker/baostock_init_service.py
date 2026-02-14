@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
 from app.core.config import get_settings
+from tradingagents.utils.time_utils import get_today_str, get_days_ago_str, get_timestamp, get_iso_timestamp
 from app.core.database import get_database
 from app.worker.baostock_sync_service import BaoStockSyncService, BaoStockSyncStats
 
@@ -132,20 +133,20 @@ class BaoStockInitService:
         """
         stats = BaoStockInitializationStats()
         stats.total_steps = 8 if enable_multi_period else 6
-        stats.start_time = datetime.now()
-        
+        stats.start_time = get_timestamp()
+
         try:
             logger.info("🚀 开始BaoStock完整数据初始化...")
-            
+
             # 步骤1: 检查数据库状态
             stats.current_step = "检查数据库状态"
             logger.info(f"1️⃣ {stats.current_step}...")
-            
+
             db_status = await self.check_database_status()
             if db_status["status"] != "empty" and not force:
                 logger.info("ℹ️ 数据库已有数据，跳过初始化（使用--force强制重新初始化）")
                 stats.completed_steps = 6
-                stats.end_time = datetime.now()
+                stats.end_time = get_timestamp()
                 return stats
             
             stats.completed_steps += 1
@@ -221,13 +222,13 @@ class BaoStockInitService:
             await self._verify_data_integrity(stats)
             stats.completed_steps += 1
             
-            stats.end_time = datetime.now()
+            stats.end_time = get_timestamp()
             logger.info(f"🎉 BaoStock完整初始化成功完成！耗时: {stats.duration:.1f}秒")
-            
+
             return stats
-            
+
         except Exception as e:
-            stats.end_time = datetime.now()
+            stats.end_time = get_timestamp()
             error_msg = f"BaoStock初始化失败: {e}"
             logger.error(f"❌ {error_msg}")
             stats.errors.append(error_msg)
@@ -257,7 +258,7 @@ class BaoStockInitService:
                             {"code": code},
                             {"$set": {
                                 "financial_data": financial_data,
-                                "financial_data_updated": datetime.now()
+                                "financial_data_updated": get_timestamp()
                             }}
                         )
                         financial_count += 1
@@ -298,9 +299,9 @@ class BaoStockInitService:
     async def basic_initialization(self) -> BaoStockInitializationStats:
         """基础数据初始化（仅基础信息和行情）"""
         stats = BaoStockInitializationStats()
-        stats.start_time = datetime.now()
+        stats.start_time = get_timestamp()
         stats.total_steps = 3
-        
+
         try:
             logger.info("🚀 开始BaoStock基础数据初始化...")
             
@@ -329,13 +330,13 @@ class BaoStockInitService:
             await self._verify_data_integrity(stats)
             stats.completed_steps += 1
             
-            stats.end_time = datetime.now()
+            stats.end_time = get_timestamp()
             logger.info(f"🎉 BaoStock基础初始化完成！耗时: {stats.duration:.1f}秒")
-            
+
             return stats
-            
+
         except Exception as e:
-            stats.end_time = datetime.now()
+            stats.end_time = get_timestamp()
             error_msg = f"BaoStock基础初始化失败: {e}"
             logger.error(f"❌ {error_msg}")
             stats.errors.append(error_msg)

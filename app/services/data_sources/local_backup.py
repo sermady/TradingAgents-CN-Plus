@@ -779,12 +779,12 @@ class LocalStockListBackup:
     def get_stock_list(cls) -> Optional[pd.DataFrame]:
         """获取本地备用的股票列表"""
         try:
-            logger.warning("⚠️ 使用本地备用股票列表（仅包含主要蓝筹股）")
+            logger.warning("[WARN] 使用本地备用股票列表（仅包含主要蓝筹股）")
             df = pd.DataFrame(cls.DEFAULT_STOCKS)
-            logger.info(f"✅ 本地备用股票列表加载完成: {len(df)} 只股票")
+            logger.info(f"[OK] 本地备用股票列表加载完成: {len(df)} 只股票")
             return df
         except Exception as e:
-            logger.error(f"❌ 加载本地备用股票列表失败: {e}")
+            logger.error(f"[ERROR] 加载本地备用股票列表失败: {e}")
             return None
 
     @classmethod
@@ -794,6 +794,6 @@ class LocalStockListBackup:
             df = pd.DataFrame(cls.DEFAULT_STOCKS)
             Path(filepath).parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(filepath, index=False, encoding="utf-8-sig")
-            logger.info(f"✅ 股票列表已保存到: {filepath}")
+            logger.info(f"[OK] 股票列表已保存到: {filepath}")
         except Exception as e:
-            logger.error(f"❌ 保存股票列表失败: {e}")
+            logger.error(f"[ERROR] 保存股票列表失败: {e}")
