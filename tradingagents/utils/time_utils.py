@@ -83,6 +83,7 @@ def get_chinese_datetime() -> str:
 
 # ==================== P0 改进: 统一 Worker 目录时间处理 ====================
 
+
 def get_now() -> datetime:
     """
     获取当前日期时间（替代 datetime.now()）
@@ -101,10 +102,10 @@ def get_today_str() -> str:
     Returns:
         str: 当前日期字符串
     """
-    return datetime.now().strftime('%Y-%m-%d')
+    return datetime.now().strftime("%Y-%m-%d")
 
 
-def get_days_ago_str(days: int, format_str: str = '%Y-%m-%d') -> str:
+def get_days_ago_str(days: int, format_str: str = "%Y-%m-%d") -> str:
     """
     获取 N 天前的日期字符串
     替代: (datetime.now() - timedelta(days=N)).strftime('%Y-%m-%d')
@@ -119,7 +120,7 @@ def get_days_ago_str(days: int, format_str: str = '%Y-%m-%d') -> str:
     return (datetime.now() - timedelta(days=days)).strftime(format_str)
 
 
-def get_days_later_str(days: int, format_str: str = '%Y-%m-%d') -> str:
+def get_days_later_str(days: int, format_str: str = "%Y-%m-%d") -> str:
     """
     获取 N 天后的日期字符串
 
@@ -178,7 +179,10 @@ class Timer:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end_time = datetime.now()
-        self.duration = (self.end_time - self.start_time).total_seconds()
+        if self.start_time is not None:
+            self.duration = (self.end_time - self.start_time).total_seconds()
+        else:
+            self.duration = 0.0
         return False
 
 
@@ -228,11 +232,11 @@ class CacheTime:
             float: 缓存年龄（秒）
         """
         if self._cache_time is None:
-            return float('inf')
+            return float("inf")
         return (datetime.now() - self._cache_time).total_seconds()
 
 
-def format_datetime(dt: datetime, format_str: str = '%Y-%m-%d %H:%M:%S') -> str:
+def format_datetime(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """
     格式化日期时间为字符串
 
@@ -246,7 +250,7 @@ def format_datetime(dt: datetime, format_str: str = '%Y-%m-%d %H:%M:%S') -> str:
     return dt.strftime(format_str)
 
 
-def parse_datetime(date_str: str, format_str: str = '%Y-%m-%d') -> datetime:
+def parse_datetime(date_str: str, format_str: str = "%Y-%m-%d") -> datetime:
     """
     解析日期字符串为日期时间对象
 

@@ -373,7 +373,7 @@ class UnifiedPriceCache:
             try:
                 redis_key = self._get_redis_key(ticker)
                 ttl = self._redis_client.ttl(redis_key)
-                if ttl > 0:
+                if isinstance(ttl, int) and ttl > 0:
                     return True
             except Exception:
                 pass
