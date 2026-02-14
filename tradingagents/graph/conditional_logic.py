@@ -5,6 +5,7 @@ from tradingagents.agents.utils.agent_states import AgentState
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+
 logger = get_logger("default")
 
 
@@ -19,6 +20,7 @@ class ConditionalLogic:
     def should_continue_market(self, state: AgentState):
         """Determine if market analysis should continue."""
         from tradingagents.utils.logging_init import get_logger
+
         logger = get_logger("agents")
 
         messages = state["messages"]
@@ -34,18 +36,28 @@ class ConditionalLogic:
         logger.info(f"🔀 [条件判断] should_continue_market")
         logger.info(f"🔀 [条件判断] - 消息数量: {len(messages)}")
         logger.info(f"🔀 [条件判断] - 报告长度: {len(market_report)}")
-        logger.info(f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(
+            f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}"
+        )
         logger.info(f"🔀 [条件判断] - 最后消息类型: {type(last_message).__name__}")
-        logger.info(f"🔀 [条件判断] - 是否有tool_calls: {hasattr(last_message, 'tool_calls')}")
-        if hasattr(last_message, 'tool_calls'):
-            logger.info(f"🔀 [条件判断] - tool_calls数量: {len(last_message.tool_calls) if last_message.tool_calls else 0}")
+        logger.info(
+            f"🔀 [条件判断] - 是否有tool_calls: {hasattr(last_message, 'tool_calls')}"
+        )
+        if hasattr(last_message, "tool_calls"):
+            logger.info(
+                f"🔀 [条件判断] - tool_calls数量: {len(last_message.tool_calls) if last_message.tool_calls else 0}"
+            )
             if last_message.tool_calls:
                 for i, tc in enumerate(last_message.tool_calls):
-                    logger.info(f"🔀 [条件判断] - tool_call[{i}]: {tc.get('name', 'unknown')}")
+                    logger.info(
+                        f"🔀 [条件判断] - tool_call[{i}]: {tc.get('name', 'unknown')}"
+                    )
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Market")
+            logger.warning(
+                f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Market"
+            )
             return "Msg Clear Market"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
@@ -54,7 +66,7 @@ class ConditionalLogic:
             return "Msg Clear Market"
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_market")
             return "tools_market"
 
@@ -64,6 +76,7 @@ class ConditionalLogic:
     def should_continue_social(self, state: AgentState):
         """Determine if social media analysis should continue."""
         from tradingagents.utils.logging_init import get_logger
+
         logger = get_logger("agents")
 
         messages = state["messages"]
@@ -79,11 +92,15 @@ class ConditionalLogic:
         logger.info(f"🔀 [条件判断] should_continue_social")
         logger.info(f"🔀 [条件判断] - 消息数量: {len(messages)}")
         logger.info(f"🔀 [条件判断] - 报告长度: {len(sentiment_report)}")
-        logger.info(f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(
+            f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}"
+        )
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Social")
+            logger.warning(
+                f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Social"
+            )
             return "Msg Clear Social"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
@@ -92,7 +109,7 @@ class ConditionalLogic:
             return "Msg Clear Social"
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_social")
             return "tools_social"
 
@@ -102,6 +119,7 @@ class ConditionalLogic:
     def should_continue_news(self, state: AgentState):
         """Determine if news analysis should continue."""
         from tradingagents.utils.logging_init import get_logger
+
         logger = get_logger("agents")
 
         messages = state["messages"]
@@ -117,11 +135,15 @@ class ConditionalLogic:
         logger.info(f"🔀 [条件判断] should_continue_news")
         logger.info(f"🔀 [条件判断] - 消息数量: {len(messages)}")
         logger.info(f"🔀 [条件判断] - 报告长度: {len(news_report)}")
-        logger.info(f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(
+            f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}"
+        )
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear News")
+            logger.warning(
+                f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear News"
+            )
             return "Msg Clear News"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
@@ -130,7 +152,7 @@ class ConditionalLogic:
             return "Msg Clear News"
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_news")
             return "tools_news"
 
@@ -140,6 +162,7 @@ class ConditionalLogic:
     def should_continue_fundamentals(self, state: AgentState):
         """判断基本面分析是否应该继续"""
         from tradingagents.utils.logging_init import get_logger
+
         logger = get_logger("agents")
 
         messages = state["messages"]
@@ -155,25 +178,45 @@ class ConditionalLogic:
         logger.info(f"🔀 [条件判断] should_continue_fundamentals")
         logger.info(f"🔀 [条件判断] - 消息数量: {len(messages)}")
         logger.info(f"🔀 [条件判断] - 报告长度: {len(fundamentals_report)}")
-        logger.info(f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}")
+        logger.info(
+            f"🔧 [死循环修复] - 工具调用次数: {tool_call_count}/{max_tool_calls}"
+        )
         logger.info(f"🔀 [条件判断] - 最后消息类型: {type(last_message).__name__}")
-        
+
         # 🔍 [调试日志] 打印最后一条消息的详细内容
         logger.info(f"🤖 [条件判断] 最后一条消息详细内容:")
         logger.info(f"🤖 [条件判断] - 消息类型: {type(last_message).__name__}")
-        if hasattr(last_message, 'content'):
-            content_preview = last_message.content[:300] + "..." if len(last_message.content) > 300 else last_message.content
+        if hasattr(last_message, "content"):
+            content = last_message.content
+            if isinstance(content, str):
+                content_preview = (
+                    content[:300] + "..." if len(content) > 300 else content
+                )
+            else:
+                content_preview = (
+                    str(content)[:300] + "..."
+                    if len(str(content)) > 300
+                    else str(content)
+                )
             logger.info(f"🤖 [条件判断] - 内容预览: {content_preview}")
-        
+
         # 🔍 [调试日志] 打印tool_calls的详细信息
-        logger.info(f"🔀 [条件判断] - 是否有tool_calls: {hasattr(last_message, 'tool_calls')}")
-        if hasattr(last_message, 'tool_calls'):
-            logger.info(f"🔀 [条件判断] - tool_calls数量: {len(last_message.tool_calls) if last_message.tool_calls else 0}")
+        logger.info(
+            f"🔀 [条件判断] - 是否有tool_calls: {hasattr(last_message, 'tool_calls')}"
+        )
+        if hasattr(last_message, "tool_calls"):
+            logger.info(
+                f"🔀 [条件判断] - tool_calls数量: {len(last_message.tool_calls) if last_message.tool_calls else 0}"
+            )
             if last_message.tool_calls:
-                logger.info(f"🔧 [条件判断] 检测到 {len(last_message.tool_calls)} 个工具调用:")
+                logger.info(
+                    f"🔧 [条件判断] 检测到 {len(last_message.tool_calls)} 个工具调用:"
+                )
                 for i, tc in enumerate(last_message.tool_calls):
-                    logger.info(f"🔧 [条件判断] - 工具调用 {i+1}: {tc.get('name', 'unknown')} (ID: {tc.get('id', 'unknown')})")
-                    if 'args' in tc:
+                    logger.info(
+                        f"🔧 [条件判断] - 工具调用 {i + 1}: {tc.get('name', 'unknown')} (ID: {tc.get('id', 'unknown')})"
+                    )
+                    if "args" in tc:
                         logger.info(f"🔧 [条件判断] - 参数: {tc['args']}")
             else:
                 logger.info(f"🔧 [条件判断] tool_calls为空列表")
@@ -186,10 +229,12 @@ class ConditionalLogic:
             return "Msg Clear Fundamentals"
 
         # ✅ 优先级2: 如果有tool_calls，去执行工具
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             # 检查是否超过最大调用次数
             if tool_call_count >= max_tool_calls:
-                logger.warning(f"🔧 [死循环修复] 工具调用次数已达上限({tool_call_count}/{max_tool_calls})，但仍有tool_calls，强制结束")
+                logger.warning(
+                    f"🔧 [死循环修复] 工具调用次数已达上限({tool_call_count}/{max_tool_calls})，但仍有tool_calls，强制结束"
+                )
                 return "Msg Clear Fundamentals"
 
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_fundamentals")
@@ -212,11 +257,15 @@ class ConditionalLogic:
         current_speaker = state["investment_debate_state"]["current_response"]
 
         # 🔍 详细日志
-        logger.info(f"🔍 [投资辩论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_debate_rounds})")
+        logger.info(
+            f"🔍 [投资辩论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_debate_rounds})"
+        )
         logger.info(f"🔍 [投资辩论控制] 当前发言者: {current_speaker}")
 
         # ========== Phase 2.2: 证据强度检查 ==========
-        evidence_strength = state["investment_debate_state"].get("evidence_strength", 0.0)
+        evidence_strength = state["investment_debate_state"].get(
+            "evidence_strength", 0.0
+        )
 
         # 高证据强度且已过2轮时可提前收敛（提高效率）
         if evidence_strength >= 0.8 and current_count >= 4:
@@ -233,7 +282,11 @@ class ConditionalLogic:
             logger.info(f"✅ [投资辩论控制] 达到最大次数，结束辩论 -> Research Manager")
             return "Research Manager"
 
-        next_speaker = "Bear Researcher" if current_speaker.startswith("Bull") else "Bull Researcher"
+        next_speaker = (
+            "Bear Researcher"
+            if current_speaker.startswith("Bull")
+            else "Bull Researcher"
+        )
         logger.info(f"🔄 [投资辩论控制] 继续辩论 -> {next_speaker}")
         return next_speaker
 
@@ -244,7 +297,9 @@ class ConditionalLogic:
         latest_speaker = state["risk_debate_state"]["latest_speaker"]
 
         # 🔍 详细日志
-        logger.info(f"🔍 [风险讨论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_risk_discuss_rounds})")
+        logger.info(
+            f"🔍 [风险讨论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_risk_discuss_rounds})"
+        )
         logger.info(f"🔍 [风险讨论控制] 最后发言者: {latest_speaker}")
 
         if current_count >= max_count:

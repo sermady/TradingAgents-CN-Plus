@@ -3166,6 +3166,9 @@ class DataSourceManager:
                 f"📊 [AKShare股票信息] 原始代码: {symbol}, AKShare格式: {akshare_symbol}"
             )
 
+            # 初始化 stock_info 为 None
+            stock_info = None
+
             # 🔥 FIX: 尝试获取个股信息，增强错误处理
             try:
                 stock_info = ak.stock_individual_info_em(symbol=akshare_symbol)
@@ -3909,13 +3912,17 @@ class DataSourceManager:
                 return {}
 
             client = db_manager.get_mongodb_client()
+            if client is None:
+                return {}
             db = client[db_manager.config.mongodb_config.database_name]
 
             # 从stock_basic_info集合获取估值指标
             collection = db["stock_basic_info"]
+            if collection is None:
+                return {}
             result = collection.find_one({"ts_code": symbol})
 
-            if result:
+            if result is not None:
                 return {
                     "pe": result.get("pe"),
                     "pb": result.get("pb"),
@@ -5328,14 +5335,6 @@ def get_china_stock_info_unified(symbol: str) -> Dict:
 
 # 全局数据源管理器实例
 _data_source_manager = None
-
-
-def get_data_source_manager() -> DataSourceManager:
-    """获取全局数据源管理器实例"""
-    global _data_source_manager
-    if _data_source_manager is None:
-        _data_source_manager = DataSourceManager()
-    return _data_source_manager
 
 
 # ==================== 兼容性接口 ====================

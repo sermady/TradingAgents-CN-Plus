@@ -43,7 +43,9 @@ def retry_on_failure(max_retries=3, delay=1.0, backoff=2.0):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            last_exception: Optional[Exception] = None
+            last_exception: Optional[Exception] = RuntimeError(
+                "重试失败，所有尝试都抛出异常"
+            )
             current_delay = delay
 
             for attempt in range(max_retries):
@@ -240,7 +242,9 @@ class RedisService:
     """增强型Redis服务封装类"""
 
     def __init__(self):
-        self.redis = get_redis()
+        import redis.asyncio as redis
+
+        self.redis: redis.Redis = get_redis()
 
     async def _ensure_connection(self) -> bool:
         """确保连接可用"""

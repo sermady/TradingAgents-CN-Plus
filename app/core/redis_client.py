@@ -108,7 +108,7 @@ class RedisService:
     """Redis服务封装类"""
 
     def __init__(self):
-        self.redis = get_redis()
+        self.redis: redis.Redis = get_redis()
 
     async def set_with_ttl(self, key: str, value: str, ttl: int = 3600):
         """设置带TTL的键值"""

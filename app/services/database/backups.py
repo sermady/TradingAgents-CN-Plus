@@ -2,6 +2,7 @@
 """
 Backup, import, and export routines extracted from DatabaseService.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,12 @@ def _check_mongodump_available() -> bool:
     return shutil.which("mongodump") is not None
 
 
-async def create_backup_native(name: str, backup_dir: str, collections: Optional[List[str]] = None, user_id: str | None = None) -> Dict[str, Any]:
+async def create_backup_native(
+    name: str,
+    backup_dir: str,
+    collections: Optional[List[str]] = None,
+    user_id: str | None = None,
+) -> Dict[str, Any]:
     """
     使用 MongoDB 原生 mongodump 命令创建备份（推荐，速度快）
 
@@ -43,7 +49,9 @@ async def create_backup_native(name: str, backup_dir: str, collections: Optional
     - mongodump 命令在 PATH 中可用
     """
     if not _check_mongodump_available():
-        raise Exception("mongodump 命令不可用，请安装 MongoDB Database Tools 或使用 create_backup() 方法")
+        raise Exception(
+            "mongodump 命令不可用，请安装 MongoDB Database Tools 或使用 create_backup() 方法"
+        )
 
     db = get_mongo_db()
 
@@ -57,9 +65,11 @@ async def create_backup_native(name: str, backup_dir: str, collections: Optional
     # 构建 mongodump 命令
     cmd = [
         "mongodump",
-        "--uri", settings.MONGO_URI,
-        "--out", backup_path,
-        "--gzip"  # 启用压缩
+        "--uri",
+        settings.MONGO_URI,
+        "--out",
+        backup_path,
+        "--gzip",  # 启用压缩
     ]
 
     # 如果指定了集合，只备份这些集合
@@ -75,7 +85,7 @@ async def create_backup_native(name: str, backup_dir: str, collections: Optional
             cmd,
             capture_output=True,
             text=True,
-            timeout=3600  # 1小时超时
+            timeout=3600,  # 1小时超时
         )
         if result.returncode != 0:
             raise Exception(f"mongodump 执行失败: {result.stderr}")
@@ -135,7 +145,12 @@ async def create_backup_native(name: str, backup_dir: str, collections: Optional
     }
 
 
-async def create_backup(name: str, backup_dir: str, collections: Optional[List[str]] = None, user_id: str | None = None) -> Dict[str, Any]:
+async def create_backup(
+    name: str,
+    backup_dir: str,
+    collections: Optional[List[str]] = None,
+    user_id: str | None = None,
+) -> Dict[str, Any]:
     """
     创建数据库备份（Python 实现，兼容性好但速度较慢）
 
@@ -205,15 +220,17 @@ async def list_backups() -> List[Dict[str, Any]]:
     db = get_mongo_db()
     backups: List[Dict[str, Any]] = []
     async for backup in db.database_backups.find().sort("created_at", -1):
-        backups.append({
-            "id": str(backup["_id"]),
-            "name": backup["name"],
-            "filename": backup["filename"],
-            "size": backup["size"],
-            "collections": backup["collections"],
-            "created_at": backup["created_at"].isoformat(),
-            "created_by": backup.get("created_by"),
-        })
+        backups.append(
+            {
+                "id": str(backup["_id"]),
+                "name": backup["name"],
+                "filename": backup["filename"],
+                "size": backup["size"],
+                "collections": backup["collections"],
+                "created_at": backup["created_at"].isoformat(),
+                "created_by": backup.get("created_by"),
+            }
+        )
     return backups
 
 
@@ -246,9 +263,15 @@ def _convert_date_fields(doc: dict) -> dict:
     from dateutil import parser
 
     date_fields = [
-        "created_at", "updated_at", "completed_at",
-        "started_at", "finished_at", "deleted_at",
-        "last_login", "last_modified", "timestamp"
+        "created_at",
+        "updated_at",
+        "completed_at",
+        "started_at",
+        "finished_at",
+        "deleted_at",
+        "last_login",
+        "last_modified",
+        "timestamp",
     ]
 
     for field in date_fields:
@@ -263,7 +286,14 @@ def _convert_date_fields(doc: dict) -> dict:
     return doc
 
 
-async def import_data(content: bytes, collection: str, *, format: str = "json", overwrite: bool = False, filename: str | None = None) -> Dict[str, Any]:
+async def import_data(
+    content: bytes,
+    collection: str,
+    *,
+    format: str = "json",
+    overwrite: bool = False,
+    filename: str | None = None,
+) -> Dict[str, Any]:
     """
     导入数据到数据库
 
@@ -289,7 +319,9 @@ async def import_data(content: bytes, collection: str, *, format: str = "json", 
     if isinstance(data, dict) and "export_info" in data and "data" in data:
         logger.info(f"📦 检测到新版多集合导出文件（包含 export_info）")
         export_info = data.get("export_info", {})
-        logger.info(f"📋 导出信息: 创建时间={export_info.get('created_at')}, 集合数={len(export_info.get('collections', []))}")
+        logger.info(
+            f"📋 导出信息: 创建时间={export_info.get('created_at')}, 集合数={len(export_info.get('collections', []))}"
+        )
 
         # 提取实际数据
         data = data["data"]
@@ -302,11 +334,15 @@ async def import_data(content: bytes, collection: str, *, format: str = "json", 
 
         # 检查每个键值对的类型
         for k, v in list(data.items())[:5]:  # 只检查前5个
-            logger.info(f"🔍 [导入检测] 键 '{k}': 值类型={type(v)}, 是否为列表={isinstance(v, list)}")
+            logger.info(
+                f"🔍 [导入检测] 键 '{k}': 值类型={type(v)}, 是否为列表={isinstance(v, list)}"
+            )
             if isinstance(v, list):
                 logger.info(f"🔍 [导入检测] 键 '{k}': 列表长度={len(v)}")
 
-    if isinstance(data, dict) and all(isinstance(k, str) and isinstance(v, list) for k, v in data.items()):
+    if isinstance(data, dict) and all(
+        isinstance(k, str) and isinstance(v, list) for k, v in data.items()
+    ):
         # 多集合模式
         logger.info(f"📦 确认为多集合导入模式，包含 {len(data)} 个集合")
 
@@ -322,7 +358,9 @@ async def import_data(content: bytes, collection: str, *, format: str = "json", 
 
             if overwrite:
                 deleted_count = await collection_obj.delete_many({})
-                logger.info(f"🗑️ 清空集合 {coll_name}：删除 {deleted_count.deleted_count} 条文档")
+                logger.info(
+                    f"🗑️ 清空集合 {coll_name}：删除 {deleted_count.deleted_count} 条文档"
+                )
 
             # 处理 _id 字段和日期字段
             for doc in documents:
@@ -372,7 +410,9 @@ async def import_data(content: bytes, collection: str, *, format: str = "json", 
 
         if overwrite:
             deleted_count = await collection_obj.delete_many({})
-            logger.info(f"🗑️ 清空集合 {collection}：删除 {deleted_count.deleted_count} 条文档")
+            logger.info(
+                f"🗑️ 清空集合 {collection}：删除 {deleted_count.deleted_count} 条文档"
+            )
 
         for doc in data:
             # 转换 _id
@@ -410,15 +450,21 @@ def _sanitize_document(doc: Any) -> Any:
     排除字段：max_tokens, timeout, retry_times 等配置字段（不是敏感信息）
     """
     SENSITIVE_KEYWORDS = [
-        "api_key", "api_secret", "secret", "token", "password",
-        "client_secret", "webhook_secret", "private_key"
+        "api_key",
+        "api_secret",
+        "secret",
+        "token",
+        "password",
+        "client_secret",
+        "webhook_secret",
+        "private_key",
     ]
 
     # 排除的字段（虽然包含敏感关键词，但不是敏感信息）
     EXCLUDED_FIELDS = [
-        "max_tokens",      # LLM 配置：最大 token 数
-        "timeout",         # 超时时间
-        "retry_times",     # 重试次数
+        "max_tokens",  # LLM 配置：最大 token 数
+        "timeout",  # 超时时间
+        "retry_times",  # 重试次数
         "context_length",  # 上下文长度
     ]
 
@@ -446,7 +492,13 @@ def _sanitize_document(doc: Any) -> Any:
         return doc
 
 
-async def export_data(collections: Optional[List[str]] = None, *, export_dir: str, format: str = "json", sanitize: bool = False) -> str:
+async def export_data(
+    collections: Optional[List[str]] = None,
+    *,
+    export_dir: str,
+    format: str = "json",
+    sanitize: bool = False,
+) -> str:
     import pandas as pd
 
     # 🔥 使用异步数据库连接
@@ -525,7 +577,7 @@ async def export_data(collections: Optional[List[str]] = None, *, export_dir: st
 
         # 🔥 使用 asyncio.to_thread 将阻塞的文件 I/O 操作放到线程池执行
         def _write_excel():
-            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:  # type: ignore[no-redef]
                 for collection_name, documents in all_data.items():
                     df = pd.DataFrame(documents) if documents else pd.DataFrame()
                     sheet = collection_name[:31]
@@ -535,4 +587,3 @@ async def export_data(collections: Optional[List[str]] = None, *, export_dir: st
         return file_path
 
     raise Exception(f"不支持的导出格式: {format}")
-

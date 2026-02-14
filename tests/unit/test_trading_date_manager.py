@@ -152,7 +152,8 @@ class TestPriceConsistencyIntegration(unittest.TestCase):
         # 模拟基本面分析师读取缓存
         price_info = price_cache.get_price_info("002938")
         self.assertIsNotNone(price_info, "基本面分析师应能读取缓存")
-        self.assertEqual(price_info["price"], 58.29, "价格应一致")
+        if price_info is not None:
+            self.assertEqual(price_info["price"], 58.29, "价格应一致")
 
 
 if __name__ == "__main__":

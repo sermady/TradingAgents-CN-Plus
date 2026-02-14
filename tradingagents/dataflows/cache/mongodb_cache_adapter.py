@@ -220,8 +220,12 @@ class MongoDBCacheAdapter:
             if start_date:
                 base_query["trade_date"] = {"$gte": start_date}
             if end_date:
-                if "trade_date" in base_query:
-                    base_query["trade_date"]["$lte"] = end_date
+                if "trade_date" in base_query and isinstance(
+                    base_query.get("trade_date"), dict
+                ):
+                    td = base_query["trade_date"]
+                    if isinstance(td, dict):
+                        td["$lte"] = end_date  # type: ignore[index]
                 else:
                     base_query["trade_date"] = {"$lte": end_date}
 

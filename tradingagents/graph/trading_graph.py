@@ -1127,7 +1127,8 @@ class TradingAgentsGraph:
         performance_data = self._build_performance_data(node_timings, total_elapsed)
 
         # 将性能数据添加到状态中
-        final_state["performance_metrics"] = performance_data
+        if final_state is not None:
+            final_state["performance_metrics"] = performance_data
 
         # Store current state for reflection
         self.curr_state = final_state
@@ -1147,12 +1148,16 @@ class TradingAgentsGraph:
 
         # ========== 报告质量检查集成 ==========
         # 在处理决策之前执行质量检查，以便根据质量调整置信度
-        self._run_quality_checks(final_state)
+        if final_state is not None:
+            self._run_quality_checks(final_state)
 
         # 处理决策并添加模型信息
-        decision = self.process_signal(
-            final_state["final_trade_decision"], company_name
-        )
+        if final_state is not None:
+            decision = self.process_signal(
+                final_state.get("final_trade_decision", {}), company_name
+            )
+        else:
+            decision = {}
         decision["model_info"] = model_info
 
         # 将质量检查结果添加到决策中
