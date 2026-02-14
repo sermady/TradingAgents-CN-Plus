@@ -344,6 +344,11 @@ class IntegratedCacheManager:
 
                 mongodb_db = self.db_manager.get_mongodb_db()
 
+                if mongodb_db is None:
+                    self.logger.warning("⚠️ MongoDB 数据库连接不可用")
+                    return 0
+
+                # type: ignore - 前面已经检查过不为 None
                 if max_age_days == 0:
                     # 清空所有缓存集合
                     for collection_name in [
@@ -351,7 +356,7 @@ class IntegratedCacheManager:
                         "news_data",
                         "fundamentals_data",
                     ]:
-                        collection = mongodb_db[collection_name]
+                        collection = mongodb_db[collection_name]  # type: ignore[index]
                         if collection is not None:
                             result = collection.delete_many({})
                             if result is not None:
@@ -369,7 +374,7 @@ class IntegratedCacheManager:
                         "news_data",
                         "fundamentals_data",
                     ]:
-                        collection = mongodb_db[collection_name]
+                        collection = mongodb_db[collection_name]  # type: ignore[index]
                         if collection is not None:
                             result = collection.delete_many(
                                 {"created_at": {"$lt": cutoff_time}}

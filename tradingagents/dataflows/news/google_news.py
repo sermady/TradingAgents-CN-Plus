@@ -15,12 +15,18 @@ from tenacity import (
 )
 
 from tradingagents.config.runtime_settings import get_float
+
 # 导入日志模块
 from tradingagents.utils.logging_manager import get_logger
-logger = get_logger('agents')
 
-SLEEP_MIN = get_float("TA_GOOGLE_NEWS_SLEEP_MIN_SECONDS", "ta_google_news_sleep_min_seconds", 2.0)
-SLEEP_MAX = get_float("TA_GOOGLE_NEWS_SLEEP_MAX_SECONDS", "ta_google_news_sleep_max_seconds", 6.0)
+logger = get_logger("agents")
+
+SLEEP_MIN = get_float(
+    "TA_GOOGLE_NEWS_SLEEP_MIN_SECONDS", "ta_google_news_sleep_min_seconds", 2.0
+)
+SLEEP_MAX = get_float(
+    "TA_GOOGLE_NEWS_SLEEP_MAX_SECONDS", "ta_google_news_sleep_max_seconds", 6.0
+)
 
 
 def is_rate_limited(response):
@@ -29,7 +35,11 @@ def is_rate_limited(response):
 
 
 @retry(
-    retry=(retry_if_result(is_rate_limited) | retry_if_exception_type(requests.exceptions.ConnectionError) | retry_if_exception_type(requests.exceptions.Timeout)),
+    retry=(
+        retry_if_result(is_rate_limited)
+        | retry_if_exception_type(requests.exceptions.ConnectionError)
+        | retry_if_exception_type(requests.exceptions.Timeout)
+    ),
     wait=wait_exponential(multiplier=1, min=4, max=60),
     stop=stop_after_attempt(5),
 )
@@ -38,7 +48,9 @@ def make_request(url, headers):
     # Random delay before each request to avoid detection
     time.sleep(random.uniform(SLEEP_MIN, SLEEP_MAX))
     # 添加超时参数，设置连接超时和读取超时
-    response = requests.get(url, headers=headers, timeout=(10, 30))  # 连接超时10秒，读取超时30秒
+    response = requests.get(
+        url, headers=headers, timeout=(10, 30)
+    )  # 连接超时10秒，读取超时30秒
     return response
 
 
@@ -84,11 +96,25 @@ def getNewsData(query, start_date, end_date):
 
             for el in results_on_page:
                 try:
-                    link = el.find("a")["href"]
-                    title = el.select_one("div.MBeuO").get_text()
-                    snippet = el.select_one(".GI74Re").get_text()
-                    date = el.select_one(".LfVVr").get_text()
-                    source = el.select_one(".NUnG9d span").get_text()
+                    link_elem = el.find("a")
+                    link = link_elem.get("href", "") if link_elem else ""
+                    title = (
+                        el.select_one("div.MBeuO").get_text()
+                        if el.select_one("div.MBeuO")
+                        else ""
+                    )
+                    snippet = (
+                        el.select_one(".GI74Re").get_text()
+                        if el.select_one(".GI74Re")
+                        else ""
+                    )
+                    date = (
+                        el.select_one(".LfVVr").get_text()
+                        if el.select_one(".LfVVr")
+                        else ""
+                    )
+                    source_elem = el.select_one(".NUnG9d span")
+                    source = source_elem.get_text() if source_elem else ""
                     news_results.append(
                         {
                             "link": link,
