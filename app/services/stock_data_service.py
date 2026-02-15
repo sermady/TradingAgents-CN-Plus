@@ -10,12 +10,17 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_mongo_db
 from app.models.stock_models import (
-    StockBasicInfoExtended, 
+    StockBasicInfoExtended,
     MarketQuotesExtended,
     MarketInfo,
     MarketType,
     ExchangeType,
     CurrencyType
+)
+from app.utils.error_handler import (
+    async_handle_errors_none,
+    async_handle_errors_empty_list,
+    async_handle_errors_false,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +36,7 @@ class StockDataService:
         self.basic_info_collection = "stock_basic_info"
         self.market_quotes_collection = "market_quotes"
     
+    @async_handle_errors_none(error_message="获取股票基础信息失败")
     async def get_stock_basic_info(
         self,
         symbol: str,
@@ -44,51 +50,47 @@ class StockDataService:
         Returns:
             StockBasicInfoExtended: 扩展的股票基础信息
         """
-        try:
-            db = get_mongo_db()
-            symbol6 = str(symbol).zfill(6)
+        db = get_mongo_db()
+        symbol6 = str(symbol).zfill(6)
 
-            # 🔥 构建查询条件
-            query = {"$or": [{"symbol": symbol6}, {"code": symbol6}]}
+        # 🔥 构建查询条件
+        query = {"$or": [{"symbol": symbol6}, {"code": symbol6}]}
 
-            if source:
-                # 指定数据源
-                query["source"] = source
-                doc = await db[self.basic_info_collection].find_one(query, {"_id": 0})
-            else:
-                # 🔥 未指定数据源，按优先级查询
-                source_priority = ["tushare", "multi_source", "akshare", "baostock"]
-                doc = None
+        if source:
+            # 指定数据源
+            query["source"] = source
+            doc = await db[self.basic_info_collection].find_one(query, {"_id": 0})
+        else:
+            # 🔥 未指定数据源，按优先级查询
+            source_priority = ["tushare", "multi_source", "akshare", "baostock"]
+            doc = None
 
-                for src in source_priority:
-                    query_with_source = query.copy()
-                    query_with_source["source"] = src
-                    doc = await db[self.basic_info_collection].find_one(query_with_source, {"_id": 0})
-                    if doc:
-                        logger.debug(f"✅ 使用数据源: {src}")
-                        break
+            for src in source_priority:
+                query_with_source = query.copy()
+                query_with_source["source"] = src
+                doc = await db[self.basic_info_collection].find_one(query_with_source, {"_id": 0})
+                if doc:
+                    logger.debug(f"✅ 使用数据源: {src}")
+                    break
 
-                # 如果所有数据源都没有，尝试不带 source 条件查询（兼容旧数据）
-                if not doc:
-                    doc = await db[self.basic_info_collection].find_one(
-                        {"$or": [{"symbol": symbol6}, {"code": symbol6}]},
-                        {"_id": 0}
-                    )
-                    if doc:
-                        logger.warning(f"⚠️ 使用旧数据（无 source 字段）: {symbol6}")
-
+            # 如果所有数据源都没有，尝试不带 source 条件查询（兼容旧数据）
             if not doc:
-                return None
+                doc = await db[self.basic_info_collection].find_one(
+                    {"$or": [{"symbol": symbol6}, {"code": symbol6}]},
+                    {"_id": 0}
+                )
+                if doc:
+                    logger.warning(f"⚠️ 使用旧数据（无 source 字段）: {symbol6}")
 
-            # 数据标准化处理
-            standardized_doc = self._standardize_basic_info(doc)
-
-            return StockBasicInfoExtended(**standardized_doc)
-
-        except Exception as e:
-            logger.error(f"获取股票基础信息失败 symbol={symbol}, source={source}: {e}")
+        if not doc:
             return None
+
+        # 数据标准化处理
+        standardized_doc = self._standardize_basic_info(doc)
+
+        return StockBasicInfoExtended(**standardized_doc)
     
+    @async_handle_errors_none(error_message="获取实时行情失败")
     async def get_market_quotes(self, symbol: str) -> Optional[MarketQuotesExtended]:
         """
         获取实时行情数据
@@ -97,28 +99,24 @@ class StockDataService:
         Returns:
             MarketQuotesExtended: 扩展的实时行情数据
         """
-        try:
-            db = get_mongo_db()
-            symbol6 = str(symbol).zfill(6)
+        db = get_mongo_db()
+        symbol6 = str(symbol).zfill(6)
 
-            # 从现有集合查询 (优先使用symbol字段，兼容code字段)
-            doc = await db[self.market_quotes_collection].find_one(
-                {"$or": [{"symbol": symbol6}, {"code": symbol6}]},
-                {"_id": 0}
-            )
+        # 从现有集合查询 (优先使用symbol字段，兼容code字段)
+        doc = await db[self.market_quotes_collection].find_one(
+            {"$or": [{"symbol": symbol6}, {"code": symbol6}]},
+            {"_id": 0}
+        )
 
-            if not doc:
-                return None
-
-            # 数据标准化处理
-            standardized_doc = self._standardize_market_quotes(doc)
-
-            return MarketQuotesExtended(**standardized_doc)
-
-        except Exception as e:
-            logger.error(f"获取实时行情失败 symbol={symbol}: {e}")
+        if not doc:
             return None
+
+        # 数据标准化处理
+        standardized_doc = self._standardize_market_quotes(doc)
+
+        return MarketQuotesExtended(**standardized_doc)
     
+    @async_handle_errors_empty_list(error_message="获取股票列表失败")
     async def get_stock_list(
         self,
         market: Optional[str] = None,
@@ -138,54 +136,50 @@ class StockDataService:
         Returns:
             List[StockBasicInfoExtended]: 股票列表
         """
-        try:
-            db = get_mongo_db()
+        db = get_mongo_db()
 
-            # 🔥 获取数据源优先级配置
-            if not source:
-                from app.core.unified_config_service import get_config_manager
-                config = get_config_manager()
-                data_source_configs = await config.get_data_source_configs_async()
+        # 🔥 获取数据源优先级配置
+        if not source:
+            from app.core.unified_config_service import get_config_manager
+            config = get_config_manager()
+            data_source_configs = await config.get_data_source_configs_async()
 
-                # 提取启用的数据源，按优先级排序
-                enabled_sources = [
-                    ds.type.lower() for ds in data_source_configs
-                    if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']
-                ]
+            # 提取启用的数据源，按优先级排序
+            enabled_sources = [
+                ds.type.lower() for ds in data_source_configs
+                if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']
+            ]
 
-                if not enabled_sources:
-                    enabled_sources = ['tushare', 'akshare', 'baostock']
+            if not enabled_sources:
+                enabled_sources = ['tushare', 'akshare', 'baostock']
 
-                source = enabled_sources[0] if enabled_sources else 'tushare'
+            source = enabled_sources[0] if enabled_sources else 'tushare'
 
-            # 构建查询条件
-            query = {"source": source}  # 🔥 添加数据源筛选
-            if market:
-                query["market"] = market
-            if industry:
-                query["industry"] = industry
+        # 构建查询条件
+        query = {"source": source}  # 🔥 添加数据源筛选
+        if market:
+            query["market"] = market
+        if industry:
+            query["industry"] = industry
 
-            # 分页查询
-            skip = (page - 1) * page_size
-            cursor = db[self.basic_info_collection].find(
-                query,
-                {"_id": 0}
-            ).skip(skip).limit(page_size)
+        # 分页查询
+        skip = (page - 1) * page_size
+        cursor = db[self.basic_info_collection].find(
+            query,
+            {"_id": 0}
+        ).skip(skip).limit(page_size)
 
-            docs = await cursor.to_list(length=page_size)
+        docs = await cursor.to_list(length=page_size)
 
-            # 数据标准化处理
-            result = []
-            for doc in docs:
-                standardized_doc = self._standardize_basic_info(doc)
-                result.append(StockBasicInfoExtended(**standardized_doc))
+        # 数据标准化处理
+        result = []
+        for doc in docs:
+            standardized_doc = self._standardize_basic_info(doc)
+            result.append(StockBasicInfoExtended(**standardized_doc))
 
-            return result
-            
-        except Exception as e:
-            logger.error(f"获取股票列表失败: {e}")
-            return []
+        return result
     
+    @async_handle_errors_false(error_message="更新股票基础信息失败")
     async def update_stock_basic_info(
         self,
         symbol: str,
@@ -201,38 +195,34 @@ class StockDataService:
         Returns:
             bool: 更新是否成功
         """
-        try:
-            db = get_mongo_db()
-            symbol6 = str(symbol).zfill(6)
+        db = get_mongo_db()
+        symbol6 = str(symbol).zfill(6)
 
-            # 添加更新时间
-            update_data["updated_at"] = datetime.utcnow()
+        # 添加更新时间
+        update_data["updated_at"] = datetime.utcnow()
 
-            # 确保symbol字段存在
-            if "symbol" not in update_data:
-                update_data["symbol"] = symbol6
+        # 确保symbol字段存在
+        if "symbol" not in update_data:
+            update_data["symbol"] = symbol6
 
-            # 🔥 确保 code 字段存在
-            if "code" not in update_data:
-                update_data["code"] = symbol6
+        # 🔥 确保 code 字段存在
+        if "code" not in update_data:
+            update_data["code"] = symbol6
 
-            # 🔥 确保 source 字段存在
-            if "source" not in update_data:
-                update_data["source"] = source
+        # 🔥 确保 source 字段存在
+        if "source" not in update_data:
+            update_data["source"] = source
 
-            # 🔥 执行更新 (使用 code + source 联合查询)
-            result = await db[self.basic_info_collection].update_one(
-                {"code": symbol6, "source": source},
-                {"$set": update_data},
-                upsert=True
-            )
+        # 🔥 执行更新 (使用 code + source 联合查询)
+        result = await db[self.basic_info_collection].update_one(
+            {"code": symbol6, "source": source},
+            {"$set": update_data},
+            upsert=True
+        )
 
-            return result.modified_count > 0 or result.upserted_id is not None
-
-        except Exception as e:
-            logger.error(f"更新股票基础信息失败 symbol={symbol}, source={source}: {e}")
-            return False
+        return result.modified_count > 0 or result.upserted_id is not None
     
+    @async_handle_errors_false(error_message="更新实时行情失败")
     async def update_market_quotes(
         self,
         symbol: str,
@@ -246,31 +236,26 @@ class StockDataService:
         Returns:
             bool: 更新是否成功
         """
-        try:
-            db = get_mongo_db()
-            symbol6 = str(symbol).zfill(6)
+        db = get_mongo_db()
+        symbol6 = str(symbol).zfill(6)
 
-            # 添加更新时间
-            quote_data["updated_at"] = datetime.utcnow()
+        # 添加更新时间
+        quote_data["updated_at"] = datetime.utcnow()
 
-            # 🔥 确保 symbol 和 code 字段都存在（兼容旧索引）
-            if "symbol" not in quote_data:
-                quote_data["symbol"] = symbol6
-            if "code" not in quote_data:
-                quote_data["code"] = symbol6  # code 和 symbol 使用相同的值
+        # 🔥 确保 symbol 和 code 字段都存在（兼容旧索引）
+        if "symbol" not in quote_data:
+            quote_data["symbol"] = symbol6
+        if "code" not in quote_data:
+            quote_data["code"] = symbol6  # code 和 symbol 使用相同的值
 
-            # 执行更新 (使用symbol字段作为查询条件)
-            result = await db[self.market_quotes_collection].update_one(
-                {"symbol": symbol6},
-                {"$set": quote_data},
-                upsert=True
-            )
+        # 执行更新 (使用symbol字段作为查询条件)
+        result = await db[self.market_quotes_collection].update_one(
+            {"symbol": symbol6},
+            {"$set": quote_data},
+            upsert=True
+        )
 
-            return result.modified_count > 0 or result.upserted_id is not None
-
-        except Exception as e:
-            logger.error(f"更新实时行情失败 symbol={symbol}: {e}")
-            return False
+        return result.modified_count > 0 or result.upserted_id is not None
     
     def _standardize_basic_info(self, doc: Dict[str, Any]) -> Dict[str, Any]:
         """
