@@ -13,6 +13,11 @@ import pandas as pd
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_database
+from app.utils.error_handler import (
+    async_handle_errors_none,
+    async_handle_errors_empty_list,
+    async_handle_errors_empty_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -412,6 +417,7 @@ class HistoricalDataService:
         except (ValueError, TypeError):
             return None
 
+    @async_handle_errors_empty_list(error_message="查询历史数据失败")
     async def get_historical_data(
         self,
         symbol: str,
@@ -440,110 +446,97 @@ class HistoricalDataService:
         if self.collection is None:
             await self.initialize()
 
-        try:
-            # 构建查询条件
-            query = {"symbol": symbol}
+        # 构建查询条件
+        query = {"symbol": symbol}
 
-            if start_date or end_date:
-                date_filter = {}
-                if start_date:
-                    date_filter["$gte"] = start_date
-                if end_date:
-                    date_filter["$lte"] = end_date
-                query["trade_date"] = date_filter
+        if start_date or end_date:
+            date_filter = {}
+            if start_date:
+                date_filter["$gte"] = start_date
+            if end_date:
+                date_filter["$lte"] = end_date
+            query["trade_date"] = date_filter
 
-            if data_source:
-                query["data_source"] = data_source
+        if data_source:
+            query["data_source"] = data_source
 
-            if period:
-                query["period"] = period
+        if period:
+            query["period"] = period
 
-            # 执行查询（带分页限制）
-            # 限制最大返回数量，防止内存溢出
-            max_limit = min(limit, 10000) if limit else 1000
+        # 执行查询（带分页限制）
+        # 限制最大返回数量，防止内存溢出
+        max_limit = min(limit, 10000) if limit else 1000
 
-            cursor = self.collection.find(query).sort("trade_date", -1)
+        cursor = self.collection.find(query).sort("trade_date", -1)
 
-            if skip > 0:
-                cursor = cursor.skip(skip)
+        if skip > 0:
+            cursor = cursor.skip(skip)
 
-            cursor = cursor.limit(max_limit)
+        cursor = cursor.limit(max_limit)
 
-            results = await cursor.to_list(length=max_limit)
+        results = await cursor.to_list(length=max_limit)
 
-            logger.info(f"📊 查询历史数据: {symbol} 返回 {len(results)} 条记录")
-            return results
+        logger.info(f"📊 查询历史数据: {symbol} 返回 {len(results)} 条记录")
+        return results
 
-        except Exception as e:
-            logger.error(f"❌ 查询历史数据失败 {symbol}: {e}")
-            return []
-
+    @async_handle_errors_none(error_message="获取最新日期失败")
     async def get_latest_date(self, symbol: str, data_source: str) -> Optional[str]:
         """获取最新数据日期"""
         if self.collection is None:
             await self.initialize()
 
-        try:
-            result = await self.collection.find_one(
-                {"symbol": symbol, "data_source": data_source},
-                sort=[("trade_date", -1)],
-            )
+        result = await self.collection.find_one(
+            {"symbol": symbol, "data_source": data_source},
+            sort=[("trade_date", -1)],
+        )
 
-            if result:
-                return result["trade_date"]
-            return None
+        if result:
+            return result["trade_date"]
+        return None
 
-        except Exception as e:
-            logger.error(f"❌ 获取最新日期失败 {symbol}: {e}")
-            return None
-
+    @async_handle_errors_empty_dict(error_message="获取统计信息失败")
     async def get_data_statistics(self) -> Dict[str, Any]:
         """获取数据统计信息"""
         if self.collection is None:
             await self.initialize()
 
-        try:
-            # 总记录数
-            total_count = await self.collection.count_documents({})
+        # 总记录数
+        total_count = await self.collection.count_documents({})
 
-            # 按数据源统计
-            source_stats = await self.collection.aggregate(
-                [
-                    {
-                        "$group": {
-                            "_id": "$data_source",
-                            "count": {"$sum": 1},
-                            "latest_date": {"$max": "$trade_date"},
-                        }
+        # 按数据源统计
+        source_stats = await self.collection.aggregate(
+            [
+                {
+                    "$group": {
+                        "_id": "$data_source",
+                        "count": {"$sum": 1},
+                        "latest_date": {"$max": "$trade_date"},
                     }
-                ]
-            ).to_list(length=None)
+                }
+            ]
+        ).to_list(length=None)
 
-            # 按市场统计
-            market_stats = await self.collection.aggregate(
-                [{"$group": {"_id": "$market", "count": {"$sum": 1}}}]
-            ).to_list(length=None)
+        # 按市场统计
+        market_stats = await self.collection.aggregate(
+            [{"$group": {"_id": "$market", "count": {"$sum": 1}}}]
+        ).to_list(length=None)
 
-            # 股票数量统计
-            symbol_count = len(await self.collection.distinct("symbol"))
+        # 股票数量统计
+        symbol_count = len(await self.collection.distinct("symbol"))
 
-            return {
-                "total_records": total_count,
-                "total_symbols": symbol_count,
-                "by_source": {
-                    item["_id"]: {
-                        "count": item["count"],
-                        "latest_date": item.get("latest_date"),
-                    }
-                    for item in source_stats
-                },
-                "by_market": {item["_id"]: item["count"] for item in market_stats},
-                "last_updated": datetime.utcnow().isoformat(),
-            }
-
-        except Exception as e:
-            logger.error(f"❌ 获取统计信息失败: {e}")
-            return {}
+        return {
+            "total_records": total_count,
+            "total_symbols": symbol_count,
+            "by_source": {
+                item["_id"]: {
+                    "count": item["count"],
+                    "latest_date": item.get("latest_date"),
+                }
+                for item in source_stats
+            },
+            "by_market": {item["_id"]: item["count"] for item in market_stats},
+            "last_updated": datetime.utcnow().isoformat(),
+        }
 
 
 # 全局服务实例

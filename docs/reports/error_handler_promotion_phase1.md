@@ -364,6 +364,117 @@ async def query_metrics(self, ...) -> List[Dict[str, Any]]:
 
 ---
 
+---
+
+## Phase 4: QuotesIngestionService 和 DataSyncManager 重构
+
+### QuotesIngestionService (`app/services/quotes_ingestion_service.py`)
+
+**应用装饰器**:
+
+| 方法 | 装饰器 | 返回值类型 |
+|------|--------|-----------|
+| `get_sync_status` | `@async_handle_errors_empty_dict` | `Dict[str, Any]` |
+
+**关键改进**:
+- 消除了约 20 行的重复 try-except 错误处理
+- 统一错误日志记录
+
+### DataSyncManager (`app/services/data_sync_manager.py`)
+
+**应用装饰器**:
+
+| 方法 | 装饰器 | 返回值类型 |
+|------|--------|-----------|
+| `get_sync_status` | `@async_handle_errors_empty_dict` | `Dict[str, Any]` |
+| `get_all_sync_status` | `@async_handle_errors_empty_list` | `List[Dict[str, Any]]` |
+| `get_sync_history` | `@async_handle_errors_empty_list` | `List[Dict[str, Any]]` |
+| `get_statistics` | `@async_handle_errors_empty_dict` | `Dict[str, Any]` |
+| `cleanup_old_history` | `@async_handle_errors_zero` | `int` |
+
+**关键改进**:
+- 为原本没有错误处理的方法添加了统一的错误处理
+- 增强代码健壮性
+
+---
+
+## 最终统计数据
+
+| 指标 | Phase 1 | Phase 2 | Phase 3 | Phase 4 | **总计** |
+|------|---------|---------|---------|---------|----------|
+| **已重构服务数** | 1 | 1 | 1 | 2 | **5** |
+| **重构方法数** | 5 | 12 | 5 | 6 | **28** |
+| **减少代码行数** | 约 15 行 | 约 114 行 | 约 11 行 | 约 40 行 | **约 180 行** |
+| **新增统一错误处理** | 5 个 | 12 个 | 5 个 | 6 个 | **28 个** |
+
+---
+
+## 重构总结
+
+### 已重构服务列表
+
+1. **StockDataService** (5 个方法)
+   - `@async_handle_errors_none` × 2
+   - `@async_handle_errors_empty_list` × 1
+   - `@async_handle_errors_false` × 2
+
+2. **SchedulerService** (12 个方法)
+   - `@async_handle_errors_empty_list` × 4
+   - `@async_handle_errors_zero` × 4
+   - `@async_handle_errors_false` × 3
+   - `@async_handle_errors_empty_dict` × 1
+
+3. **MetricsCollector** (5 个方法)
+   - `@async_handle_errors_empty_list` × 2
+   - `@async_handle_errors_none` × 1
+   - `@async_handle_errors_zero` × 1
+   - `@async_handle_errors_empty_dict` × 1
+
+4. **QuotesIngestionService** (1 个方法)
+   - `@async_handle_errors_empty_dict` × 1
+
+5. **DataSyncManager** (5 个方法)
+   - `@async_handle_errors_empty_dict` × 2
+   - `@async_handle_errors_empty_list` × 2
+   - `@async_handle_errors_zero` × 1
+
+### Git 提交记录
+
+```
+7f87085 refactor(services): 推广 error_handler 装饰器到 QuotesIngestionService 和 DataSyncManager
+81b6605 refactor(services): 推广 error_handler 装饰器到 MetricsCollector
+ab0ba04 refactor(services): 推广 error_handler 装饰器到 SchedulerService
+e313fba refactor(services): 推广 error_handler 装饰器到 StockDataService
+```
+
+### 推广收益
+
+- **已重构服务数**: 5 个
+- **重构方法数**: 28 个
+- **减少代码行数**: 约 **180 行**
+- **新增统一错误处理**: 28 个方法
+- **代码健壮性**: 显著提升
+
+### 使用方式
+
+```python
+from app.utils.error_handler import (
+    async_handle_errors_none,
+    async_handle_errors_empty_list,
+    async_handle_errors_empty_dict,
+    async_handle_errors_false,
+    async_handle_errors_zero,
+)
+
+class MyService:
+    @async_handle_errors_empty_list(error_message="查询失败")
+    async def query_data(self) -> List[Dict]:
+        # 业务逻辑...
+        return results
+```
+
+---
+
 **创建时间**: 2026-02-15
 **更新时间**: 2026-02-15
 **完成时间**: 2026-02-15
