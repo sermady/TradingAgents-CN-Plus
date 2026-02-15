@@ -137,6 +137,8 @@ class DataCoordinator:
         self.analysis_cache = {}  # 分析级缓存（按股票代码+日期）
         self.analysis_cache_ttl = 300  # 5分钟
 
+    # ==================== 数据获取 ====================
+
     def _init_validators(self):
         """初始化数据验证器"""
         try:
@@ -158,6 +160,8 @@ class DataCoordinator:
             logger.warning(f"⚠️ 数据验证器初始化失败: {e}")
             self.validators = {}
 
+    # ==================== 缓存管理 ====================
+
     def _get_cache_key(self, symbol: str, data_type: str, date: str) -> str:
         """生成缓存键"""
         return f"{symbol}_{data_type}_{date}"
@@ -177,6 +181,8 @@ class DataCoordinator:
     def _set_cached_data(self, key: str, data: str):
         """设置缓存数据"""
         self.cache[key] = (time.time(), data)
+
+    # ==================== 数据解析 ====================
 
     def _parse_market_data(self, data_str: str) -> Dict[str, Any]:
         """解析市场数据字符串为结构化数据"""
@@ -279,6 +285,8 @@ class DataCoordinator:
 
         return result
 
+    # ==================== 数据验证 ====================
+
     def _validate_data(
         self, data_type: str, symbol: str, data: Dict[str, Any]
     ) -> Tuple[float, List[Dict]]:
@@ -319,6 +327,8 @@ class DataCoordinator:
             return 0.8, [
                 {"severity": "warning", "message": f"验证失败: {e}", "field": ""}
             ]
+
+    # ==================== 主数据获取方法 ====================
 
     def _get_market_data_with_fallback(
         self, symbol: str, trade_date: str

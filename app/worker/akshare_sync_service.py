@@ -78,6 +78,8 @@ class AKShareSyncService(BaseSyncService):
             logger.error(f"❌ AKShare同步服务初始化失败: {e}")
             raise
 
+    # ==================== 基础信息同步 ====================
+
     async def sync_stock_basic_info(self, force_update: bool = False) -> Dict[str, Any]:
         """
         同步股票基础信息
@@ -267,6 +269,8 @@ class AKShareSyncService(BaseSyncService):
         except Exception as e:
             logger.debug(f"检查数据新鲜度失败: {e}")
             return False
+
+    # ==================== 实时行情同步 ====================
 
     async def sync_realtime_quotes(
         self, symbols: List[str] = None, force: bool = False
@@ -588,6 +592,8 @@ class AKShareSyncService(BaseSyncService):
             logger.error(f"❌ 获取 {symbol} 行情失败: {e}", exc_info=True)
             return False
 
+    # ==================== 历史数据同步 ====================
+
     async def sync_historical_data(
         self,
         start_date: str = None,
@@ -769,6 +775,8 @@ class AKShareSyncService(BaseSyncService):
                 )
 
         return batch_stats
+
+    # ==================== 财务数据同步 ====================
 
     async def sync_financial_data(
         self, symbols: List[str] = None, limit: int = None
@@ -1013,6 +1021,8 @@ class AKShareSyncService(BaseSyncService):
         except Exception as e:
             logger.error(f"❌ 获取自选股列表失败: {e}")
             return []
+
+    # ==================== 新闻数据同步 ====================
 
     async def sync_news_data(
         self,

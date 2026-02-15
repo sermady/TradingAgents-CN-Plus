@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 class BaoStockProvider(BaseStockDataProvider):
     """BaoStock统一数据提供器"""
 
+    # ==================== 初始化和连接管理 ====================
+
     def __init__(self):
         """初始化BaoStock提供器"""
         super().__init__("baostock")
@@ -69,6 +71,8 @@ class BaoStockProvider(BaseStockDataProvider):
         except Exception as e:
             logger.error(f"❌ BaoStock连接测试失败: {e}")
             return False
+
+    # ==================== 股票列表获取 ====================
 
     def get_stock_list_sync(self) -> Optional[pd.DataFrame]:
         """获取股票列表（同步版本）"""
@@ -182,6 +186,8 @@ class BaoStockProvider(BaseStockDataProvider):
             logger.error(f"❌ BaoStock获取股票列表失败: {e}")
             return []
 
+    # ==================== 基础信息获取 ====================
+
     async def get_stock_basic_info(
         self, symbol: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
@@ -222,6 +228,8 @@ class BaoStockProvider(BaseStockDataProvider):
         except Exception as e:
             logger.error(f"❌ BaoStock获取{code}基础信息失败: {e}")
             return None
+
+    # ==================== 估值数据获取 ====================
 
     async def get_valuation_data(
         self, code: str, trade_date: Optional[str] = None
@@ -363,6 +371,8 @@ class BaoStockProvider(BaseStockDataProvider):
                 "area": "未知",
             }
 
+    # ==================== 实时行情获取 ====================
+
     async def get_stock_quotes(self, code: str) -> Optional[Dict[str, Any]]:
         """
         获取股票实时行情
@@ -478,6 +488,8 @@ class BaoStockProvider(BaseStockDataProvider):
             logger.debug(f"获取{code}最新K线数据失败: {e}")
             return {}
 
+    # ==================== 代码转换辅助方法 ====================
+
     def _to_baostock_code(self, symbol: str) -> str:
         """转换为BaoStock代码格式"""
         s = str(symbol).strip().upper()
@@ -568,6 +580,8 @@ class BaoStockProvider(BaseStockDataProvider):
                 "timezone": "Asia/Shanghai",
             }
 
+    # ==================== 安全类型转换 ====================
+
     def _safe_float(self, value: Any) -> float:
         """安全转换为浮点数"""
         try:
@@ -594,6 +608,8 @@ class BaoStockProvider(BaseStockDataProvider):
             return str(value)
         except:
             return ""
+
+    # ==================== 历史数据获取 ====================
 
     async def get_historical_data(
         self,
@@ -707,6 +723,8 @@ class BaoStockProvider(BaseStockDataProvider):
         except Exception as e:
             logger.error(f"❌ BaoStock获取{code}历史数据失败: {e}")
             return None
+
+    # ==================== 财务数据获取 ====================
 
     async def get_financial_data(
         self, code: str, year: Optional[int] = None, quarter: Optional[int] = None
@@ -990,6 +1008,8 @@ class BaoStockProvider(BaseStockDataProvider):
             logger.debug(f"获取{code}现金流量数据失败: {e}")
             return None
 
+
+# ==================== 工厂方法 ====================
 
 # 全局提供器实例
 _baostock_provider = None

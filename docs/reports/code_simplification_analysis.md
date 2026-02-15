@@ -1,13 +1,13 @@
 # TradingAgents-CN 代码简化分析报告
 
-**分析时间**: 2026-02-15 09:25:42
+**分析时间**: 2026-02-15 09:31:48
 **分析文件数**: 381
 **项目路径**: E:\WorkSpace\TradingAgents-CN
 
 ## 执行摘要
 
 - **超大文件 (>1000行)**: 7 个
-- **重复函数**: 41 组
+- **重复函数**: 40 组
 - **重复模式**: 189 类
 
 ## 1. 超大文件分析 (P0 - 高优先级)
@@ -55,7 +55,7 @@
 
 ## 2. 重复函数检测 (P1 - 中优先级)
 
-发现 41 组重复函数:
+发现 40 组重复函数:
 
 ### 2.1 migrate_env_to_providers
 - **相似度**: 100%
@@ -82,15 +82,7 @@
   - `app\routers\usage_statistics.py:143-153`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.4 set_default_llm
-- **相似度**: 100%
-- **出现次数**: 2
-- **位置**:
-  - `app\services\config\config_service.py:854-873`
-  - `app\services\config\config_service.py:875-894`
-- **建议**: 提取到公共模块 `utils/common.py`
-
-### 2.5 get_quote
+### 2.4 get_quote
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -98,7 +90,7 @@
   - `app\services\foreign_stock_service.py:81-97`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.6 get_hk_news
+### 2.5 get_hk_news
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -106,7 +98,7 @@
   - `app\services\foreign_stock_service.py:133-144`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.7 search_messages
+### 2.6 search_messages
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -114,7 +106,7 @@
   - `app\services\social_media_service.py:233-256`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.8 get_research_reports
+### 2.7 get_research_reports
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -122,7 +114,7 @@
   - `app\services\internal_message_service.py:306-321`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.9 pause_job
+### 2.8 pause_job
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -130,7 +122,7 @@
   - `app\services\scheduler_service.py:160-176`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.10 _get_cached_info
+### 2.9 _get_cached_info
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -138,7 +130,7 @@
   - `app\worker\us_data_service.py:117-132`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.11 _save_to_cache
+### 2.10 _save_to_cache
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -146,7 +138,7 @@
   - `app\worker\us_data_service.py:134-146`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.12 _normalize_stock_info
+### 2.11 _normalize_stock_info
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -154,7 +146,7 @@
   - `app\worker\us_data_service.py:148-178`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.13 _standardize_tushare_news
+### 2.12 _standardize_tushare_news
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -162,7 +154,7 @@
   - `app\worker\news_data_sync_service.py:314-340`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.14 initialize
+### 2.13 initialize
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -170,12 +162,21 @@
   - `app\worker\tushare\base.py:69-81`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.15 is_rate_limit_error
+### 2.14 is_rate_limit_error
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
   - `app\worker\tushare\base.py:97-108`
   - `tradingagents\dataflows\providers\china\tushare\realtime_data.py:306-317`
+- **建议**: 提取到公共模块 `utils/common.py`
+
+### 2.15 _build_prompt
+- **相似度**: 100%
+- **出现次数**: 3
+- **位置**:
+  - `tradingagents\agents\risk_mgmt\base_debator.py:236-280`
+  - `tradingagents\agents\risk_mgmt\base_debator.py:302-344`
+  - `tradingagents\agents\risk_mgmt\base_debator.py:366-406`
 - **建议**: 提取到公共模块 `utils/common.py`
 
 
@@ -192,7 +193,7 @@
 
 | 文件路径 | 总行数 | 函数数 | 类数 |
 |---------|--------|--------|------|
-| app\services\config\config_service.py | 963 | 54 | 1 |
+| app\services\config\config_service.py | 941 | 54 | 1 |
 | app\services\unified_cache_service.py | 988 | 33 | 2 |
 | tradingagents\config\config_manager.py | 919 | 33 | 2 |
 | app\services\base_crud_service.py | 928 | 32 | 4 |
@@ -223,11 +224,11 @@
 ### P1 - 短期处理 (本月)
 - [ ] 重构 `app\services\scheduler_service.py`
 - [ ] 重构 `tradingagents\dataflows\providers\china\baostock.py`
-- [ ] 提取公共函数 `set_default_llm`
 - [ ] 提取公共函数 `get_quote`
 - [ ] 提取公共函数 `get_hk_news`
 - [ ] 提取公共函数 `search_messages`
 - [ ] 提取公共函数 `get_research_reports`
+- [ ] 提取公共函数 `pause_job`
 
 ### P2 - 中期处理 (下月)
 - [ ] 建立代码规范检查自动化
@@ -239,12 +240,12 @@
 
 ### 代码量减少
 - 通过拆分超大文件，预计可减少 **3119** 行代码
-- 通过消除重复函数，预计可减少 **1100** 行代码
-- 总计预计减少: **4219** 行
+- 通过消除重复函数，预计可减少 **1080** 行代码
+- 总计预计减少: **4199** 行
 
 ### 维护性提升
 - 超大文件拆分后，平均文件大小降低 **210%**
-- 重复代码统一后，修改点减少 **55** 处
+- 重复代码统一后，修改点减少 **54** 处
 - 代码可读性显著提升
 
 ### 质量改善

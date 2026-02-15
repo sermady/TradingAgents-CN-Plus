@@ -7,6 +7,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Protocol
+from pymongo.database import Database
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,20 +16,20 @@ logger = logging.getLogger(__name__)
 class SyncServiceProtocol(Protocol):
     """同步服务协议，用于类型提示"""
 
-    async def sync_stock_basic_info(self, force_update: bool = False) -> Dict[str, Any]: ...
+    async def sync_stock_basic_info(
+        self, force_update: bool = False
+    ) -> Dict[str, Any]: ...
     async def sync_historical_data(
         self,
         start_date: str,
         end_date: str,
         incremental: bool = False,
-        period: str = "daily"
+        period: str = "daily",
     ) -> Dict[str, Any]: ...
     async def sync_financial_data(self) -> Dict[str, Any]: ...
     async def sync_realtime_quotes(self) -> Dict[str, Any]: ...
     async def sync_news_data(
-        self,
-        hours_back: Optional[int] = None,
-        max_news_per_stock: int = 20
+        self, hours_back: Optional[int] = None, max_news_per_stock: int = 20
     ) -> Dict[str, Any]: ...
 
 
@@ -39,7 +40,7 @@ class InitServiceBase(ABC):
     """
 
     def __init__(self):
-        self.db = None
+        self.db: Optional[Database] = None
         self.sync_service: Optional[SyncServiceProtocol] = None
         self.stats = None
         self.data_source_name: str = "unknown"
@@ -50,9 +51,7 @@ class InitServiceBase(ABC):
         pass
 
     async def _step_check_database_status(
-        self,
-        skip_if_exists: bool,
-        collection_names: Optional[Dict[str, str]] = None
+        self, skip_if_exists: bool, collection_names: Optional[Dict[str, str]] = None
     ) -> bool:
         """步骤1: 检查数据库状态
 
@@ -69,8 +68,15 @@ class InitServiceBase(ABC):
         if collection_names is None:
             collection_names = {
                 "basic_info": "stock_basic_info",
-                "quotes": "market_quotes"
+                "quotes": "market_quotes",
             }
+
+        # Type guard for pyright
+        assert collection_names is not None
+
+        # Type guard: ensure db is initialized
+        if self.db is None:
+            raise RuntimeError("Database not initialized")
 
         self.stats.current_step = "检查数据库状态"
         logger.info(f"📊 {self.stats.current_step}...")
@@ -84,7 +90,9 @@ class InitServiceBase(ABC):
         logger.info(f"    行情数据: {quotes_count}条")
 
         if skip_if_exists and basic_count > 0:
-            logger.info("⚠️ 检测到已有数据，跳过初始化（可通过skip_if_exists=False强制初始化）")
+            logger.info(
+                "⚠️ 检测到已有数据，跳过初始化（可通过skip_if_exists=False强制初始化）"
+            )
             raise Exception("数据已存在，跳过初始化")
 
         self.stats.completed_steps += 1
@@ -128,21 +136,23 @@ class InitServiceBase(ABC):
         logger.info(f"📊 {self.stats.current_step}...")
 
         # 计算日期范围
-        end_date = datetime.now().strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime("%Y-%m-%d")
 
         # 如果 historical_days 大于等于10年（3650天），则同步全历史
         if historical_days >= 3650:
             start_date = "1990-01-01"  # 全历史同步
             logger.info(f"  历史数据范围: 全历史（从1990-01-01到{end_date}）")
         else:
-            start_date = (datetime.now() - timedelta(days=historical_days)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=historical_days)).strftime(
+                "%Y-%m-%d"
+            )
             logger.info(f"  历史数据范围: {start_date} 到 {end_date}")
 
         # 同步历史数据
         result = await self.sync_service.sync_historical_data(
             start_date=start_date,
             end_date=end_date,
-            incremental=False  # 全量同步
+            incremental=False,  # 全量同步
         )
 
         if result:
@@ -167,14 +177,16 @@ class InitServiceBase(ABC):
         logger.info(f"📊 {self.stats.current_step}...")
 
         # 计算日期范围
-        end_date = datetime.now().strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime("%Y-%m-%d")
 
         # 如果 historical_days 大于等于10年（3650天），则同步全历史
         if historical_days >= 3650:
             start_date = "1990-01-01"  # 全历史同步
             logger.info(f"  周线数据范围: 全历史（从1990-01-01到{end_date}）")
         else:
-            start_date = (datetime.now() - timedelta(days=historical_days)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=historical_days)).strftime(
+                "%Y-%m-%d"
+            )
             logger.info(f"  周线数据范围: {start_date} 到 {end_date}")
 
         try:
@@ -183,7 +195,7 @@ class InitServiceBase(ABC):
                 start_date=start_date,
                 end_date=end_date,
                 incremental=False,
-                period="weekly"  # 指定周线
+                period="weekly",  # 指定周线
             )
 
             if result:
@@ -211,14 +223,16 @@ class InitServiceBase(ABC):
         logger.info(f"📊 {self.stats.current_step}...")
 
         # 计算日期范围
-        end_date = datetime.now().strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime("%Y-%m-%d")
 
         # 如果 historical_days 大于等于10年（3650天），则同步全历史
         if historical_days >= 3650:
             start_date = "1990-01-01"  # 全历史同步
             logger.info(f"  月线数据范围: 全历史（从1990-01-01到{end_date}）")
         else:
-            start_date = (datetime.now() - timedelta(days=historical_days)).strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=historical_days)).strftime(
+                "%Y-%m-%d"
+            )
             logger.info(f"  月线数据范围: {start_date} 到 {end_date}")
 
         try:
@@ -227,7 +241,7 @@ class InitServiceBase(ABC):
                 start_date=start_date,
                 end_date=end_date,
                 incremental=False,
-                period="monthly"  # 指定月线
+                period="monthly",  # 指定月线
             )
 
             if result:
@@ -256,7 +270,9 @@ class InitServiceBase(ABC):
 
             if result:
                 self.stats.financial_records = result.get("success_count", 0)
-                logger.info(f"✅ 财务数据初始化完成: {self.stats.financial_records}条记录")
+                logger.info(
+                    f"✅ 财务数据初始化完成: {self.stats.financial_records}条记录"
+                )
             else:
                 logger.warning("⚠️ 财务数据初始化失败")
         except Exception as e:
@@ -289,9 +305,7 @@ class InitServiceBase(ABC):
         return True
 
     async def _step_initialize_news_data(
-        self,
-        historical_days: Optional[int] = None,
-        max_news_per_stock: int = 20
+        self, historical_days: Optional[int] = None, max_news_per_stock: int = 20
     ) -> bool:
         """步骤7: 同步新闻数据
 
@@ -313,8 +327,7 @@ class InitServiceBase(ABC):
                 hours_back = 24 * 7  # 默认7天
 
             result = await self.sync_service.sync_news_data(
-                hours_back=hours_back,
-                max_news_per_stock=max_news_per_stock
+                hours_back=hours_back, max_news_per_stock=max_news_per_stock
             )
 
             if result:
@@ -345,21 +358,24 @@ class InitServiceBase(ABC):
         quotes_count = await self.db.market_quotes.count_documents({})
 
         # 检查数据质量
-        extended_count = await self.db.stock_basic_info.count_documents({
-            "full_symbol": {"$exists": True},
-            "market_info": {"$exists": True}
-        })
+        extended_count = await self.db.stock_basic_info.count_documents(
+            {"full_symbol": {"$exists": True}, "market_info": {"$exists": True}}
+        )
 
         logger.info(f"  数据完整性验证:")
         logger.info(f"    股票基础信息: {basic_count}条")
         if basic_count > 0:
-            logger.info(f"    扩展字段覆盖: {extended_count}条 ({extended_count/basic_count*100:.1f}%)")
+            logger.info(
+                f"    扩展字段覆盖: {extended_count}条 ({extended_count / basic_count * 100:.1f}%)"
+            )
         logger.info(f"    行情数据: {quotes_count}条")
 
         if basic_count == 0:
             raise Exception("数据初始化失败：无基础数据")
 
-        if basic_count > 0 and extended_count / basic_count < 0.9:  # 90%以上应该有扩展字段
+        if (
+            basic_count > 0 and extended_count / basic_count < 0.9
+        ):  # 90%以上应该有扩展字段
             logger.warning("⚠️ 扩展字段覆盖率较低，可能存在数据质量问题")
 
         self.stats.completed_steps += 1
@@ -387,13 +403,17 @@ class InitServiceBase(ABC):
             "data_summary": {
                 "basic_info_count": self.stats.basic_info_count,
                 "historical_records": self.stats.historical_records,
-                "daily_records": getattr(self.stats, 'historical_records', 0),  # 日线数据
-                "weekly_records": getattr(self.stats, 'weekly_records', 0),     # 周线数据
-                "monthly_records": getattr(self.stats, 'monthly_records', 0),   # 月线数据
+                "daily_records": getattr(
+                    self.stats, "historical_records", 0
+                ),  # 日线数据
+                "weekly_records": getattr(self.stats, "weekly_records", 0),  # 周线数据
+                "monthly_records": getattr(
+                    self.stats, "monthly_records", 0
+                ),  # 月线数据
                 "financial_records": self.stats.financial_records,
                 "quotes_count": self.stats.quotes_count,
-                "news_count": self.stats.news_count
+                "news_count": self.stats.news_count,
             },
             "errors": self.stats.errors,
-            "current_step": self.stats.current_step
+            "current_step": self.stats.current_step,
         }

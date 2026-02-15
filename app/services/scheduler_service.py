@@ -58,13 +58,17 @@ class SchedulerService:
 
         # 添加事件监听器，监控任务执行
         self._setup_event_listeners()
-    
+
+    # ==================== 初始化和配置 ====================
+
     def _get_db(self):
         """获取数据库连接"""
         if self.db is None:
             self.db = get_mongo_db()
         return self.db
-    
+
+    # ==================== 任务管理 ====================
+
     async def list_jobs(self) -> List[Dict[str, Any]]:
         """
         获取所有定时任务列表
@@ -85,6 +89,9 @@ class SchedulerService:
         logger.info(f"📋 获取到 {len(jobs)} 个定时任务")
         return jobs
     
+    async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        # ==================== 任务查询 ====================
+
     async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """
         获取任务详情
