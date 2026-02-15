@@ -32,6 +32,7 @@ import logging
 
 from app.core.database import get_mongo_db
 from app.core.config import settings
+from app.worker.utils.stock_normalizer import normalize_stock_info, normalize_stock_code
 
 logger = logging.getLogger(__name__)
 
@@ -210,9 +211,8 @@ class ForeignDataBaseService(ABC):
         Returns:
             标准化后的股票代码
         """
-        # 默认实现：去除空格并转大写
-        # 子类可以重写此方法提供特定的标准化逻辑
-        return stock_code.strip().upper()
+        # 使用统一的标准化函数
+        return normalize_stock_code(stock_code, self.market_type)
 
     def _normalize_stock_info(self, stock_info: Dict, source: str) -> Dict:
         """标准化股票信息格式
@@ -224,26 +224,8 @@ class ForeignDataBaseService(ABC):
         Returns:
             标准化后的股票信息
         """
-        normalized = {
-            "name": stock_info.get("name", ""),
-            "currency": stock_info.get("currency", "USD"),
-            "exchange": stock_info.get("exchange", "NASDAQ"),
-            "market": stock_info.get("market", "美国市场"),
-            "area": stock_info.get("area", "美国"),
-        }
-
-        # 可选字段
-        optional_fields = [
-            "industry", "sector", "list_date", "total_mv", "circ_mv",
-            "pe", "pb", "ps", "pcf", "market_cap", "shares_outstanding",
-            "float_shares", "employees", "website", "description"
-        ]
-
-        for field in optional_fields:
-            if field in stock_info and stock_info[field]:
-                normalized[field] = stock_info[field]
-
-        return normalized
+        # 使用统一的标准化函数
+        return normalize_stock_info(stock_info, self.market_type, source)
 
 
 # 导出

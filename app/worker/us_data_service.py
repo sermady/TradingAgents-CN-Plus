@@ -28,6 +28,7 @@ sys.path.insert(0, str(project_root))
 
 from tradingagents.dataflows.providers.us.optimized import OptimizedUSDataProvider
 from app.core.database import get_mongo_db
+from app.worker.utils.stock_normalizer import normalize_stock_info, normalize_stock_code
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -148,34 +149,16 @@ class USDataService:
     def _normalize_stock_info(self, stock_info: Dict, source: str) -> Dict:
         """
         标准化股票信息格式
-        
+
         Args:
             stock_info: 原始股票信息
             source: 数据源
-        
+
         Returns:
             标准化后的股票信息
         """
-        normalized = {
-            "name": stock_info.get("name", ""),
-            "currency": stock_info.get("currency", "USD"),
-            "exchange": stock_info.get("exchange", "NASDAQ"),
-            "market": stock_info.get("market", "美国市场"),
-            "area": stock_info.get("area", "美国"),
-        }
-        
-        # 可选字段
-        optional_fields = [
-            "industry", "sector", "list_date", "total_mv", "circ_mv",
-            "pe", "pb", "ps", "pcf", "market_cap", "shares_outstanding",
-            "float_shares", "employees", "website", "description"
-        ]
-        
-        for field in optional_fields:
-            if field in stock_info and stock_info[field]:
-                normalized[field] = stock_info[field]
-        
-        return normalized
+        # 使用统一的标准化函数
+        return normalize_stock_info(stock_info, market_type="us", source=source)
 
 
 # ==================== 全局实例管理 ====================

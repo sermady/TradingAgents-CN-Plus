@@ -22,6 +22,12 @@ from bson import ObjectId
 import logging
 
 from app.core.database import get_mongo_db
+from app.utils.error_handler import (
+    async_handle_errors_none,
+    async_handle_errors_false,
+    async_handle_errors_empty_list,
+    async_handle_errors_zero,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +92,7 @@ class BaseCRUDService(Generic[T], ABC):
 
     # ===== 基础 CRUD 方法 =====
 
+    @async_handle_errors_none(error_message=f"创建文档失败")
     async def create(self, data: Dict[str, Any]) -> Optional[str]:
         """创建文档，返回 ID
 
@@ -98,20 +105,16 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             user_id = await service.create({"username": "test", "email": "test@test.com"})
         """
-        try:
-            collection = await self._get_collection()
-            data = self._add_timestamps(data, is_update=False)
+        collection = await self._get_collection()
+        data = self._add_timestamps(data, is_update=False)
 
-            result = await collection.insert_one(data)
-            doc_id = str(result.inserted_id)
+        result = await collection.insert_one(data)
+        doc_id = str(result.inserted_id)
 
-            logger.debug(f"✅ 文档创建成功: {self.collection_name}/{doc_id}")
-            return doc_id
+        logger.debug(f"✅ 文档创建成功: {self.collection_name}/{doc_id}")
+        return doc_id
 
-        except Exception as e:
-            logger.error(f"❌ 创建文档失败 [{self.collection_name}]: {e}")
-            return None
-
+    @async_handle_errors_none(error_message=f"获取文档失败")
     async def get_by_id(self, id: str) -> Optional[Dict[str, Any]]:
         """根据 ID 获取文档
 
@@ -126,20 +129,16 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             user = await service.get_by_id("507f1f77bcf86cd799439011")
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            doc = await collection.find_one(query)
-            if doc:
-                doc["id"] = str(doc.pop("_id"))
-                return doc
-            return None
+        doc = await collection.find_one(query)
+        if doc:
+            doc["id"] = str(doc.pop("_id"))
+            return doc
+        return None
 
-        except Exception as e:
-            logger.error(f"❌ 获取文档失败 [{self.collection_name}/{id}]: {e}")
-            return None
-
+    @async_handle_errors_none(error_message=f"获取文档失败")
     async def get_by_field(
         self, field: str, value: Any
     ) -> Optional[Dict[str, Any]]:
@@ -155,19 +154,15 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             user = await service.get_by_field("email", "test@test.com")
         """
-        try:
-            collection = await self._get_collection()
-            doc = await collection.find_one({field: value})
+        collection = await self._get_collection()
+        doc = await collection.find_one({field: value})
 
-            if doc:
-                doc["id"] = str(doc.pop("_id"))
-                return doc
-            return None
+        if doc:
+            doc["id"] = str(doc.pop("_id"))
+            return doc
+        return None
 
-        except Exception as e:
-            logger.error(f"❌ 获取文档失败 [{self.collection_name}.{field}={value}]: {e}")
-            return None
-
+    @async_handle_errors_empty_list(error_message=f"列表查询失败")
     async def list(
         self,
         filters: Dict[str, Any] = None,
@@ -194,31 +189,27 @@ class BaseCRUDService(Generic[T], ABC):
                 limit=10
             )
         """
-        try:
-            collection = await self._get_collection()
-            filters = filters or {}
+        collection = await self._get_collection()
+        filters = filters or {}
 
-            cursor = collection.find(filters)
+        cursor = collection.find(filters)
 
-            if sort:
-                cursor = cursor.sort(sort)
-            if skip > 0:
-                cursor = cursor.skip(skip)
-            if limit > 0:
-                cursor = cursor.limit(limit)
+        if sort:
+            cursor = cursor.sort(sort)
+        if skip > 0:
+            cursor = cursor.skip(skip)
+        if limit > 0:
+            cursor = cursor.limit(limit)
 
-            docs = await cursor.to_list(length=limit)
+        docs = await cursor.to_list(length=limit)
 
-            # 统一转换 _id 为 id
-            for doc in docs:
-                doc["id"] = str(doc.pop("_id"))
+        # 统一转换 _id 为 id
+        for doc in docs:
+            doc["id"] = str(doc.pop("_id"))
 
-            return docs
+        return docs
 
-        except Exception as e:
-            logger.error(f"❌ 列表查询失败 [{self.collection_name}]: {e}")
-            return []
-
+    @async_handle_errors_false(error_message=f"更新文档失败")
     async def update(self, id: str, data: Dict[str, Any]) -> bool:
         """更新文档
 
@@ -232,29 +223,25 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             success = await service.update(user_id, {"email": "new@test.com"})
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
-            data = self._add_timestamps(data, is_update=True)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
+        data = self._add_timestamps(data, is_update=True)
 
-            # 移除不能更新的字段
-            data.pop("_id", None)
-            data.pop("id", None)
-            data.pop("created_at", None)
+        # 移除不能更新的字段
+        data.pop("_id", None)
+        data.pop("id", None)
+        data.pop("created_at", None)
 
-            result = await collection.update_one(query, {"$set": data})
+        result = await collection.update_one(query, {"$set": data})
 
-            if result.modified_count > 0:
-                logger.debug(f"✅ 文档更新成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档未更新: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 更新文档失败 [{self.collection_name}/{id}]: {e}")
+        if result.modified_count > 0:
+            logger.debug(f"✅ 文档更新成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档未更新: {self.collection_name}/{id}")
             return False
 
+    @async_handle_errors_zero(error_message=f"批量更新失败")
     async def update_by_field(
         self, field: str, value: Any, data: Dict[str, Any]
     ) -> int:
@@ -271,24 +258,20 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             count = await service.update_by_field("status", "pending", {"status": "done"})
         """
-        try:
-            collection = await self._get_collection()
-            data = self._add_timestamps(data, is_update=True)
+        collection = await self._get_collection()
+        data = self._add_timestamps(data, is_update=True)
 
-            # 移除不能更新的字段
-            data.pop("_id", None)
-            data.pop("id", None)
-            data.pop("created_at", None)
+        # 移除不能更新的字段
+        data.pop("_id", None)
+        data.pop("id", None)
+        data.pop("created_at", None)
 
-            result = await collection.update_many({field: value}, {"$set": data})
+        result = await collection.update_many({field: value}, {"$set": data})
 
-            logger.debug(f"✅ 批量更新成功: {self.collection_name}.{field}={value}, 更新 {result.modified_count} 条")
-            return result.modified_count
+        logger.debug(f"✅ 批量更新成功: {self.collection_name}.{field}={value}, 更新 {result.modified_count} 条")
+        return result.modified_count
 
-        except Exception as e:
-            logger.error(f"❌ 批量更新失败 [{self.collection_name}.{field}={value}]: {e}")
-            return 0
-
+    @async_handle_errors_false(error_message=f"删除文档失败")
     async def delete(self, id: str) -> bool:
         """删除文档
 
@@ -301,23 +284,19 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             success = await service.delete(user_id)
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            result = await collection.delete_one(query)
+        result = await collection.delete_one(query)
 
-            if result.deleted_count > 0:
-                logger.debug(f"✅ 文档删除成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 删除文档失败 [{self.collection_name}/{id}]: {e}")
+        if result.deleted_count > 0:
+            logger.debug(f"✅ 文档删除成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
             return False
 
+    @async_handle_errors_zero(error_message=f"批量删除失败")
     async def delete_by_field(self, field: str, value: Any) -> int:
         """根据字段批量删除
 
@@ -331,17 +310,13 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             count = await service.delete_by_field("status", "deleted")
         """
-        try:
-            collection = await self._get_collection()
-            result = await collection.delete_many({field: value})
+        collection = await self._get_collection()
+        result = await collection.delete_many({field: value})
 
-            logger.debug(f"✅ 批量删除成功: {self.collection_name}.{field}={value}, 删除 {result.deleted_count} 条")
-            return result.deleted_count
+        logger.debug(f"✅ 批量删除成功: {self.collection_name}.{field}={value}, 删除 {result.deleted_count} 条")
+        return result.deleted_count
 
-        except Exception as e:
-            logger.error(f"❌ 批量删除失败 [{self.collection_name}.{field}={value}]: {e}")
-            return 0
-
+    @async_handle_errors_zero(error_message=f"计数失败")
     async def count(self, filters: Dict[str, Any] = None) -> int:
         """计数
 
@@ -354,15 +329,11 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             total = await service.count({"is_active": True})
         """
-        try:
-            collection = await self._get_collection()
-            filters = filters or {}
-            return await collection.count_documents(filters)
+        collection = await self._get_collection()
+        filters = filters or {}
+        return await collection.count_documents(filters)
 
-        except Exception as e:
-            logger.error(f"❌ 计数失败 [{self.collection_name}]: {e}")
-            return 0
-
+    @async_handle_errors_false(error_message=f"检查存在性失败")
     async def exists(self, filters: Dict[str, Any]) -> bool:
         """检查是否存在
 
@@ -375,17 +346,13 @@ class BaseCRUDService(Generic[T], ABC):
         Example:
             exists = await service.exists({"email": "test@test.com"})
         """
-        try:
-            collection = await self._get_collection()
-            doc = await collection.find_one(filters, {"_id": 1})
-            return doc is not None
-
-        except Exception as e:
-            logger.error(f"❌ 检查存在性失败 [{self.collection_name}]: {e}")
-            return False
+        collection = await self._get_collection()
+        doc = await collection.find_one(filters, {"_id": 1})
+        return doc is not None
 
     # ===== 批量操作 =====
 
+    @async_handle_errors_empty_list(error_message=f"批量创建失败")
     async def batch_create(
         self, data_list: List[Dict[str, Any]]
     ) -> List[str]:
@@ -406,23 +373,19 @@ class BaseCRUDService(Generic[T], ABC):
         if not data_list:
             return []
 
-        try:
-            collection = await self._get_collection()
+        collection = await self._get_collection()
 
-            # 添加时间戳
-            for data in data_list:
-                self._add_timestamps(data, is_update=False)
+        # 添加时间戳
+        for data in data_list:
+            self._add_timestamps(data, is_update=False)
 
-            result = await collection.insert_many(data_list)
-            ids = [str(oid) for oid in result.inserted_ids]
+        result = await collection.insert_many(data_list)
+        ids = [str(oid) for oid in result.inserted_ids]
 
-            logger.debug(f"✅ 批量创建成功: {self.collection_name}, 创建 {len(ids)} 条")
-            return ids
+        logger.debug(f"✅ 批量创建成功: {self.collection_name}, 创建 {len(ids)} 条")
+        return ids
 
-        except Exception as e:
-            logger.error(f"❌ 批量创建失败 [{self.collection_name}]: {e}")
-            return []
-
+    @async_handle_errors_zero(error_message=f"批量更新失败")
     async def batch_update(
         self, ids: List[str], data: Dict[str, Any]
     ) -> int:
@@ -441,37 +404,33 @@ class BaseCRUDService(Generic[T], ABC):
         if not ids:
             return 0
 
-        try:
-            collection = await self._get_collection()
-            data = self._add_timestamps(data, is_update=True)
+        collection = await self._get_collection()
+        data = self._add_timestamps(data, is_update=True)
 
-            # 移除不能更新的字段
-            data.pop("_id", None)
-            data.pop("id", None)
-            data.pop("created_at", None)
+        # 移除不能更新的字段
+        data.pop("_id", None)
+        data.pop("id", None)
+        data.pop("created_at", None)
 
-            # 转换所有 ID 为 ObjectId
-            object_ids = []
-            for id in ids:
-                oid = self._to_object_id(id)
-                if oid:
-                    object_ids.append(oid)
+        # 转换所有 ID 为 ObjectId
+        object_ids = []
+        for id in ids:
+            oid = self._to_object_id(id)
+            if oid:
+                object_ids.append(oid)
 
-            if not object_ids:
-                logger.warning(f"⚠️ 没有有效的 ID 用于批量更新")
-                return 0
-
-            result = await collection.update_many(
-                {"_id": {"$in": object_ids}}, {"$set": data}
-            )
-
-            logger.debug(f"✅ 批量更新成功: {self.collection_name}, 更新 {result.modified_count} 条")
-            return result.modified_count
-
-        except Exception as e:
-            logger.error(f"❌ 批量更新失败 [{self.collection_name}]: {e}")
+        if not object_ids:
+            logger.warning(f"⚠️ 没有有效的 ID 用于批量更新")
             return 0
 
+        result = await collection.update_many(
+            {"_id": {"$in": object_ids}}, {"$set": data}
+        )
+
+        logger.debug(f"✅ 批量更新成功: {self.collection_name}, 更新 {result.modified_count} 条")
+        return result.modified_count
+
+    @async_handle_errors_zero(error_message=f"批量删除失败")
     async def batch_delete(self, ids: List[str]) -> int:
         """批量删除
 
@@ -487,28 +446,23 @@ class BaseCRUDService(Generic[T], ABC):
         if not ids:
             return 0
 
-        try:
-            collection = await self._get_collection()
+        collection = await self._get_collection()
 
-            # 转换所有 ID 为 ObjectId
-            object_ids = []
-            for id in ids:
-                oid = self._to_object_id(id)
-                if oid:
-                    object_ids.append(oid)
+        # 转换所有 ID 为 ObjectId
+        object_ids = []
+        for id in ids:
+            oid = self._to_object_id(id)
+            if oid:
+                object_ids.append(oid)
 
-            if not object_ids:
-                logger.warning(f"⚠️ 没有有效的 ID 用于批量删除")
-                return 0
-
-            result = await collection.delete_many({"_id": {"$in": object_ids}})
-
-            logger.debug(f"✅ 批量删除成功: {self.collection_name}, 删除 {result.deleted_count} 条")
-            return result.deleted_count
-
-        except Exception as e:
-            logger.error(f"❌ 批量删除失败 [{self.collection_name}]: {e}")
+        if not object_ids:
+            logger.warning(f"⚠️ 没有有效的 ID 用于批量删除")
             return 0
+
+        result = await collection.delete_many({"_id": {"$in": object_ids}})
+
+        logger.debug(f"✅ 批量删除成功: {self.collection_name}, 删除 {result.deleted_count} 条")
+        return result.deleted_count
 
     # ===== 辅助方法 =====
 
@@ -614,6 +568,7 @@ class SoftDeleteCRUDService(BaseCRUDService):
 
         return await super().list(filters=filters, sort=sort, skip=skip, limit=limit)
 
+    @async_handle_errors_none(error_message=f"获取文档失败")
     async def get_by_id(
         self, id: str, include_deleted: bool = False
     ) -> Optional[Dict[str, Any]]:
@@ -626,23 +581,19 @@ class SoftDeleteCRUDService(BaseCRUDService):
         Returns:
             Optional[Dict]: 文档数据
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            if not include_deleted:
-                query["is_deleted"] = {"$ne": True}
+        if not include_deleted:
+            query["is_deleted"] = {"$ne": True}
 
-            doc = await collection.find_one(query)
-            if doc:
-                doc["id"] = str(doc.pop("_id"))
-                return doc
-            return None
+        doc = await collection.find_one(query)
+        if doc:
+            doc["id"] = str(doc.pop("_id"))
+            return doc
+        return None
 
-        except Exception as e:
-            logger.error(f"❌ 获取文档失败 [{self.collection_name}/{id}]: {e}")
-            return None
-
+    @async_handle_errors_false(error_message=f"软删除失败")
     async def soft_delete(self, id: str) -> bool:
         """软删除
 
@@ -652,32 +603,28 @@ class SoftDeleteCRUDService(BaseCRUDService):
         Returns:
             bool: 是否删除成功
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            result = await collection.update_one(
-                query,
-                {
-                    "$set": {
-                        "is_deleted": True,
-                        "deleted_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow(),
-                    }
-                },
-            )
+        result = await collection.update_one(
+            query,
+            {
+                "$set": {
+                    "is_deleted": True,
+                    "deleted_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
+                }
+            },
+        )
 
-            if result.modified_count > 0:
-                logger.debug(f"✅ 文档软删除成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 软删除失败 [{self.collection_name}/{id}]: {e}")
+        if result.modified_count > 0:
+            logger.debug(f"✅ 文档软删除成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
             return False
 
+    @async_handle_errors_false(error_message=f"恢复文档失败")
     async def restore(self, id: str) -> bool:
         """恢复软删除的文档
 
@@ -687,27 +634,22 @@ class SoftDeleteCRUDService(BaseCRUDService):
         Returns:
             bool: 是否恢复成功
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            result = await collection.update_one(
-                query,
-                {
-                    "$set": {"updated_at": datetime.utcnow()},
-                    "$unset": {"is_deleted": "", "deleted_at": ""},
-                },
-            )
+        result = await collection.update_one(
+            query,
+            {
+                "$set": {"updated_at": datetime.utcnow()},
+                "$unset": {"is_deleted": "", "deleted_at": ""},
+            },
+        )
 
-            if result.modified_count > 0:
-                logger.debug(f"✅ 文档恢复成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 恢复文档失败 [{self.collection_name}/{id}]: {e}")
+        if result.modified_count > 0:
+            logger.debug(f"✅ 文档恢复成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
             return False
 
     async def list_deleted(
@@ -852,6 +794,7 @@ class AuditedSoftDeleteCRUDService(SoftDeleteCRUDService, AuditedCRUDService):
         await service.soft_delete(product_id, user_id="admin123")
     """
 
+    @async_handle_errors_false(error_message=f"软删除失败")
     async def soft_delete(self, id: str, user_id: str = None) -> bool:
         """软删除，记录删除人
 
@@ -862,33 +805,29 @@ class AuditedSoftDeleteCRUDService(SoftDeleteCRUDService, AuditedCRUDService):
         Returns:
             bool: 是否删除成功
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            update_data = {
-                "is_deleted": True,
-                "deleted_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-            }
+        update_data = {
+            "is_deleted": True,
+            "deleted_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
 
-            if user_id:
-                update_data["deleted_by"] = user_id
-                update_data["updated_by"] = user_id
+        if user_id:
+            update_data["deleted_by"] = user_id
+            update_data["updated_by"] = user_id
 
-            result = await collection.update_one(query, {"$set": update_data})
+        result = await collection.update_one(query, {"$set": update_data})
 
-            if result.modified_count > 0:
-                logger.debug(f"✅ 文档软删除成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 软删除失败 [{self.collection_name}/{id}]: {e}")
+        if result.modified_count > 0:
+            logger.debug(f"✅ 文档软删除成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
             return False
 
+    @async_handle_errors_false(error_message=f"恢复文档失败")
     async def restore(self, id: str, user_id: str = None) -> bool:
         """恢复软删除的文档，记录恢复人
 
@@ -899,29 +838,24 @@ class AuditedSoftDeleteCRUDService(SoftDeleteCRUDService, AuditedCRUDService):
         Returns:
             bool: 是否恢复成功
         """
-        try:
-            collection = await self._get_collection()
-            query = self._build_id_query(id)
+        collection = await self._get_collection()
+        query = self._build_id_query(id)
 
-            update_data = {"updated_at": datetime.utcnow()}
-            unset_data = {"is_deleted": "", "deleted_at": "", "deleted_by": ""}
+        update_data = {"updated_at": datetime.utcnow()}
+        unset_data = {"is_deleted": "", "deleted_at": "", "deleted_by": ""}
 
-            if user_id:
-                update_data["updated_by"] = user_id
-                update_data["restored_by"] = user_id
-                update_data["restored_at"] = datetime.utcnow()
+        if user_id:
+            update_data["updated_by"] = user_id
+            update_data["restored_by"] = user_id
+            update_data["restored_at"] = datetime.utcnow()
 
-            result = await collection.update_one(
-                query, {"$set": update_data, "$unset": unset_data}
-            )
+        result = await collection.update_one(
+            query, {"$set": update_data, "$unset": unset_data}
+        )
 
-            if result.modified_count > 0:
-                logger.debug(f"✅ 文档恢复成功: {self.collection_name}/{id}")
-                return True
-            else:
-                logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ 恢复文档失败 [{self.collection_name}/{id}]: {e}")
+        if result.modified_count > 0:
+            logger.debug(f"✅ 文档恢复成功: {self.collection_name}/{id}")
+            return True
+        else:
+            logger.warning(f"⚠️ 文档不存在: {self.collection_name}/{id}")
             return False

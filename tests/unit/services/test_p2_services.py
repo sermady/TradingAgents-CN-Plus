@@ -196,7 +196,7 @@ class TestAlertManager:
 
     def test_alertlevel_enum(self):
         """测试告警级别枚举"""
-        from app.services.alert_manager import AlertLevel
+        from app.services.alert import AlertLevel
 
         assert AlertLevel.INFO.value == "info"
         assert AlertLevel.WARNING.value == "warning"
@@ -205,7 +205,7 @@ class TestAlertManager:
 
     def test_alertcategory_enum(self):
         """测试告警类别枚举"""
-        from app.services.alert_manager import AlertCategory
+        from app.services.alert import AlertCategory
 
         assert AlertCategory.SYSTEM.value == "system"
         assert AlertCategory.PERFORMANCE.value == "performance"
@@ -215,7 +215,7 @@ class TestAlertManager:
 
     def test_alertstatus_enum(self):
         """测试告警状态枚举"""
-        from app.services.alert_manager import AlertStatus
+        from app.services.alert import AlertStatus
 
         assert AlertStatus.ACTIVE.value == "active"
         assert AlertStatus.ACKNOWLEDGED.value == "acknowledged"
@@ -224,7 +224,7 @@ class TestAlertManager:
 
     def test_notificationchannel_enum(self):
         """测试通知渠道枚举"""
-        from app.services.alert_manager import NotificationChannel
+        from app.services.alert import NotificationChannel
 
         assert NotificationChannel.IN_APP.value == "in_app"
         assert NotificationChannel.EMAIL.value == "email"
@@ -232,7 +232,7 @@ class TestAlertManager:
 
     def testalertrule_creation(self):
         """测试告警规则创建"""
-        from app.services.alert_manager import AlertRule, AlertLevel, AlertCategory
+        from app.services.alert import AlertRule, AlertLevel, AlertCategory
 
         rule = AlertRule(
             name="High CPU Usage",
@@ -252,7 +252,7 @@ class TestAlertManager:
 
     def testalertrule_with_channels(self):
         """测试告警规则（带通知渠道）"""
-        from app.services.alert_manager import (
+        from app.services.alert import (
             AlertRule,
             AlertLevel,
             AlertCategory,
@@ -274,7 +274,7 @@ class TestAlertManager:
 
     def testalert_creation(self):
         """测试告警创建"""
-        from app.services.alert_manager import (
+        from app.services.alert import (
             Alert,
             AlertLevel,
             AlertCategory,
@@ -299,7 +299,7 @@ class TestAlertManager:
 
     def testalert_default_values(self):
         """测试告警默认值"""
-        from app.services.alert_manager import (
+        from app.services.alert import (
             Alert,
             AlertLevel,
             AlertCategory,
@@ -318,7 +318,7 @@ class TestAlertManager:
 
     def testalertmanager_import(self):
         """测试告警管理器导入"""
-        from app.services.alert_manager import get_alert_manager, AlertManager
+        from app.services.alert import get_alert_manager, AlertManager
 
         mgr = get_alert_manager()
         assert isinstance(mgr, AlertManager)
@@ -331,7 +331,7 @@ class TestP2ServicesIntegration:
         """测试所有服务都是单例"""
         from app.services.data_sync_manager import get_sync_manager
         from app.services.metrics_collector import get_metrics_collector
-        from app.services.alert_manager import get_alert_manager
+        from app.services.alert import get_alert_manager
 
         # 同一实例
         sync1 = get_sync_manager()
@@ -350,11 +350,11 @@ class TestP2ServicesIntegration:
         """测试服务类型不同"""
         from app.services.data_sync_manager import DataSyncManager
         from app.services.metrics_collector import MetricsCollector
-        from app.services.alert_manager import AlertManager
+        from app.services.alert import AlertManager
 
         from app.services.data_sync_manager import get_sync_manager
         from app.services.metrics_collector import get_metrics_collector
-        from app.services.alert_manager import get_alert_manager
+        from app.services.alert import get_alert_manager
 
         assert isinstance(get_sync_manager(), DataSyncManager)
         assert isinstance(get_metrics_collector(), MetricsCollector)

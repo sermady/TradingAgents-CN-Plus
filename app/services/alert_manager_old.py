@@ -27,7 +27,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_mongo_db
 from app.core.unified_config_service import get_config_manager
-from app.utils.error_handler import handle_errors_none
+from app.utils.error_handler import async_handle_errors_none, async_handle_errors_false
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,7 @@ class AlertManager:
             self._db = get_mongo_db()
         return self._db
 
+    @async_handle_errors_none(error_message="初始化AlertManager失败")
     async def initialize(self) -> None:
         """初始化告警管理器"""
         if self._initialized:
@@ -164,6 +165,7 @@ class AlertManager:
             self._initialized = True
             logger.info("AlertManager initialized")
 
+    @async_handle_errors_none(error_message="加载活跃规则失败")
     async def _load_active_rules(self) -> None:
         """加载启用的告警规则"""
         db = await self._get_db()
@@ -202,6 +204,9 @@ class AlertManager:
 
         Returns:
             创建的规则ID
+
+        Raises:
+            Exception: 创建规则失败时抛出异常
         """
         if not self._initialized:
             await self.initialize()
@@ -246,25 +251,30 @@ class AlertManager:
             category: 按类别过滤
 
         Returns:
-            告警规则列表
+            告警规则列表（失败时返回空列表）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        db = await self._get_db()
+            db = await self._get_db()
 
-        query = {}
-        if enabled_only:
-            query["enabled"] = True
-        if category:
-            query["category"] = category.value
+            query = {}
+            if enabled_only:
+                query["enabled"] = True
+            if category:
+                query["category"] = category.value
 
-        rules = []
-        async for doc in db[self._rules_collection].find(query):
-            rules.append(self._doc_to_rule(doc))
+            rules = []
+            async for doc in db[self._rules_collection].find(query):
+                rules.append(self._doc_to_rule(doc))
 
-        return rules
+            return rules
+        except Exception as e:
+            logger.error(f"获取告警规则失败: {e}", exc_info=True)
+            return []
 
+    @async_handle_errors_false(error_message="更新告警规则失败")
     async def update_rule(self, rule_id: str, updates: Dict[str, Any]) -> bool:
         """
         更新告警规则
@@ -306,6 +316,7 @@ class AlertManager:
 
         return False
 
+    @async_handle_errors_false(error_message="删除告警规则失败")
     async def delete_rule(self, rule_id: str) -> bool:
         """
         删除告警规则
@@ -348,56 +359,61 @@ class AlertManager:
             metadata: 元数据
 
         Returns:
-            告警ID
+            告警ID（失败时返回None）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        # 检查规则是否存在
-        if rule_id not in self._active_rules:
-            logger.warning(f"Alert rule {rule_id} not found or disabled")
+            # 检查规则是否存在
+            if rule_id not in self._active_rules:
+                logger.warning(f"Alert rule {rule_id} not found or disabled")
+                return None
+
+            rule = self._active_rules[rule_id]
+
+            # 检查是否在冷却期内
+            if await self._is_in_cooldown(rule_id):
+                logger.debug(f"Alert {rule_id} is in cooldown, skipping")
+                return None
+
+            db = await self._get_db()
+
+            now = datetime.now().isoformat()
+            alert_data = {
+                "rule_id": rule_id,
+                "rule_name": rule.name,
+                "category": rule.category.value,
+                "level": rule.level.value,
+                "status": AlertStatus.ACTIVE.value,
+                "title": f"[{rule.level.value.upper()}] {rule.name}",
+                "message": message
+                or rule.message_template
+                or f"Alert triggered: {rule.condition}",
+                "metric_value": metric_value,
+                "threshold": rule.threshold,
+                "triggered_at": now,
+                "metadata": metadata or {},
+            }
+
+            result = await db[self._alerts_collection].insert_one(alert_data)
+            alert_id = str(result.inserted_id)
+
+            # 记录到历史
+            await self._add_to_history(alert_id, "triggered", alert_data)
+
+            # 设置冷却时间
+            await self._set_cooldown(rule_id)
+
+            # 发送通知
+            await self._send_notifications(alert_data, rule)
+
+            return alert_id
+        except Exception as e:
+            logger.error(f"触发告警失败: {e}", exc_info=True)
             return None
 
-        rule = self._active_rules[rule_id]
-
-        # 检查是否在冷却期内
-        if await self._is_in_cooldown(rule_id):
-            logger.debug(f"Alert {rule_id} is in cooldown, skipping")
-            return None
-
-        db = await self._get_db()
-
-        now = datetime.now().isoformat()
-        alert_data = {
-            "rule_id": rule_id,
-            "rule_name": rule.name,
-            "category": rule.category.value,
-            "level": rule.level.value,
-            "status": AlertStatus.ACTIVE.value,
-            "title": f"[{rule.level.value.upper()}] {rule.name}",
-            "message": message
-            or rule.message_template
-            or f"Alert triggered: {rule.condition}",
-            "metric_value": metric_value,
-            "threshold": rule.threshold,
-            "triggered_at": now,
-            "metadata": metadata or {},
-        }
-
-        result = await db[self._alerts_collection].insert_one(alert_data)
-        alert_id = str(result.inserted_id)
-
-        # 记录到历史
-        await self._add_to_history(alert_id, "triggered", alert_data)
-
-        # 设置冷却时间
-        await self._set_cooldown(rule_id)
-
-        # 发送通知
-        await self._send_notifications(alert_data, rule)
-
-        return alert_id
-
+    @async_handle_errors_false(error_message="检查冷却状态失败")
     async def _is_in_cooldown(self, rule_id: str) -> bool:
         """检查规则是否在冷却期内"""
         db = await self._get_db()
@@ -417,26 +433,26 @@ class AlertManager:
 
         return recent_alert is not None
 
+    @async_handle_errors_none(error_message="设置冷却时间失败")
     async def _set_cooldown(self, rule_id: str) -> None:
         """设置冷却时间（通过记录最近告警时间实现）"""
         # 冷却由MongoDB查询中的时间窗口控制
         pass
 
+    @async_handle_errors_none(error_message="发送通知失败")
     async def _send_notifications(
         self, alert_data: Dict[str, Any], rule: AlertRule
     ) -> None:
         """发送告警通知"""
         for channel in rule.channels:
-            try:
-                if channel == NotificationChannel.IN_APP:
-                    await self._send_in_app_notification(alert_data)
-                elif channel == NotificationChannel.EMAIL:
-                    await self._send_email_notification(alert_data, rule)
-                elif channel == NotificationChannel.WEBHOOK:
-                    await self._send_webhook_notification(alert_data, rule)
-            except Exception as e:
-                logger.exception(f"Failed to send notification via {channel.value}")
+            if channel == NotificationChannel.IN_APP:
+                await self._send_in_app_notification(alert_data)
+            elif channel == NotificationChannel.EMAIL:
+                await self._send_email_notification(alert_data, rule)
+            elif channel == NotificationChannel.WEBHOOK:
+                await self._send_webhook_notification(alert_data, rule)
 
+    @async_handle_errors_none(error_message="发送应用内通知失败")
     async def _send_in_app_notification(self, alert_data: Dict[str, Any]) -> None:
         """发送应用内通知"""
         db = await self._get_db()
@@ -453,6 +469,7 @@ class AlertManager:
 
         await db["notifications"].insert_one(notification)
 
+    @async_handle_errors_none(error_message="发送邮件通知失败")
     async def _send_email_notification(
         self, alert_data: Dict[str, Any], rule: AlertRule
     ) -> None:
@@ -545,6 +562,7 @@ class AlertManager:
         except Exception as e:
             logger.error(f"❌ 发送邮件通知失败: {e}", exc_info=True)
 
+    @async_handle_errors_none(error_message="发送Webhook通知失败")
     async def _send_webhook_notification(
         self, alert_data: Dict[str, Any], rule: AlertRule
     ) -> None:
@@ -646,6 +664,7 @@ class AlertManager:
         except Exception as e:
             logger.error(f"❌ 发送Webhook通知失败: {e}", exc_info=True)
 
+    @async_handle_errors_none(error_message="添加告警历史记录失败")
     async def _add_to_history(
         self, alert_id: str, action: str, data: Dict[str, Any]
     ) -> None:
@@ -676,29 +695,33 @@ class AlertManager:
             limit: 返回数量限制
 
         Returns:
-            活跃告警列表
+            活跃告警列表（失败时返回空列表）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        db = await self._get_db()
+            db = await self._get_db()
 
-        query = {"status": AlertStatus.ACTIVE.value}
-        if level:
-            query["level"] = level.value
-        if category:
-            query["category"] = category.value
+            query = {"status": AlertStatus.ACTIVE.value}
+            if level:
+                query["level"] = level.value
+            if category:
+                query["category"] = category.value
 
-        alerts = []
-        async for doc in (
-            db[self._alerts_collection]
-            .find(query)
-            .sort("triggered_at", -1)
-            .limit(limit)
-        ):
-            alerts.append(self._doc_to_alert(doc))
+            alerts = []
+            async for doc in (
+                db[self._alerts_collection]
+                .find(query)
+                .sort("triggered_at", -1)
+                .limit(limit)
+            ):
+                alerts.append(self._doc_to_alert(doc))
 
-        return alerts
+            return alerts
+        except Exception as e:
+            logger.error(f"获取活跃告警失败: {e}", exc_info=True)
+            return []
 
     def _doc_to_alert(self, doc: Dict[str, Any]) -> Alert:
         """将文档转换为Alert"""
@@ -721,6 +744,7 @@ class AlertManager:
             metadata=doc.get("metadata", {}),
         )
 
+    @async_handle_errors_false(error_message="确认告警失败")
     async def acknowledge_alert(
         self, alert_id: str, user_id: Optional[str] = None
     ) -> bool:
@@ -756,6 +780,7 @@ class AlertManager:
 
         return False
 
+    @async_handle_errors_false(error_message="解决告警失败")
     async def resolve_alert(
         self, alert_id: str, user_id: Optional[str] = None, notes: Optional[str] = None
     ) -> bool:
@@ -805,24 +830,28 @@ class AlertManager:
             limit: 返回数量限制
 
         Returns:
-            历史记录列表
+            历史记录列表（失败时返回空列表）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        db = await self._get_db()
+            db = await self._get_db()
 
-        history = []
-        async for doc in (
-            db[self._history_collection]
-            .find({"alert_id": alert_id})
-            .sort("timestamp", -1)
-            .limit(limit)
-        ):
-            doc["_id"] = str(doc["_id"])
-            history.append(doc)
+            history = []
+            async for doc in (
+                db[self._history_collection]
+                .find({"alert_id": alert_id})
+                .sort("timestamp", -1)
+                .limit(limit)
+            ):
+                doc["_id"] = str(doc["_id"])
+                history.append(doc)
 
-        return history
+            return history
+        except Exception as e:
+            logger.error(f"获取告警历史失败: {e}", exc_info=True)
+            return []
 
     async def cleanup_old_alerts(self, days: int = 30) -> int:
         """
@@ -832,67 +861,75 @@ class AlertManager:
             days: 保留天数
 
         Returns:
-            删除的记录数量
+            删除的记录数量（失败时返回0）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        db = await self._get_db()
+            db = await self._get_db()
 
-        cutoff = datetime.now()
+            cutoff = datetime.now()
 
-        # 只删除已解决的告警
-        result = await db[self._alerts_collection].delete_many(
-            {
-                "status": {
-                    "$in": [AlertStatus.RESOLVED.value, AlertStatus.SUPPRESSED.value]
-                },
-                "resolved_at": {"$lt": cutoff.isoformat()},
-            }
-        )
+            # 只删除已解决的告警
+            result = await db[self._alerts_collection].delete_many(
+                {
+                    "status": {
+                        "$in": [AlertStatus.RESOLVED.value, AlertStatus.SUPPRESSED.value]
+                    },
+                    "resolved_at": {"$lt": cutoff.isoformat()},
+                }
+            )
 
-        return result.deleted_count
+            return result.deleted_count
+        except Exception as e:
+            logger.error(f"清理旧告警失败: {e}", exc_info=True)
+            return 0
 
     async def get_statistics(self) -> Dict[str, Any]:
         """
         获取告警统计信息
 
         Returns:
-            统计信息
+            统计信息（失败时返回空字典）
         """
-        if not self._initialized:
-            await self.initialize()
+        try:
+            if not self._initialized:
+                await self.initialize()
 
-        db = await self._get_db()
+            db = await self._get_db()
 
-        # 统计各状态告警数量
-        status_pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
-        status_results = (
-            await db[self._alerts_collection]
-            .aggregate_pipeline(status_pipeline)
-            .to_list(length=10)
-        )
+            # 统计各状态告警数量
+            status_pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
+            status_results = (
+                await db[self._alerts_collection]
+                .aggregate_pipeline(status_pipeline)
+                .to_list(length=10)
+            )
 
-        status_counts = {r["_id"]: r["count"] for r in status_results}
+            status_counts = {r["_id"]: r["count"] for r in status_results}
 
-        # 统计各级别告警数量
-        level_pipeline = [{"$group": {"_id": "$level", "count": {"$sum": 1}}}]
-        level_results = (
-            await db[self._alerts_collection]
-            .aggregate_pipeline(level_pipeline)
-            .to_list(length=10)
-        )
+            # 统计各级别告警数量
+            level_pipeline = [{"$group": {"_id": "$level", "count": {"$sum": 1}}}]
+            level_results = (
+                await db[self._alerts_collection]
+                .aggregate_pipeline(level_pipeline)
+                .to_list(length=10)
+            )
 
-        level_counts = {r["_id"]: r["count"] for r in level_results}
+            level_counts = {r["_id"]: r["count"] for r in level_results}
 
-        return {
-            "total_alerts": sum(status_counts.values()),
-            "active_alerts": status_counts.get("active", 0),
-            "acknowledged_alerts": status_counts.get("acknowledged", 0),
-            "resolved_alerts": status_counts.get("resolved", 0),
-            "by_level": level_counts,
-            "active_rules_count": len(self._active_rules),
-        }
+            return {
+                "total_alerts": sum(status_counts.values()),
+                "active_alerts": status_counts.get("active", 0),
+                "acknowledged_alerts": status_counts.get("acknowledged", 0),
+                "resolved_alerts": status_counts.get("resolved", 0),
+                "by_level": level_counts,
+                "active_rules_count": len(self._active_rules),
+            }
+        except Exception as e:
+            logger.error(f"获取统计信息失败: {e}", exc_info=True)
+            return {}
 
 
 # 全局实例

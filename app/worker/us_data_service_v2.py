@@ -42,49 +42,8 @@ class USDataService(ForeignDataBaseService):
             # 可以添加更多数据源，如 finnhub
         }
 
-    def _normalize_code(self, stock_code: str) -> str:
-        """标准化美股代码
-
-        美股代码通常是大写字母，如 AAPL。
-
-        Args:
-            stock_code: 原始股票代码
-
-        Returns:
-            标准化后的大写代码
-        """
-        return stock_code.strip().upper()
-
-    def _normalize_stock_info(self, stock_info: Dict, source: str) -> Dict:
-        """标准化美股信息格式
-
-        Args:
-            stock_info: 原始股票信息
-            source: 数据源
-
-        Returns:
-            标准化后的股票信息
-        """
-        normalized = {
-            "name": stock_info.get("name", ""),
-            "currency": stock_info.get("currency", "USD"),
-            "exchange": stock_info.get("exchange", "NASDAQ"),
-            "market": stock_info.get("market", "美国市场"),
-            "area": stock_info.get("area", "美国"),
-        }
-
-        # 可选字段
-        optional_fields = [
-            "industry", "sector", "list_date", "total_mv", "circ_mv",
-            "pe", "pb", "ps", "pcf", "market_cap", "shares_outstanding",
-            "float_shares", "employees", "website", "description"
-        ]
-
-        for field in optional_fields:
-            if field in stock_info and stock_info[field]:
-                normalized[field] = stock_info[field]
-
-        return normalized
+    # 注意：_normalize_code 和 _normalize_stock_info 方法现在继承自基类
+    # 基类使用统一的 normalize_stock_code 和 normalize_stock_info 函数
 
 
 # ==================== 全局实例管理 ====================

@@ -1355,6 +1355,85 @@ async def mark_task_as_failed(task_id: str, user: dict = Depends(get_current_use
         raise HTTPException(status_code=500, detail=f"标记任务失败: {str(e)}")
 
 
+@router.get("/tasks/{task_id}/progress", response_model=Dict[str, Any])
+async def get_task_progress(
+    task_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """获取任务详细进度信息
+
+    返回完整的步骤列表、代理状态、时间估算等详细信息
+    """
+    try:
+        logger.info(f"📊 [PROGRESS] 查询任务详细进度: {task_id}")
+
+        # 从 Redis 或文件获取进度数据
+        from app.services.redis_progress_tracker import get_progress_by_id
+
+        progress_data = get_progress_by_id(task_id)
+
+        if progress_data:
+            logger.info(f"✅ [PROGRESS] 找到进度数据: {task_id}")
+
+            # 格式化返回数据
+            return {
+                "success": True,
+                "data": {
+                    "task_id": progress_data.get("task_id"),
+                    "status": progress_data.get("status", "unknown"),
+                    "progress_percentage": progress_data.get("progress_percentage", 0),
+                    "current_step": progress_data.get("current_step", 0),
+                    "current_step_name": progress_data.get("current_step_name", ""),
+                    "current_step_description": progress_data.get("current_step_description", ""),
+                    "steps": progress_data.get("steps", []),
+                    "agent_status": progress_data.get("agent_status", {}),
+                    "elapsed_time": progress_data.get("elapsed_time", 0),
+                    "remaining_time": progress_data.get("remaining_time", 0),
+                    "estimated_total_time": progress_data.get("estimated_total_time", 0),
+                    "analysts": progress_data.get("analysts", []),
+                    "research_depth": progress_data.get("research_depth", ""),
+                    "llm_provider": progress_data.get("llm_provider", ""),
+                },
+                "message": "进度信息获取成功",
+            }
+        else:
+            # 如果没有详细进度数据，返回基础信息
+            logger.warning(f"⚠️ [PROGRESS] 未找到详细进度数据: {task_id}")
+
+            # 尝试从 MongoDB 获取基础任务信息
+            from app.core.database import get_mongo_db
+
+            db = get_mongo_db()
+            task_result = await db.analysis_tasks.find_one({"task_id": task_id})
+
+            if task_result:
+                return {
+                    "success": True,
+                    "data": {
+                        "task_id": task_id,
+                        "status": task_result.get("status", "unknown"),
+                        "progress_percentage": task_result.get("progress", 0),
+                        "current_step": 0,
+                        "current_step_name": "数据不可用",
+                        "current_step_description": "详细进度信息已过期或不存在",
+                        "steps": [],
+                        "agent_status": {},
+                        "elapsed_time": 0,
+                        "remaining_time": 0,
+                        "estimated_total_time": 0,
+                    },
+                    "message": "仅返回基础信息（详细进度不可用）",
+                }
+            else:
+                raise HTTPException(status_code=404, detail="任务不存在")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [PROGRESS] 获取进度失败: {task_id} - {e}")
+        raise HTTPException(status_code=500, detail=f"获取进度失败: {str(e)}")
+
+
 @router.delete("/tasks/{task_id}")
 async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
     """删除指定任务

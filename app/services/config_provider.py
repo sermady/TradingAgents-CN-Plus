@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 import os
 
 from app.services.config_service import config_service
+from app.utils.error_handler import async_handle_errors_empty_dict
 
 
 class ConfigProvider:
@@ -32,6 +33,7 @@ class ConfigProvider:
             and datetime.now(timezone.utc) - self._cache_time < self._ttl
         )
 
+    @async_handle_errors_empty_dict(error_message="获取系统设置失败")
     async def get_effective_system_settings(self) -> Dict[str, Any]:
         if self._is_cache_valid():
             return dict(self._cache_settings or {})

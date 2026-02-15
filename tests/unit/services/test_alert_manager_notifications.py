@@ -11,7 +11,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from datetime import datetime
 
-from app.services.alert_manager import (
+from app.services.alert import (
     AlertManager,
     AlertLevel,
     AlertCategory,
@@ -58,7 +58,7 @@ class TestAlertManagerEmailNotifications:
             mock_smtp.return_value = mock_smtp_instance
 
             # Mock config
-            with patch("app.services.alert_manager.get_config_manager") as mock_config:
+            with patch("app.services.alert.notifications.get_config_manager") as mock_config:
                 mock_config.return_value = {
                     "SMTP_HOST": "smtp.example.com",
                     "SMTP_PORT": 587,
@@ -125,7 +125,7 @@ class TestAlertManagerWebhookNotifications:
             mock_client.post = AsyncMock(return_value=mock_response)
 
             # Mock config
-            with patch("app.services.alert_manager.get_config_manager") as mock_config:
+            with patch("app.services.alert.notifications.get_config_manager") as mock_config:
                 mock_config.return_value = {
                     "ALERT_WEBHOOK_URL": "https://example.com/webhook",
                 }

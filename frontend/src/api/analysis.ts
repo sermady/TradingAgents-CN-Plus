@@ -215,6 +215,11 @@ export const analysisApi = {
     return request.delete(`/api/analysis/tasks/${taskId}`)
   },
 
+  // 获取任务详细进度（新增）
+  getTaskProgress(taskId: string): Promise<ApiResponse<any>> {
+    return request.get(`/api/analysis/tasks/${taskId}/progress`)
+  },
+
   // 分享分析结果
   shareAnalysis(analysisId: string, options: {
     expires_in?: number // 过期时间（秒）

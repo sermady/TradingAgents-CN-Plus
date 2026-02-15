@@ -6,6 +6,7 @@ from typing import Optional
 import jwt
 from pydantic import BaseModel
 from app.core.config import settings
+from app.utils.error_handler import handle_errors_none
 
 
 class TokenData(BaseModel):
@@ -33,46 +34,36 @@ class AuthService:
         return token
 
     @staticmethod
+    @handle_errors_none(error_message="Token验证失败")
     def verify_token(token: str) -> Optional[TokenData]:
         import logging
 
         logger = logging.getLogger(__name__)
 
-        try:
-            logger.debug(f"🔍 开始验证token")
-            logger.debug(f"📝 Token长度: {len(token)}")
-            # 🔥 安全修复：不记录 JWT 密钥的任何部分
-            # logger.debug(f"🔑 JWT密钥: {settings.JWT_SECRET[:10]}...")  # 已移除：防止密钥泄露
-            logger.debug(f"🔧 JWT算法: {settings.JWT_ALGORITHM}")
+        logger.debug(f"🔍 开始验证token")
+        logger.debug(f"📝 Token长度: {len(token)}")
+        # 🔥 安全修复：不记录 JWT 密钥的任何部分
+        # logger.debug(f"🔑 JWT密钥: {settings.JWT_SECRET[:10]}...")  # 已移除：防止密钥泄露
+        logger.debug(f"🔧 JWT算法: {settings.JWT_ALGORITHM}")
 
-            payload = jwt.decode(
-                token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        payload = jwt.decode(
+            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
+        logger.debug(f"✅ Token解码成功")
+        logger.debug(f"📋 Payload: {payload}")
+
+        token_data = TokenData(
+            sub=payload.get("sub"), exp=int(payload.get("exp", time.time()))
+        )
+        logger.debug(f"🎯 Token数据: sub={token_data.sub}, exp={token_data.exp}")
+
+        # 检查是否过期
+        current_time = int(time.time())
+        if token_data.exp < current_time:
+            logger.warning(
+                f"⏰ Token已过期: exp={token_data.exp}, now={current_time}"
             )
-            logger.debug(f"✅ Token解码成功")
-            logger.debug(f"📋 Payload: {payload}")
-
-            token_data = TokenData(
-                sub=payload.get("sub"), exp=int(payload.get("exp", time.time()))
-            )
-            logger.debug(f"🎯 Token数据: sub={token_data.sub}, exp={token_data.exp}")
-
-            # 检查是否过期
-            current_time = int(time.time())
-            if token_data.exp < current_time:
-                logger.warning(
-                    f"⏰ Token已过期: exp={token_data.exp}, now={current_time}"
-                )
-                return None
-
-            logger.debug(f"✅ Token验证成功")
-            return token_data
-
-        except jwt.ExpiredSignatureError:
-            logger.warning("⏰ Token已过期")
             return None
-        except jwt.InvalidTokenError as e:
-            logger.warning(f"❌ Token无效: {str(e)}")
-            return None
-        except Exception as e:
-            logger.error(f"❌ Token验证异常: {str(e)}")
-            return None
+
+        logger.debug(f"✅ Token验证成功")
+        return token_data

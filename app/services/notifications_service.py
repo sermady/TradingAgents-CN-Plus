@@ -14,6 +14,10 @@ from app.models.notification import (
     NotificationCreate, NotificationOut, NotificationList
 )
 from app.utils.timezone import now_tz
+from app.utils.error_handler import (
+    async_handle_errors_none,
+    async_handle_errors_zero,
+)
 
 logger = logging.getLogger("webapi.notifications")
 
@@ -175,18 +179,15 @@ class NotificationsService(BaseCRUDService):
 
         return await self.update(notif_id, {"status": "read"})
 
+    @async_handle_errors_zero(error_message="标记全部已读失败")
     async def mark_all_read(self, user_id: str) -> int:
         """标记用户所有通知为已读"""
-        try:
-            db = await self._get_db()
-            res = await db[self.collection_name].update_many(
-                {"user_id": user_id, "status": "unread"},
-                {"$set": {"status": "read", "updated_at": now_tz()}}
-            )
-            return res.modified_count
-        except Exception as e:
-            logger.error(f"标记全部已读失败: {e}")
-            return 0
+        db = await self._get_db()
+        res = await db[self.collection_name].update_many(
+            {"user_id": user_id, "status": "unread"},
+            {"$set": {"status": "read", "updated_at": now_tz()}}
+        )
+        return res.modified_count
 
 
 _notifications_service: Optional[NotificationsService] = None

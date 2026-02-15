@@ -107,6 +107,14 @@
           <template #default="{ row }">
             <el-button v-if="row.status==='completed'" type="text" size="small" @click="openResult(row)">查看结果</el-button>
             <el-button v-if="row.status==='completed'" type="text" size="small" @click="openReport(row)">报告详情</el-button>
+            <el-button
+              v-if="row.status==='processing' || row.status==='running' || row.status==='pending'"
+              type="text"
+              size="small"
+              @click="openProgress(row)"
+            >
+              查看进度
+            </el-button>
             <el-button v-if="row.status==='failed'" type="text" size="small" @click="showErrorDetail(row)">查看错误</el-button>
             <el-button v-if="row.status==='failed'" type="text" size="small" @click="retryTask(row)">重试</el-button>
             <el-button v-if="row.status==='processing' || row.status==='running' || row.status==='pending'" type="text" size="small" @click="markAsFailed(row)">标记失败</el-button>
@@ -140,6 +148,9 @@
     <!-- 报告详情弹窗组件化（预留） -->
     <TaskReportDialog v-model="reportVisible" :sections="reportSections" @close="reportVisible=false" />
 
+    <!-- 进度详情弹窗 -->
+    <ProgressDialog v-model="progressVisible" :task-id="currentTaskId" @close="progressVisible=false" />
+
   </div>
 </template>
 
@@ -152,6 +163,7 @@ import { analysisApi } from '@/api/analysis'
 import { marked } from 'marked'
 import TaskResultDialog from '@/components/Global/TaskResultDialog.vue'
 import TaskReportDialog from '@/components/Global/TaskReportDialog.vue'
+import ProgressDialog from '@/components/Analysis/ProgressDialog.vue'
 
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -370,6 +382,19 @@ const openReport = (row:any) => {
   if (!id) return ElMessage.warning('未找到报告ID')
   router.push({ name: 'ReportDetail', params: { id } })
   return true
+}
+
+// 进度弹窗相关
+const progressVisible = ref(false)
+const currentTaskId = ref('')
+
+const openProgress = (row: any) => {
+  currentTaskId.value = row.task_id || row.analysis_id || row.id
+  if (!currentTaskId.value) {
+    ElMessage.warning('未找到任务ID')
+    return
+  }
+  progressVisible.value = true
 }
 
 const retryTask = (_row: any) => { ElMessage.info('重试功能待实现') }
