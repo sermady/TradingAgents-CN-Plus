@@ -124,3 +124,61 @@ class BaseConfigService:
             return api_key
 
         return f"{api_key[:prefix_len]}...{api_key[-suffix_len:]}"
+
+    async def set_default_config(
+        self,
+        config_field: str,
+        value: str,
+        validation_func = None,
+        save_func = None
+    ) -> bool:
+        """
+        通用的设置默认配置方法
+
+        Args:
+            config_field: 配置字段名称（如 'default_llm', 'default_data_source'）
+            value: 要设置的默认值
+            validation_func: 可选的验证函数，用于检查值是否有效
+            save_func: 可选的保存函数，如果不提供则使用 save_system_config
+
+        Returns:
+            bool: 是否设置成功
+
+        Example:
+            # 设置默认LLM
+            success = await base_config.set_default_config(
+                config_field='default_llm',
+                value='gpt-4',
+                validation_func=lambda config: any(llm.model_name == value for llm in config.llm_configs)
+            )
+
+            # 设置默认数据源
+            success = await base_config.set_default_config(
+                config_field='default_data_source',
+                value='tushare',
+                validation_func=lambda config: any(ds.name == value for ds in config.data_source_configs)
+            )
+        """
+        try:
+            config = await self.get_system_config()
+            if not config:
+                return False
+
+            # 如果提供了验证函数，验证值是否有效
+            if validation_func:
+                if not validation_func(config):
+                    logger.warning(f"配置值 '{value}' 验证失败")
+                    return False
+
+            # 设置默认值
+            setattr(config, config_field, value)
+
+            # 保存配置
+            if save_func:
+                return await save_func(config)
+            else:
+                return await self.save_system_config(config)
+
+        except Exception as e:
+            logger.error(f"设置默认配置失败 [{config_field}={value}]: {e}")
+            return False
