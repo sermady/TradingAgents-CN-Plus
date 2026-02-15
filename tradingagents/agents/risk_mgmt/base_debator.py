@@ -10,6 +10,7 @@ from typing import Dict, Any, Callable, Optional
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
+from tradingagents.agents.utils.prompt_builder import build_debator_prompt
 
 logger = get_logger("default")
 
@@ -241,55 +242,18 @@ class AggressiveDebator(BaseDebator):
         trader_decision: str,
     ) -> str:
         """构建激进辩论者prompt"""
-        other_responses_text = self._format_other_responses(current_responses)
+        from tradingagents.agents.utils.prompt_builder import build_debator_prompt
 
-        prompt = f"""作为{self.description}风险分析师，您的职责是{self.goal}。
-
-在评估交易员的决策或计划时，请重点关注{self.focus}——即使这些伴随着较高的风险。
-
-使用提供的市场数据和情绪分析来加强您的论点，并挑战对立观点。
-
-具体来说，请直接回应保守和中性分析师提出的每个观点，用数据驱动的反驳和有说服力的推理进行反击。
-
-以下是交易员的决策：
-
-{trader_decision}
-
-您的任务是通过质疑和批评保守和中性立场来为交易员的决策创建一个令人信服的案例，证明为什么您的高回报视角提供了最佳的前进道路。
-
-将以下来源的见解纳入您的论点：
-
-市场研究报告：{reports["market"]}
-
-社交媒体情绪报告：{reports["sentiment"]}
-
-最新世界事务报告：{reports["news"]}
-
-公司基本面报告：{reports["fundamentals"]}
-
-以下是当前对话历史：{history}
-
-{other_responses_text}
-
-积极参与，解决提出的任何具体担忧，反驳他们逻辑中的弱点，并断言承担风险的好处以超越市场常规。
-
-专注于辩论和说服，而不仅仅是呈现数据。挑战每个反驳点，强调为什么高风险方法是最优的。
-
-请用中文以对话方式输出，就像您在说话一样，不使用任何特殊格式。"""
-
-        return prompt
-
-    def _format_other_responses(self, current_responses: Dict[str, str]) -> str:
-        """格式化其他辩论者的回应"""
-        responses = []
-
-        if current_responses.get("safe"):
-            responses.append(f"安全分析师的最后论点：{current_responses['safe']}")
-
-        if current_responses.get("neutral"):
-            responses.append(f"中性分析师的最后论点：{current_responses['neutral']}")
-
-        return "\n".join(responses) if responses else "暂无其他辩论者的回应"
+        return build_debator_prompt(
+            role="aggressive",
+            description=self.description,
+            goal=self.goal,
+            focus=self.focus,
+            reports=reports,
+            history=history,
+            current_responses=current_responses,
+            trader_decision=trader_decision
+        )
 
 
 class ConservativeDebator(BaseDebator):
@@ -307,53 +271,18 @@ class ConservativeDebator(BaseDebator):
         trader_decision: str,
     ) -> str:
         """构建保守辩论者prompt"""
-        other_responses_text = self._format_other_responses(current_responses)
+        from tradingagents.agents.utils.prompt_builder import build_debator_prompt
 
-        prompt = f"""作为安全/保守风险分析师，您的主要目标是{self.goal}。您优先考虑稳定性、安全性和风险缓解，仔细评估潜在损失、经济衰退和市场波动。
-
-在评估交易员的决策或计划时，请批判性地审查高风险要素，指出决策可能使公司面临不当风险的地方，以及更谨慎的替代方案如何能够确保长期收益。
-
-以下是交易员的决策：
-
-{trader_decision}
-
-您的任务是积极反驳激进和中性分析师的论点，突出他们的观点可能忽视的潜在威胁或未能优先考虑可持续性的地方。
-
-直接回应他们的观点，利用以下数据来源为交易员决策的低风险方法调整建立令人信服的案例：
-
-市场研究报告：{reports["market"]}
-
-社交媒体情绪报告：{reports["sentiment"]}
-
-最新世界事务报告：{reports["news"]}
-
-公司基本面报告：{reports["fundamentals"]}
-
-以下是当前对话历史：{history}
-
-{other_responses_text}
-
-通过质疑他们的乐观态度并强调他们可能忽视的潜在下行风险来参与讨论。
-
-解决他们的每个反驳点，展示为什么保守立场最终是公司资产最安全的道路。
-
-专注于辩论和批评他们的论点，证明低风险策略相对于他们方法的优势。
-
-请用中文以对话方式输出，就像您在说话一样，不使用任何特殊格式。"""
-
-        return prompt
-
-    def _format_other_responses(self, current_responses: Dict[str, str]) -> str:
-        """格式化其他辩论者的回应"""
-        responses = []
-
-        if current_responses.get("risky"):
-            responses.append(f"激进分析师的最后论点：{current_responses['risky']}")
-
-        if current_responses.get("neutral"):
-            responses.append(f"中性分析师的最后论点：{current_responses['neutral']}")
-
-        return "\n".join(responses) if responses else "暂无其他辩论者的回应"
+        return build_debator_prompt(
+            role="conservative",
+            description=self.description,
+            goal=self.goal,
+            focus=self.focus,
+            reports=reports,
+            history=history,
+            current_responses=current_responses,
+            trader_decision=trader_decision
+        )
 
 
 class NeutralDebator(BaseDebator):
@@ -371,51 +300,18 @@ class NeutralDebator(BaseDebator):
         trader_decision: str,
     ) -> str:
         """构建中性辩论者prompt"""
-        other_responses_text = self._format_other_responses(current_responses)
+        from tradingagents.agents.utils.prompt_builder import build_debator_prompt
 
-        prompt = f"""作为中性风险分析师，您的角色是提供平衡的视角，权衡交易员决策或计划的潜在收益和风险。您优先考虑全面的方法，评估上行和下行风险，同时考虑更广泛的市场趋势、潜在的经济变化和多元化策略。
-
-以下是交易员的决策：
-
-{trader_decision}
-
-您的任务是挑战激进和安全分析师，指出每种观点可能过于乐观或过于谨慎的地方。
-
-使用以下数据来源的见解来支持调整交易员决策的温和、可持续策略：
-
-市场研究报告：{reports["market"]}
-
-社交媒体情绪报告：{reports["sentiment"]}
-
-最新世界事务报告：{reports["news"]}
-
-公司基本面报告：{reports["fundamentals"]}
-
-以下是当前对话历史：{history}
-
-{other_responses_text}
-
-通过批判性地分析双方来积极参与，解决激进和保守论点中的弱点，倡导更平衡的方法。
-
-挑战他们的每个观点，说明为什么适度风险策略可能提供两全其美的效果，既提供增长潜力又防范极端波动。
-
-专注于辩论而不是简单地呈现数据，旨在表明平衡的观点可以带来最可靠的结果。
-
-请用中文以对话方式输出，就像您在说话一样，不使用任何特殊格式。"""
-
-        return prompt
-
-    def _format_other_responses(self, current_responses: Dict[str, str]) -> str:
-        """格式化其他辩论者的回应"""
-        responses = []
-
-        if current_responses.get("risky"):
-            responses.append(f"激进分析师的最后论点：{current_responses['risky']}")
-
-        if current_responses.get("safe"):
-            responses.append(f"安全分析师的最后论点：{current_responses['safe']}")
-
-        return "\n".join(responses) if responses else "暂无其他辩论者的回应"
+        return build_debator_prompt(
+            role="neutral",
+            description=self.description,
+            goal=self.goal,
+            focus=self.focus,
+            reports=reports,
+            history=history,
+            current_responses=current_responses,
+            trader_decision=trader_decision
+        )
 
 
 # 工厂函数
