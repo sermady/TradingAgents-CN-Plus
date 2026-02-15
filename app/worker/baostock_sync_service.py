@@ -6,19 +6,52 @@ BaoStock数据同步服务
 
 重构：继承BaseSyncService，使用标准SyncStats和execute_batch_sync模板方法
 """
+
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field
 
 from app.core.config import get_settings
 from app.core.database import get_database
 from app.services.historical_data_service import get_historical_data_service
 from app.services.base_sync_service import BaseSyncService, SyncStats
 from tradingagents.dataflows.providers.china.baostock import BaoStockProvider
-from tradingagents.utils.time_utils import get_today_str, get_days_ago_str, get_iso_timestamp
+from tradingagents.utils.time_utils import (
+    get_today_str,
+    get_days_ago_str,
+    get_iso_timestamp,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BaoStockSyncStats:
+    """BaoStock数据同步统计"""
+
+    total_symbols: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    skipped_count: int = 0
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: float = 0.0
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "total_symbols": self.total_symbols,
+            "success_count": self.success_count,
+            "error_count": self.error_count,
+            "skipped_count": self.skipped_count,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "duration": self.duration,
+            "errors": self.errors,
+        }
 
 
 class BaoStockSyncService(BaseSyncService):
@@ -53,18 +86,22 @@ class BaoStockSyncService(BaseSyncService):
         try:
             # 🔥 初始化数据库连接（必须在异步上下文中）
             from app.core.database import get_mongo_db
+
             self.db = get_mongo_db()
 
             # 初始化历史数据服务
             if self.historical_service is None:
-                from app.services.historical_data_service import get_historical_data_service
+                from app.services.historical_data_service import (
+                    get_historical_data_service,
+                )
+
                 self.historical_service = await get_historical_data_service()
 
             logger.info("✅ BaoStock同步服务异步初始化完成")
         except Exception as e:
             logger.error(f"❌ BaoStock同步服务异步初始化失败: {e}")
             raise
-    
+
     async def sync_stock_basic_info(self, batch_size: int = 100) -> SyncStats:
         """
         同步股票基础信息
@@ -93,7 +130,7 @@ class BaoStockSyncService(BaseSyncService):
             process_func=self._process_single_stock_basic_info,
             batch_size=batch_size,
             rate_limit_delay=0.1,
-            task_name="BaoStock基础信息同步"
+            task_name="BaoStock基础信息同步",
         )
 
         logger.info(f"✅ BaoStock基础信息同步完成: {stats.success_count}条记录")
@@ -110,7 +147,7 @@ class BaoStockSyncService(BaseSyncService):
             True 如果处理成功
         """
         try:
-            code = stock['code']
+            code = stock["code"]
 
             # 1. 获取基础信息
             basic_info = await self.provider.get_stock_basic_info(code)
@@ -122,22 +159,26 @@ class BaoStockSyncService(BaseSyncService):
             try:
                 valuation_data = await self.provider.get_valuation_data(code)
                 if valuation_data:
-                    basic_info.update({
-                        'pe': valuation_data.get('pe_ttm'),
-                        'pb': valuation_data.get('pb_mrq'),
-                        'pe_ttm': valuation_data.get('pe_ttm'),
-                        'pb_mrq': valuation_data.get('pb_mrq'),
-                        'ps': valuation_data.get('ps_ttm'),
-                        'pcf': valuation_data.get('pcf_ttm'),
-                        'close': valuation_data.get('close'),
-                    })
+                    basic_info.update(
+                        {
+                            "pe": valuation_data.get("pe_ttm"),
+                            "pb": valuation_data.get("pb_mrq"),
+                            "pe_ttm": valuation_data.get("pe_ttm"),
+                            "pb_mrq": valuation_data.get("pb_mrq"),
+                            "ps": valuation_data.get("ps_ttm"),
+                            "pcf": valuation_data.get("pcf_ttm"),
+                            "close": valuation_data.get("close"),
+                        }
+                    )
 
                     # 计算总市值
-                    close_price = valuation_data.get('close')
+                    close_price = valuation_data.get("close")
                     if close_price and close_price > 0:
                         total_shares_wan = await self._get_total_shares(code)
                         if total_shares_wan and total_shares_wan > 0:
-                            basic_info['total_mv'] = (close_price * total_shares_wan) / 10000
+                            basic_info["total_mv"] = (
+                                close_price * total_shares_wan
+                            ) / 10000
             except Exception as e:
                 logger.debug(f"获取{code}估值数据失败: {e}")
                 # 估值数据获取失败不影响基础信息同步
@@ -149,7 +190,7 @@ class BaoStockSyncService(BaseSyncService):
         except Exception as e:
             logger.error(f"处理{stock.get('code', 'unknown')}失败: {e}")
             return False
-    
+
     async def _get_total_shares(self, code: str) -> Optional[float]:
         """
         获取股票总股本（万股）
@@ -167,16 +208,16 @@ class BaoStockSyncService(BaseSyncService):
             if financial_data:
                 # BaoStock 财务数据中的总股本字段
                 # 盈利能力数据中有 totalShare（总股本，单位：万股）
-                profit_data = financial_data.get('profit_data', {})
+                profit_data = financial_data.get("profit_data", {})
                 if profit_data:
-                    total_shares = profit_data.get('totalShare')
+                    total_shares = profit_data.get("totalShare")
                     if total_shares:
                         return self._safe_float(total_shares)
 
                 # 成长能力数据中也可能有总股本
-                growth_data = financial_data.get('growth_data', {})
+                growth_data = financial_data.get("growth_data", {})
                 if growth_data:
-                    total_shares = growth_data.get('totalShare')
+                    total_shares = growth_data.get("totalShare")
                     if total_shares:
                         return self._safe_float(total_shares)
 
@@ -185,11 +226,11 @@ class BaoStockSyncService(BaseSyncService):
             doc = await collection.find_one(
                 {"code": code},
                 {"total_shares": 1, "totalShare": 1},
-                sort=[("report_period", -1)]
+                sort=[("report_period", -1)],
             )
 
             if doc:
-                total_shares = doc.get('total_shares') or doc.get('totalShare')
+                total_shares = doc.get("total_shares") or doc.get("totalShare")
                 if total_shares:
                     return self._safe_float(total_shares)
 
@@ -202,7 +243,7 @@ class BaoStockSyncService(BaseSyncService):
     def _safe_float(self, value) -> Optional[float]:
         """安全转换为浮点数"""
         try:
-            if value is None or value == '' or value == 'None':
+            if value is None or value == "" or value == "None":
                 return None
             return float(value)
         except (ValueError, TypeError):
@@ -225,13 +266,13 @@ class BaoStockSyncService(BaseSyncService):
             await collection.update_one(
                 {"code": basic_info["code"], "source": "baostock"},
                 {"$set": basic_info},
-                upsert=True
+                upsert=True,
             )
 
         except Exception as e:
             logger.error(f"❌ 更新基础信息到数据库失败: {e}")
             raise
-    
+
     async def sync_daily_quotes(self, batch_size: int = 50) -> SyncStats:
         """
         同步日K线数据（最新交易日）
@@ -266,7 +307,7 @@ class BaoStockSyncService(BaseSyncService):
             process_func=self._process_single_stock_quotes,
             batch_size=batch_size,
             rate_limit_delay=0.2,
-            task_name="BaoStock日K线同步"
+            task_name="BaoStock日K线同步",
         )
 
         logger.info(f"✅ BaoStock日K线同步完成: {stats.success_count}条记录")
@@ -293,7 +334,6 @@ class BaoStockSyncService(BaseSyncService):
         except Exception as e:
             logger.error(f"处理{code}日K线失败: {e}")
             return False
-    
 
     async def _update_stock_quotes(self, quotes: Dict[str, Any]):
         """更新股票日K线到数据库"""
@@ -306,17 +346,19 @@ class BaoStockSyncService(BaseSyncService):
                 quotes["symbol"] = code
 
             # 使用upsert更新或插入
-            await collection.update_one(
-                {"code": code},
-                {"$set": quotes},
-                upsert=True
-            )
+            await collection.update_one({"code": code}, {"$set": quotes}, upsert=True)
 
         except Exception as e:
             logger.error(f"❌ 更新日K线到数据库失败: {e}")
             raise
-    
-    async def sync_historical_data(self, days: int = 30, batch_size: int = 20, period: str = "daily", incremental: bool = True) -> SyncStats:
+
+    async def sync_historical_data(
+        self,
+        days: int = 30,
+        batch_size: int = 20,
+        period: str = "daily",
+        incremental: bool = True,
+    ) -> SyncStats:
         """
         同步历史数据
 
@@ -331,7 +373,9 @@ class BaoStockSyncService(BaseSyncService):
         Returns:
             同步统计信息
         """
-        period_name = {"daily": "日线", "weekly": "周线", "monthly": "月线"}.get(period, "日线")
+        period_name = {"daily": "日线", "weekly": "周线", "monthly": "月线"}.get(
+            period, "日线"
+        )
 
         # 计算日期范围
         end_date = get_today_str()
@@ -347,11 +391,17 @@ class BaoStockSyncService(BaseSyncService):
             return SyncStats()
 
         if use_incremental:
-            logger.info(f"🔄 开始BaoStock{period_name}历史数据同步 (增量模式: 各股票从最后日期到{end_date})...")
+            logger.info(
+                f"🔄 开始BaoStock{period_name}历史数据同步 (增量模式: 各股票从最后日期到{end_date})..."
+            )
         elif days >= 3650:
-            logger.info(f"🔄 开始BaoStock{period_name}历史数据同步 (全历史: 1990-01-01到{end_date})...")
+            logger.info(
+                f"🔄 开始BaoStock{period_name}历史数据同步 (全历史: 1990-01-01到{end_date})..."
+            )
         else:
-            logger.info(f"🔄 开始BaoStock{period_name}历史数据同步 (最近{days}天到{end_date})...")
+            logger.info(
+                f"🔄 开始BaoStock{period_name}历史数据同步 (最近{days}天到{end_date})..."
+            )
 
         logger.info(f"📊 开始同步{len(stock_codes)}只股票的历史数据...")
 
@@ -369,10 +419,14 @@ class BaoStockSyncService(BaseSyncService):
                 else:
                     start_date = get_days_ago_str(days)
 
-                hist_data = await self.provider.get_historical_data(code, start_date, end_date, period)
+                hist_data = await self.provider.get_historical_data(
+                    code, start_date, end_date, period
+                )
 
                 if hist_data is not None and not hist_data.empty:
-                    records_count = await self._update_historical_data(code, hist_data, period)
+                    records_count = await self._update_historical_data(
+                        code, hist_data, period
+                    )
                     return records_count
                 else:
                     logger.warning(f"⚠️ 获取{code}历史数据失败")
@@ -386,11 +440,13 @@ class BaoStockSyncService(BaseSyncService):
         stats.total_processed = len(stock_codes)
 
         for i in range(0, len(stock_codes), batch_size):
-            batch = stock_codes[i:i + batch_size]
+            batch = stock_codes[i : i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(stock_codes) + batch_size - 1) // batch_size
 
-            logger.info(f"📦 处理批次 {batch_num}/{total_batches} ({len(batch)} 只股票)")
+            logger.info(
+                f"📦 处理批次 {batch_num}/{total_batches} ({len(batch)} 只股票)"
+            )
 
             for code in batch:
                 records = await _process_with_params(code)
@@ -401,13 +457,19 @@ class BaoStockSyncService(BaseSyncService):
                 await asyncio.sleep(0.5)  # 历史数据API限制更严格
 
             progress = min(100, int((i + len(batch)) / len(stock_codes) * 100))
-            logger.info(f"📊 历史数据同步进度: {progress}% ({stats.success_count} 成功, {stats.error_count} 失败)")
+            logger.info(
+                f"📊 历史数据同步进度: {progress}% ({stats.success_count} 成功, {stats.error_count} 失败)"
+            )
 
         stats.end_time = datetime.utcnow()
-        logger.info(f"✅ BaoStock历史数据同步完成: {stats.success_count}只成功 ({stats.success_rate:.1f}%)")
+        logger.info(
+            f"✅ BaoStock历史数据同步完成: {stats.success_count}只成功 ({stats.success_rate:.1f}%)"
+        )
         return stats
 
-    async def _update_historical_data(self, code: str, hist_data, period: str = "daily") -> int:
+    async def _update_historical_data(
+        self, code: str, hist_data, period: str = "daily"
+    ) -> int:
         """更新历史数据到数据库"""
         try:
             if hist_data is None or hist_data.empty:
@@ -424,7 +486,7 @@ class BaoStockSyncService(BaseSyncService):
                 data=hist_data,
                 data_source="baostock",
                 market="CN",
-                period=period
+                period=period,
             )
 
             # 同时更新market_quotes集合的元信息（保持兼容性）
@@ -434,12 +496,16 @@ class BaoStockSyncService(BaseSyncService):
 
                 await collection.update_one(
                     {"code": code},
-                    {"$set": {
-                        "historical_data_updated": get_iso_timestamp(),
-                        "latest_historical_date": latest_record.get('date') if latest_record is not None else None,
-                        "historical_records_count": saved_count
-                    }},
-                    upsert=True
+                    {
+                        "$set": {
+                            "historical_data_updated": get_iso_timestamp(),
+                            "latest_historical_date": latest_record.get("date")
+                            if latest_record is not None
+                            else None,
+                            "historical_records_count": saved_count,
+                        }
+                    },
+                    upsert=True,
                 )
 
             return saved_count
@@ -447,25 +513,28 @@ class BaoStockSyncService(BaseSyncService):
         except Exception as e:
             logger.error(f"❌ 更新历史数据到数据库失败: {e}")
             return 0
-    
 
     async def check_service_status(self) -> Dict[str, Any]:
         """检查服务状态"""
         try:
             # 测试BaoStock连接
             connection_ok = await self.provider.test_connection()
-            
+
             # 检查数据库连接
             db_ok = True
             try:
                 await self.db.stock_basic_info.count_documents({})
             except Exception:
                 db_ok = False
-            
+
             # 统计数据
-            basic_info_count = await self.db.stock_basic_info.count_documents({"data_source": "baostock"})
-            quotes_count = await self.db.market_quotes.count_documents({"data_source": "baostock"})
-            
+            basic_info_count = await self.db.stock_basic_info.count_documents(
+                {"data_source": "baostock"}
+            )
+            quotes_count = await self.db.market_quotes.count_documents(
+                {"data_source": "baostock"}
+            )
+
             return {
                 "service": "BaoStock同步服务",
                 "baostock_connection": connection_ok,
@@ -473,7 +542,7 @@ class BaoStockSyncService(BaseSyncService):
                 "basic_info_count": basic_info_count,
                 "quotes_count": quotes_count,
                 "status": "healthy" if connection_ok and db_ok else "unhealthy",
-                "last_check": get_iso_timestamp()
+                "last_check": get_iso_timestamp(),
             }
 
         except Exception as e:
@@ -482,7 +551,7 @@ class BaoStockSyncService(BaseSyncService):
                 "service": "BaoStock同步服务",
                 "status": "error",
                 "error": str(e),
-                "last_check": get_iso_timestamp()
+                "last_check": get_iso_timestamp(),
             }
 
 
@@ -493,7 +562,9 @@ async def run_baostock_basic_info_sync():
         service = BaoStockSyncService()
         await service.initialize()  # 🔥 必须先初始化
         stats = await service.sync_stock_basic_info()
-        logger.info(f"🎯 BaoStock基础信息同步完成: {stats.success_count}条成功, {stats.error_count}个错误")
+        logger.info(
+            f"🎯 BaoStock基础信息同步完成: {stats.success_count}条成功, {stats.error_count}个错误"
+        )
     except Exception as e:
         logger.error(f"❌ BaoStock基础信息同步任务失败: {e}")
 
@@ -504,7 +575,9 @@ async def run_baostock_daily_quotes_sync():
         service = BaoStockSyncService()
         await service.initialize()  # 🔥 必须先初始化
         stats = await service.sync_daily_quotes()
-        logger.info(f"🎯 BaoStock日K线同步完成: {stats.success_count}条成功, {stats.error_count}个错误")
+        logger.info(
+            f"🎯 BaoStock日K线同步完成: {stats.success_count}条成功, {stats.error_count}个错误"
+        )
     except Exception as e:
         logger.error(f"❌ BaoStock日K线同步任务失败: {e}")
 
@@ -515,7 +588,9 @@ async def run_baostock_historical_sync():
         service = BaoStockSyncService()
         await service.initialize()  # 🔥 必须先初始化
         stats = await service.sync_historical_data()
-        logger.info(f"🎯 BaoStock历史数据同步完成: {stats.success_count}只成功, {stats.error_count}个错误")
+        logger.info(
+            f"🎯 BaoStock历史数据同步完成: {stats.success_count}只成功, {stats.error_count}个错误"
+        )
     except Exception as e:
         logger.error(f"❌ BaoStock历史数据同步任务失败: {e}")
 

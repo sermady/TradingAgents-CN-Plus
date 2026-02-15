@@ -146,7 +146,9 @@ class OptimizedChinaDataProvider:
         """
         return self._realtime_loader.load(symbol)
 
-    def get_stock_list(self, market: str = "all", refresh: bool = False) -> List[Dict[str, Any]]:
+    def get_stock_list(
+        self, market: str = "all", refresh: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         获取股票列表
 
@@ -224,7 +226,26 @@ class OptimizedChinaDataProvider:
 
     def _generate_fallback_fundamentals(self, symbol: str, error_msg: str) -> str:
         """生成备用基本面数据"""
-        return self._fundamentals_loader._generate_fallback_fundamentals(symbol, error_msg)
+        return self._fundamentals_loader._generate_fallback_fundamentals(
+            symbol, error_msg
+        )
+
+    def _generate_fundamentals_report(
+        self, symbol: str, analysis_modules: str = "standard"
+    ) -> str:
+        """
+        生成基本面分析报告
+
+        Args:
+            symbol: 股票代码
+            analysis_modules: 分析模块级别 (basic/standard/full)
+
+        Returns:
+            格式化的基本面分析报告
+        """
+        return self._fundamentals_loader._generate_fundamentals_report(
+            symbol, analysis_modules
+        )
 
 
 # 全局实例

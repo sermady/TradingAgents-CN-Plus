@@ -380,9 +380,7 @@ class DataCoordinator:
 
             # 7. 计算数据质量评分 (Phase 1.1)
             try:
-                preloaded = self._calculate_data_quality(
-                    ticker, preloaded, market_info
-                )
+                preloaded = self._calculate_data_quality(ticker, preloaded, market_info)
                 logger.info(
                     f"[DataCoordinator] 数据质量评分: {preloaded.data_quality_grade} "
                     f"({preloaded.data_quality_score:.1f}/100)"
@@ -488,7 +486,7 @@ class DataCoordinator:
                 )
                 analyzer = OptimizedChinaDataProvider()
                 fundamentals = analyzer._generate_fundamentals_report(
-                    ticker, price_data, "standard"
+                    ticker, "standard"
                 )
                 return f"## A-Share Fundamentals Data (Fallback)\n{fundamentals}\n\n## Price Data\n{price_data}"
             except Exception as fallback_error:
@@ -825,7 +823,12 @@ class DataCoordinator:
                 try:
                     value = matches[-1].replace(",", "")
                     # 处理可能的单位（亿/万）
-                    if "\u4ebf" in fundamentals_data[: fundamentals_data.find(matches[-1]) + 100]:
+                    if (
+                        "\u4ebf"
+                        in fundamentals_data[
+                            : fundamentals_data.find(matches[-1]) + 100
+                        ]
+                    ):
                         value = float(value)
                     else:
                         value = float(value)

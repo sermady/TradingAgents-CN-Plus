@@ -105,50 +105,75 @@ class SchedulerService:
                 job_dict["description"] = metadata.get("description")
             return job_dict
         return None
-    
+
+    async def _execute_simple_job_action(
+        self,
+        job_id: str,
+        action: str,
+        scheduler_method,
+        success_log: str,
+        error_log_prefix: str
+    ) -> bool:
+        """执行简单的任务操作（暂停/恢复等）
+
+        用于封装 pause_job、resume_job 等简单操作的通用逻辑，
+        统一处理成功/失败日志记录和操作历史。
+
+        Args:
+            job_id: 任务ID
+            action: 操作名称（如 "pause", "resume"）
+            scheduler_method: 调度器方法（如 self.scheduler.pause_job）
+            success_log: 成功日志消息模板（如 "任务 {job_id} 已暂停"）
+            error_log_prefix: 错误日志前缀（如 "暂停任务"）
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            scheduler_method(job_id)
+            logger.info(success_log.format(job_id=job_id))
+            await self._record_job_action(job_id, action, "success")
+            return True
+        except Exception as e:
+            logger.error(f"❌ {error_log_prefix} {job_id} 失败: {e}")
+            await self._record_job_action(job_id, action, "failed", str(e))
+            return False
+
     async def pause_job(self, job_id: str) -> bool:
         """
         暂停任务
-        
+
         Args:
             job_id: 任务ID
-            
+
         Returns:
             是否成功
         """
-        try:
-            self.scheduler.pause_job(job_id)
-            logger.info(f"⏸️ 任务 {job_id} 已暂停")
-            
-            # 记录操作历史
-            await self._record_job_action(job_id, "pause", "success")
-            return True
-        except Exception as e:
-            logger.error(f"❌ 暂停任务 {job_id} 失败: {e}")
-            await self._record_job_action(job_id, "pause", "failed", str(e))
-            return False
-    
+        return await self._execute_simple_job_action(
+            job_id=job_id,
+            action="pause",
+            scheduler_method=self.scheduler.pause_job,
+            success_log="⏸️ 任务 {job_id} 已暂停",
+            error_log_prefix="暂停任务"
+        )
+
     async def resume_job(self, job_id: str) -> bool:
         """
         恢复任务
-        
+
         Args:
             job_id: 任务ID
-            
+
         Returns:
             是否成功
         """
-        try:
-            self.scheduler.resume_job(job_id)
-            logger.info(f"▶️ 任务 {job_id} 已恢复")
-            
-            # 记录操作历史
-            await self._record_job_action(job_id, "resume", "success")
-            return True
-        except Exception as e:
-            logger.error(f"❌ 恢复任务 {job_id} 失败: {e}")
-            await self._record_job_action(job_id, "resume", "failed", str(e))
-            return False
+        return await self._execute_simple_job_action(
+            job_id=job_id,
+            action="resume",
+            scheduler_method=self.scheduler.resume_job,
+            success_log="▶️ 任务 {job_id} 已恢复",
+            error_log_prefix="恢复任务"
+        )
     
     async def trigger_job(self, job_id: str, kwargs: Optional[Dict[str, Any]] = None) -> bool:
         """

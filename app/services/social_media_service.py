@@ -231,41 +231,29 @@ class SocialMediaService:
         return await self.query_social_media_messages(params)
     
     async def search_messages(
-        self, 
-        query: str, 
+        self,
+        query: str,
         symbol: str = None,
         platform: str = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """全文搜索社媒消息"""
-        try:
-            collection = await self._get_collection()
-            
-            # 构建搜索条件
-            search_query = {
-                "$text": {"$search": query}
-            }
-            
-            if symbol:
-                search_query["symbol"] = symbol
-            
-            if platform:
-                search_query["platform"] = platform
-            
-            # 执行搜索
-            cursor = collection.find(
-                search_query,
-                {"score": {"$meta": "textScore"}}
-            ).sort([("score", {"$meta": "textScore"})])
-            
-            messages = await cursor.limit(limit).to_list(length=limit)
-            
-            self.logger.debug(f"🔍 搜索到 {len(messages)} 条相关消息")
-            return messages
-            
-        except Exception as e:
-            self.logger.error(f"❌ 社媒消息搜索失败: {e}")
-            return []
+        from app.utils.search_utils import execute_text_search
+
+        collection = await self._get_collection()
+
+        # 构建额外过滤条件
+        extra_filters = {}
+        if platform:
+            extra_filters["platform"] = platform
+
+        return await execute_text_search(
+            collection=collection,
+            query=query,
+            symbol=symbol,
+            limit=limit,
+            extra_filters=extra_filters if extra_filters else None
+        )
     
     async def get_social_media_statistics(
         self, 

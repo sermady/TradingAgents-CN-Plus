@@ -79,23 +79,50 @@ async def get_usage_statistics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def _execute_cost_query(
+    service_method,
+    days: int,
+    success_message: str,
+    error_message: str
+) -> Dict[str, Any]:
+    """执行成本查询的通用函数
+
+    Args:
+        service_method: 服务层查询方法
+        days: 统计天数
+        success_message: 成功返回的消息
+        error_message: 错误日志消息
+
+    Returns:
+        包含查询结果的标准响应格式
+
+    Raises:
+        HTTPException: 当查询失败时抛出500错误
+    """
+    try:
+        cost_data = await service_method(days=days)
+        return {
+            "success": True,
+            "message": success_message,
+            "data": cost_data
+        }
+    except Exception as e:
+        logger.error(f"{error_message}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/cost/by-provider", summary="按供应商统计成本")
 async def get_cost_by_provider(
     days: int = Query(7, ge=1, le=365, description="统计天数"),
     current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """按供应商统计成本"""
-    try:
-        cost_data = await usage_statistics_service.get_cost_by_provider(days=days)
-
-        return {
-            "success": True,
-            "message": "获取成本统计成功",
-            "data": cost_data
-        }
-    except Exception as e:
-        logger.error(f"获取成本统计失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return await _execute_cost_query(
+        service_method=usage_statistics_service.get_cost_by_provider,
+        days=days,
+        success_message="获取成本统计成功",
+        error_message="获取成本统计失败"
+    )
 
 
 @router.get("/cost/by-model", summary="按模型统计成本")
@@ -104,17 +131,12 @@ async def get_cost_by_model(
     current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """按模型统计成本"""
-    try:
-        cost_data = await usage_statistics_service.get_cost_by_model(days=days)
-
-        return {
-            "success": True,
-            "message": "获取成本统计成功",
-            "data": cost_data
-        }
-    except Exception as e:
-        logger.error(f"获取成本统计失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return await _execute_cost_query(
+        service_method=usage_statistics_service.get_cost_by_model,
+        days=days,
+        success_message="获取成本统计成功",
+        error_message="获取成本统计失败"
+    )
 
 
 @router.get("/cost/daily", summary="每日成本统计")
@@ -123,17 +145,12 @@ async def get_daily_cost(
     current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """每日成本统计"""
-    try:
-        cost_data = await usage_statistics_service.get_daily_cost(days=days)
-
-        return {
-            "success": True,
-            "message": "获取每日成本成功",
-            "data": cost_data
-        }
-    except Exception as e:
-        logger.error(f"获取每日成本失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return await _execute_cost_query(
+        service_method=usage_statistics_service.get_daily_cost,
+        days=days,
+        success_message="获取每日成本成功",
+        error_message="获取每日成本失败"
+    )
 
 
 @router.delete("/records/old", summary="删除旧记录")
