@@ -27,6 +27,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_mongo_db
 from app.core.unified_config_service import get_config_manager
+from app.utils.error_handler import (
+    async_handle_errors_empty_list,
+    async_handle_errors_none,
+    async_handle_errors_zero,
+    async_handle_errors_empty_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +211,7 @@ class MetricsCollector:
             upsert=True,
         )
 
+    @async_handle_errors_empty_list(error_message="查询指标数据失败")
     async def query_metrics(
         self,
         metric_type: MetricType,
@@ -247,6 +254,7 @@ class MetricsCollector:
 
         return results
 
+    @async_handle_errors_none(error_message="获取指标汇总失败")
     async def get_summary(self, metric_type: MetricType) -> Optional[MetricsSummary]:
         """
         获取指标汇总
@@ -283,6 +291,7 @@ class MetricsCollector:
             last_updated=doc.get("last_updated"),
         )
 
+    @async_handle_errors_empty_list(error_message="获取所有指标汇总失败")
     async def get_all_summaries(self) -> List[MetricsSummary]:
         """
         获取所有指标汇总
@@ -352,6 +361,7 @@ class MetricsCollector:
 
         return metrics
 
+    @async_handle_errors_zero(error_message="清理旧指标数据失败")
     async def cleanup_old_metrics(self, days: int = 7) -> int:
         """
         清理旧的指标数据
@@ -375,6 +385,7 @@ class MetricsCollector:
 
         return result.deleted_count
 
+    @async_handle_errors_empty_dict(error_message="获取系统健康状态失败")
     async def get_health_status(self) -> Dict[str, Any]:
         """
         获取系统健康状态

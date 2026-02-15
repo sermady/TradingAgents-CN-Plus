@@ -174,6 +174,97 @@ class MyService:
 
 ---
 
+## Phase 2: SchedulerService 重构
+
+### SchedulerService (`app/services/scheduler_service.py`)
+
+**重构前**:
+- 约 1194 行代码
+- 12 个方法使用重复的手动 try-except 错误处理
+- 大量重复的错误日志记录代码
+
+**重构后**:
+- 约 1080 行代码
+- 使用 error_handler 装饰器统一错误处理
+- 更清晰的业务逻辑代码
+
+**代码减少**: 约 114 行（净减少），消除约 100 行重复错误处理代码
+
+**应用装饰器**:
+
+| 方法 | 装饰器 | 返回值类型 |
+|------|--------|-----------|
+| `get_job_history` | `@async_handle_errors_empty_list` | `List[Dict[str, Any]]` |
+| `count_job_history` | `@async_handle_errors_zero` | `int` |
+| `get_all_history` | `@async_handle_errors_empty_list` | `List[Dict[str, Any]]` |
+| `count_all_history` | `@async_handle_errors_zero` | `int` |
+| `get_job_executions` | `@async_handle_errors_empty_list` | `List[Dict[str, Any]]` |
+| `count_job_executions` | `@async_handle_errors_zero` | `int` |
+| `cancel_job_execution` | `@async_handle_errors_false` | `bool` |
+| `mark_execution_as_failed` | `@async_handle_errors_false` | `bool` |
+| `delete_execution` | `@async_handle_errors_false` | `bool` |
+| `get_job_execution_stats` | `@async_handle_errors_empty_dict` | `Dict[str, Any]` |
+| `_get_job_metadata` | `@async_handle_errors_none` | `Optional[Dict[str, Any]]` |
+| `update_job_metadata` | `@async_handle_errors_false` | `bool` |
+
+**关键改进**:
+
+```python
+# 重构前
+async def get_job_history(self, job_id: str, ...) -> List[Dict[str, Any]]:
+    try:
+        db = self._get_db()
+        cursor = db.scheduler_history.find(...)
+        history = []
+        async for doc in cursor:
+            doc.pop("_id", None)
+            history.append(doc)
+        return history
+    except Exception as e:
+        logger.error(f"❌ 获取任务 {job_id} 执行历史失败: {e}")
+        return []
+
+# 重构后
+@async_handle_errors_empty_list(error_message="获取任务执行历史失败")
+async def get_job_history(self, job_id: str, ...) -> List[Dict[str, Any]]:
+    db = self._get_db()
+    cursor = db.scheduler_history.find(...)
+    history = []
+    async for doc in cursor:
+        doc.pop("_id", None)
+        history.append(doc)
+    return history
+```
+
+---
+
+## 统计数据更新
+
+| 指标 | Phase 1 | Phase 2 | 总计 |
+|------|---------|---------|------|
+| **已重构服务数** | 1 | 1 | **2** |
+| **重构方法数** | 5 | 12 | **17** |
+| **减少代码行数** | 约 15 行 | 约 114 行 | **约 129 行** |
+| **消除重复错误处理** | 约 50 行 | 约 100 行 | **约 150 行** |
+| **测试通过率** | 4/4 ✅ | 4/4 ✅ | **4/4 ✅** |
+
+---
+
+## 不适合重构的方法
+
+以下方法**不适合**使用 error_handler 装饰器：
+
+| 方法 | 原因 |
+|------|------|
+| `_execute_simple_job_action` | 需要记录操作历史（成功/失败） |
+| `trigger_job` | 有复杂逻辑和多处分支 |
+| `_check_zombie_tasks` | 没有返回值 |
+| `_record_job_execution` | 没有返回值 |
+| `_record_job_action` | 没有返回值 |
+| `update_job_progress` | 没有返回值 |
+
+---
+
 **创建时间**: 2026-02-15
 **更新时间**: 2026-02-15
 **完成时间**: 2026-02-15
