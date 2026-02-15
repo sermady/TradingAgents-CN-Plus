@@ -81,9 +81,13 @@ def test_custom_methods():
     try:
         from app.services.tags_service import TagsService
         from app.services.notifications_service import NotificationsService
+        from app.services.operation_log_service import OperationLogService
+        from app.services.usage_statistics_service import UsageStatisticsService
 
         tags = TagsService()
         notif = NotificationsService()
+        op_log = OperationLogService()
+        usage = UsageStatisticsService()
 
         # TagsService 自定义方法
         tags_methods = ['list_tags', 'create_tag', 'update_tag', 'delete_tag', 'ensure_indexes']
@@ -95,8 +99,21 @@ def test_custom_methods():
         for method in notif_methods:
             assert hasattr(notif, method), f"NotificationsService 缺少方法: {method}"
 
+        # OperationLogService 自定义方法
+        op_log_methods = ['create_log', 'get_logs', 'get_stats', 'clear_logs', 'get_log_by_id']
+        for method in op_log_methods:
+            assert hasattr(op_log, method), f"OperationLogService 缺少方法: {method}"
+
+        # UsageStatisticsService 自定义方法
+        usage_methods = ['add_usage_record', 'get_usage_records', 'get_usage_statistics',
+                        'get_cost_by_provider', 'get_cost_by_model', 'get_daily_cost', 'delete_old_records']
+        for method in usage_methods:
+            assert hasattr(usage, method), f"UsageStatisticsService 缺少方法: {method}"
+
         print(f"  [OK] TagsService 自定义方法 ({len(tags_methods)}个) 都可用")
         print(f"  [OK] NotificationsService 自定义方法 ({len(notif_methods)}个) 都可用")
+        print(f"  [OK] OperationLogService 自定义方法 ({len(op_log_methods)}个) 都可用")
+        print(f"  [OK] UsageStatisticsService 自定义方法 ({len(usage_methods)}个) 都可用")
         return True
     except Exception as e:
         print(f"  [ERROR] 自定义方法测试失败: {e}")
