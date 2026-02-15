@@ -10,6 +10,7 @@ from pymongo import UpdateOne
 from app.core.config import settings
 from app.core.database import get_mongo_db
 from app.services.data_sources.manager import DataSourceManager
+from app.utils.error_handler import async_handle_errors_empty_dict
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +140,7 @@ class QuotesIngestionService:
         except Exception as e:
             logger.warning(f"记录同步状态失败（忽略）: {e}")
 
+    @async_handle_errors_empty_dict(error_message="获取同步状态失败")
     async def get_sync_status(self) -> Dict[str, any]:
         """
         获取同步状态
@@ -155,47 +157,12 @@ class QuotesIngestionService:
                 "error_message": None
             }
         """
-        try:
-            db = get_mongo_db()
-            status_coll = db[self.status_collection_name]
+        db = get_mongo_db()
+        status_coll = db[self.status_collection_name]
 
-            doc = await status_coll.find_one({"job": "quotes_ingestion"})
+        doc = await status_coll.find_one({"job": "quotes_ingestion"})
 
-            if not doc:
-                return {
-                    "last_sync_time": None,
-                    "last_sync_time_iso": None,
-                    "interval_seconds": settings.QUOTES_INGEST_INTERVAL_SECONDS,
-                    "interval_minutes": settings.QUOTES_INGEST_INTERVAL_SECONDS / 60,
-                    "data_source": None,
-                    "success": None,
-                    "records_count": 0,
-                    "error_message": "尚未执行过同步"
-                }
-
-            # 移除 _id 字段
-            doc.pop("_id", None)
-            doc.pop("job", None)
-
-            # 添加分钟数
-            doc["interval_minutes"] = doc.get("interval_seconds", 0) / 60
-
-            # 🔥 格式化时间（确保转换为本地时区）
-            if "last_sync_time" in doc and doc["last_sync_time"]:
-                dt = doc["last_sync_time"]
-                # MongoDB 返回的是 UTC 时间的 datetime 对象（aware 或 naive）
-                # 如果是 naive，添加 UTC 时区；如果是 aware，转换为本地时区
-                if dt.tzinfo is None:
-                    # naive datetime，假设是 UTC
-                    dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-                # 转换为本地时区
-                dt_local = dt.astimezone(self.tz)
-                doc["last_sync_time"] = dt_local.strftime("%Y-%m-%d %H:%M:%S")
-
-            return doc
-
-        except Exception as e:
-            logger.error(f"获取同步状态失败: {e}")
+        if not doc:
             return {
                 "last_sync_time": None,
                 "last_sync_time_iso": None,
@@ -204,8 +171,29 @@ class QuotesIngestionService:
                 "data_source": None,
                 "success": None,
                 "records_count": 0,
-                "error_message": f"获取状态失败: {str(e)}"
+                "error_message": "尚未执行过同步"
             }
+
+        # 移除 _id 字段
+        doc.pop("_id", None)
+        doc.pop("job", None)
+
+        # 添加分钟数
+        doc["interval_minutes"] = doc.get("interval_seconds", 0) / 60
+
+        # 🔥 格式化时间（确保转换为本地时区）
+        if "last_sync_time" in doc and doc["last_sync_time"]:
+            dt = doc["last_sync_time"]
+            # MongoDB 返回的是 UTC 时间的 datetime 对象（aware 或 naive）
+            # 如果是 naive，添加 UTC 时区；如果是 aware，转换为本地时区
+            if dt.tzinfo is None:
+                # naive datetime，假设是 UTC
+                dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+            # 转换为本地时区
+            dt_local = dt.astimezone(self.tz)
+            doc["last_sync_time"] = dt_local.strftime("%Y-%m-%d %H:%M:%S")
+
+        return doc
 
     def _check_tushare_permission(self) -> bool:
         """

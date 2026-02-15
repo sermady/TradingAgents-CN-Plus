@@ -26,6 +26,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_mongo_db
 from app.core.unified_config_service import get_config_manager
+from app.utils.error_handler import (
+    async_handle_errors_empty_dict,
+    async_handle_errors_empty_list,
+    async_handle_errors_zero,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +106,7 @@ class DataSyncManager:
             self._db = get_mongo_db()
         return self._db
 
+    @async_handle_errors_empty_dict(error_message="获取同步状态失败")
     async def get_sync_status(self, data_type: DataType) -> Dict[str, Any]:
         """
         获取指定数据类型的同步状态
@@ -121,6 +127,7 @@ class DataSyncManager:
 
         return {"data_type": data_type.value, "status": "never_run", "last_sync": None}
 
+    @async_handle_errors_empty_list(error_message="获取所有同步状态失败")
     async def get_all_sync_status(self) -> List[Dict[str, Any]]:
         """
         获取所有数据类型同步状态
@@ -138,6 +145,7 @@ class DataSyncManager:
 
         return results
 
+    @async_handle_errors_empty_list(error_message="获取同步历史记录失败")
     async def get_sync_history(
         self, data_type: Optional[DataType] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
@@ -165,6 +173,7 @@ class DataSyncManager:
 
         return results
 
+    @async_handle_errors_empty_dict(error_message="获取同步统计信息失败")
     async def get_statistics(self) -> Dict[str, Any]:
         """
         获取同步统计信息
@@ -174,7 +183,6 @@ class DataSyncManager:
         """
         db = await self._get_db()
         history_collection = db["sync_history"]
-        status_collection = db["sync_status"]
 
         # 统计历史记录
         total_jobs = await history_collection.count_documents({})
@@ -185,7 +193,7 @@ class DataSyncManager:
 
         # 统计总记录数
         pipeline = [{"$group": {"_id": None, "total": {"$sum": "$inserted"}}}]
-        result = await history_collection.aggregate_pipeline(pipeline).to_list(length=1)
+        result = await history_collection.aggregate(pipeline).to_list(length=1)
         total_records = result[0]["total"] if result else 0
 
         # 获取最近同步时间
@@ -193,7 +201,7 @@ class DataSyncManager:
 
         # 统计数据源使用情况
         source_pipeline = [{"$group": {"_id": "$data_source", "count": {"$sum": 1}}}]
-        source_results = await history_collection.aggregate_pipeline(
+        source_results = await history_collection.aggregate(
             source_pipeline
         ).to_list(length=100)
         source_usage = {r["_id"]: r["count"] for r in source_results if r["_id"]}
@@ -583,6 +591,7 @@ class DataSyncManager:
             {"data_type": job.data_type.value}, {"$set": job_data}, upsert=True
         )
 
+    @async_handle_errors_zero(error_message="清理旧同步历史记录失败")
     async def cleanup_old_history(self, days: int = 30) -> int:
         """
         清理旧的同步历史记录
