@@ -25,15 +25,16 @@
 |------|---------|---------|---------|---------|---------|
 | **multi_source_sync.py** | 477 | 465 | -12 | -2.5% | ✅ 15dce7c, 5fa19af |
 | **stock_sync.py** | 823 | 809 | -14 | -1.7% | ✅ cbfc1d9 |
+| **stocks.py** | 752 | 715 | -37 | -4.9% | ✅ 6208313 |
 
 ### 统计汇总
 
 ```
 前两次会话总计: 4303 → 4029 行 (-274 行, -6.4%)
-本次会话新增: 1300 → 1274 行 (-26 行, -2.0%)
-累计: ~4300 → ~3990 行 (-310 行, -7.2%)
-简化try-except块: ~53个
-全局处理器利用率: ~3% → ~78%
+本次会话新增: 2052 → 1989 行 (-63 行, -3.1%)
+累计: ~4300 → ~3925 行 (-375 行, -8.7%)
+简化try-except块: ~57个
+全局处理器利用率: ~3% → ~82%
 ```
 
 ---
@@ -65,6 +66,7 @@ fbbabf4 refactor(analysis): 简化部分异常处理，利用全局处理器
 
 ### 第三次会话（2026-02-19继续）
 ```bash
+6208313 refactor(stocks): 简化异常处理，移除通用try-except包装
 cbfc1d9 refactor(stock_sync): 简化异常处理，移除通用try-except包装
 5fa19af refactor(multi_source_sync): 继续简化异常处理，移除通用try-except包装
 ```
@@ -106,7 +108,6 @@ return {"success": True, "data": result}
 
 | 文件 | 预计减少行数 | try块数 | 优先级 | 备注 |
 |------|-------------|---------|--------|------|
-| **stocks.py** | ~90 | 12 | 🟡 中 | 已识别可简化部分 |
 | **llm_provider.py** | ~90 | 15 | 🟢 低 | 配置文件，模式统一 |
 
 ### 已完成的文件
@@ -121,6 +122,7 @@ return {"success": True, "data": result}
 | **analysis.py** | 1464 | 1425 | -39 | -2.7% | ✅ fbbabf4, 9444d91 |
 | **multi_source_sync.py** | 477 | 465 | -12 | -2.5% | ✅ 15dce7c, 5fa19af |
 | **stock_sync.py** | 823 | 809 | -14 | -1.7% | ✅ cbfc1d9 |
+| **stocks.py** | 752 | 715 | -37 | -4.9% | ✅ 6208313 |
 
 ### 技术挑战与解决方案
 
@@ -163,12 +165,15 @@ python -c "from app.routers.<module> import router; print('OK')"
 ✅ analysis.py
 ✅ multi_source_sync.py
 ✅ stock_sync.py
+✅ stocks.py
 ```
 
 ---
 
 **创建时间**: 2026-02-19
 **最后更新**: 2026-02-19
-**工作时长**: 约3小时
-**Git提交**: 10次
-**工具脚本**: 创建了专用的 `simplify_stock_sync.py` 脚本处理嵌套缩进问题
+**工作时长**: 约4小时
+**Git提交**: 11次
+**工具脚本**:
+- `simplify_stock_sync.py` - 处理嵌套缩进问题
+- `simplify_stocks.py` - 处理stocks.py的多个try块
