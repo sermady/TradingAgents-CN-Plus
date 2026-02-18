@@ -4,7 +4,7 @@ Prompt构建工具
 
 统一构建辩论者和研究员的Prompt，消除重复代码
 """
-from typing import Dict, List, Any
+from typing import Dict
 
 
 class PromptBuilder:

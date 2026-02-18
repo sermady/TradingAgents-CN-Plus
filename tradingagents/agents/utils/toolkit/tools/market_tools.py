@@ -4,8 +4,7 @@
 
 提供市场行情和技术指标的统一获取接口
 """
-import logging
-from typing import Dict, Optional
+from typing import Dict
 
 from tradingagents.utils.logging_manager import get_logger
 

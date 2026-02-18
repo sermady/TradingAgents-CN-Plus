@@ -12,7 +12,6 @@ def create_msg_delete():
         注意：在并行执行模式下，多个分析师会同时调用此函数。
         为了避免重复删除导致的错误，我们使用一个标记机制确保只执行一次清理。
         """
-        from langgraph.graph import END
 
         messages = state.get("messages", [])
 

@@ -4,8 +4,7 @@
 
 提供新闻数据和情感分析的统一获取接口
 """
-import logging
-from typing import Dict, Optional, List
+from typing import Dict
 
 from tradingagents.utils.logging_manager import get_logger
 

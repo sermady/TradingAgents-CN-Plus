@@ -5,9 +5,8 @@
 在分析师工作流中集成数据验证功能
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +266,6 @@ def add_data_validation_to_fundamentals_report(
     try:
         # 导入验证器和标准化器
         from tradingagents.dataflows.validators.fundamentals_validator import FundamentalsValidator
-        from tradingagents.dataflows.standardizers.data_standardizer import DataStandardizer
 
         # 解析数据
         data_dict = parse_data_string_to_dict(raw_data)

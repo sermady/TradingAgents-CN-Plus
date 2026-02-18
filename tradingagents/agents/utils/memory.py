@@ -2,12 +2,9 @@
 import chromadb
 from chromadb.config import Settings
 from openai import OpenAI
-import dashscope
-from dashscope import TextEmbedding
 import os
 import threading
-import hashlib
-from typing import Dict, Optional
+from typing import Dict
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
@@ -86,7 +83,7 @@ class ChromaDBManager:
                     # 创建新集合
                     collection = self._client.create_collection(name=name)
                     logger.info(f"📚 [ChromaDB] 创建新集合: {name}")
-                except Exception as e:
+                except Exception:
                     # 可能是并发创建，再次尝试获取
                     try:
                         collection = self._client.get_collection(name=name)

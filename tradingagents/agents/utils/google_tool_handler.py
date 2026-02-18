@@ -10,7 +10,7 @@ Google模型工具调用统一处理器
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 
 logger = logging.getLogger(__name__)

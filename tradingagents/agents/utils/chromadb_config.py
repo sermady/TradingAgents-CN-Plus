@@ -3,7 +3,6 @@
 ChromaDB 统一配置模块
 支持 Windows 10/11 和其他操作系统的自动适配
 """
-import os
 import platform
 import chromadb
 from chromadb.config import Settings

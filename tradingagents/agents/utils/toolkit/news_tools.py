@@ -93,7 +93,7 @@ def get_chinese_social_sentiment(
             ticker, curr_date
         )
         return chinese_sentiment_results
-    except Exception as e:
+    except Exception:
         # 如果中国平台数据获取失败，回退到原有的Reddit数据
         return interface.get_reddit_company_news(ticker, curr_date, 7, 5)
 
