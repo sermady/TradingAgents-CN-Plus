@@ -41,115 +41,104 @@ class DataSourceStatus(BaseModel):
 @router.get("/sources/status")
 async def get_data_sources_status():
     """获取所有数据源的状态"""
-    try:
-        manager = DataSourceManager()
-        available_adapters = manager.get_available_adapters()
-        all_adapters = manager.adapters
+    manager = DataSourceManager()
+    available_adapters = manager.get_available_adapters()
+    all_adapters = manager.adapters
 
-        status_list = []
-        for adapter in all_adapters:
-            is_available = adapter in available_adapters
+    status_list = []
+    for adapter in all_adapters:
+        is_available = adapter in available_adapters
 
-            # 根据数据源类型提供描述
-            descriptions = {
-                "tushare": "专业金融数据API，提供高质量的A股数据和财务指标",
-                "akshare": "开源金融数据库，提供基础的股票信息",
-                "baostock": "免费开源的证券数据平台，提供历史数据"
-            }
+        # 根据数据源类型提供描述
+        descriptions = {
+            "tushare": "专业金融数据API，提供高质量的A股数据和财务指标",
+            "akshare": "开源金融数据库，提供基础的股票信息",
+            "baostock": "免费开源的证券数据平台，提供历史数据"
+        }
 
-            status_item = {
-                "name": adapter.name,
-                "priority": adapter.priority,
-                "available": is_available,
-                "description": descriptions.get(adapter.name, f"{adapter.name}数据源")
-            }
+        status_item = {
+            "name": adapter.name,
+            "priority": adapter.priority,
+            "available": is_available,
+            "description": descriptions.get(adapter.name, f"{adapter.name}数据源")
+        }
 
-            # 添加 Token 来源信息（仅 Tushare）
-            if adapter.name == "tushare" and is_available and hasattr(adapter, 'get_token_source'):
-                token_source = adapter.get_token_source()
-                if token_source:
-                    status_item["token_source"] = token_source
-                    if token_source == 'database':
-                        status_item["description"] += " (Token来源: 数据库)"
-                    elif token_source == 'env':
-                        status_item["description"] += " (Token来源: .env)"
+        # 添加 Token 来源信息（仅 Tushare）
+        if adapter.name == "tushare" and is_available and hasattr(adapter, 'get_token_source'):
+            token_source = adapter.get_token_source()
+            if token_source:
+                status_item["token_source"] = token_source
+                if token_source == 'database':
+                    status_item["description"] += " (Token来源: 数据库)"
+                elif token_source == 'env':
+                    status_item["description"] += " (Token来源: .env)"
 
-            status_list.append(status_item)
+        status_list.append(status_item)
 
-        return SyncResponse(
-            success=True,
-            message="Data sources status retrieved successfully",
-            data=status_list
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get data sources status: {str(e)}")
+    return SyncResponse(
+        success=True,
+        message="Data sources status retrieved successfully",
+        data=status_list
+    )
 
 
 @router.get("/sources/current")
 async def get_current_data_source():
     """获取当前正在使用的数据源（优先级最高且可用的）"""
-    try:
-        manager = DataSourceManager()
-        available_adapters = manager.get_available_adapters()
+    manager = DataSourceManager()
+    available_adapters = manager.get_available_adapters()
 
-        if not available_adapters:
-            return SyncResponse(
-                success=False,
-                message="No available data sources",
-                data={"name": None, "priority": None}
-            )
-
-        # 获取优先级最高的可用数据源（优先级数字越大越高）
-        current_adapter = max(available_adapters, key=lambda x: x.priority)
-
-        # 根据数据源类型提供描述
-        descriptions = {
-            "tushare": "专业金融数据API",
-            "akshare": "开源金融数据库",
-            "baostock": "免费证券数据平台"
-        }
-
-        result = {
-            "name": current_adapter.name,
-            "priority": current_adapter.priority,
-            "description": descriptions.get(current_adapter.name, current_adapter.name)
-        }
-
-        # 添加 Token 来源信息（仅 Tushare）
-        if current_adapter.name == "tushare" and hasattr(current_adapter, 'get_token_source'):
-            token_source = current_adapter.get_token_source()
-            if token_source:
-                result["token_source"] = token_source
-                if token_source == 'database':
-                    result["token_source_display"] = "数据库配置"
-                elif token_source == 'env':
-                    result["token_source_display"] = ".env 配置"
-
+    if not available_adapters:
         return SyncResponse(
-            success=True,
-            message="Current data source retrieved successfully",
-            data=result
+            success=False,
+            message="No available data sources",
+            data={"name": None, "priority": None}
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get current data source: {str(e)}")
+
+    # 获取优先级最高的可用数据源（优先级数字越大越高）
+    current_adapter = max(available_adapters, key=lambda x: x.priority)
+
+    # 根据数据源类型提供描述
+    descriptions = {
+        "tushare": "专业金融数据API",
+        "akshare": "开源金融数据库",
+        "baostock": "免费证券数据平台"
+    }
+
+    result = {
+        "name": current_adapter.name,
+        "priority": current_adapter.priority,
+        "description": descriptions.get(current_adapter.name, current_adapter.name)
+    }
+
+    # 添加 Token 来源信息（仅 Tushare）
+    if current_adapter.name == "tushare" and hasattr(current_adapter, 'get_token_source'):
+        token_source = current_adapter.get_token_source()
+        if token_source:
+            result["token_source"] = token_source
+            if token_source == 'database':
+                result["token_source_display"] = "数据库配置"
+            elif token_source == 'env':
+                result["token_source_display"] = ".env 配置"
+
+    return SyncResponse(
+        success=True,
+        message="Current data source retrieved successfully",
+        data=result
+    )
 
 
 @router.get("/status")
 async def get_sync_status():
     """获取多数据源同步状态"""
-    try:
-        service = get_multi_source_sync_service()
-        status = await service.get_status()
-        
-        return SyncResponse(
-            success=True,
-            message="Status retrieved successfully",
-            data=status
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get sync status: {str(e)}")
+    service = get_multi_source_sync_service()
+    status = await service.get_status()
+
+    return SyncResponse(
+        success=True,
+        message="Status retrieved successfully",
+        data=status
+    )
 
 
 @router.post("/stock_basics/run")
