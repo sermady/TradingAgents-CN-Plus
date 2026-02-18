@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 # 导入统一日志系统和工具
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.company_name_utils import get_company_name
-from tradingagents.agents.utils.prompt_builder import build_researcher_prompt
 
 logger = get_logger("default")
 
