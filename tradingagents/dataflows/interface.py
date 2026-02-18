@@ -63,6 +63,7 @@ from .interfaces import (
 )
 
 # 从 news 模块导入中文社交情绪分析
+from .news.chinese_finance import get_chinese_social_sentiment
 
 # 额外导入：用于根据市场类型自动选择数据源的函数
 from .interfaces.base_interface import logger
