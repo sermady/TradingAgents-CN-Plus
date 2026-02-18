@@ -291,119 +291,324 @@ class FundamentalsLoader(BaseDataLoader):
     def _get_financial_metrics(self, symbol: str) -> Dict[str, Any]:
         """获取财务指标
 
-        从MongoDB获取真实的财务数据，包括：
+        直接从Tushare获取真实的财务数据，包括：
         - 估值指标：PE、PB
         - 盈利能力：ROE、ROA、毛利率、净利率
+        - 成长性：营收增长率、净利润增长率
         - 综合评分：基本面评分、估值评分、成长评分
         """
+        import asyncio
+
+        metrics = {
+            "pe": "N/A",
+            "pb": "N/A",
+            "roe": "N/A",
+            "roa": "N/A",
+            "gross_margin": "N/A",
+            "net_margin": "N/A",
+            "revenue_growth": "N/A",
+            "profit_growth": "N/A",
+            "fundamental_score": 5.0,
+            "valuation_score": 5.0,
+            "growth_score": 5.0,
+            "risk_level": "中等",
+        }
+
         try:
-            from ..cache.mongodb_cache_adapter import get_mongodb_cache_adapter
+            # 使用TushareProvider获取数据
+            from ..providers.china.tushare import get_tushare_provider
 
-            adapter = get_mongodb_cache_adapter()
-            metrics = {
-                "pe": "N/A",
-                "pb": "N/A",
-                "roe": "N/A",
-                "roa": "N/A",
-                "gross_margin": "N/A",
-                "net_margin": "N/A",
-                "fundamental_score": 5.0,
-                "valuation_score": 5.0,
-                "growth_score": 5.0,
-                "risk_level": "中等",
-            }
-
-            if not adapter.use_app_cache or adapter.db is None:
-                logger.debug(f"📊 MongoDB缓存不可用，返回默认指标: {symbol}")
+            provider = get_tushare_provider()
+            if not provider or not provider.is_available():
+                logger.warning("⚠️ Tushare数据源不可用")
                 return metrics
 
-            code6 = str(symbol).zfill(6)
+            ts_code = provider._normalize_ts_code(symbol)
 
-            # 1. 从 stock_basic_info 获取估值指标（PE、PB）
+            # 1. 获取估值指标（PE、PB）- 使用daily_basic接口
             try:
-                basics_collection = adapter.db.stock_basic_info
-                basics_doc = basics_collection.find_one(
-                    {"code": code6},
-                    {"_id": 0, "pe": 1, "pe_ttm": 1, "pb": 1, "total_mv": 1, "circ_mv": 1}
-                )
-                if basics_doc:
-                    pe = basics_doc.get("pe")
-                    pb = basics_doc.get("pb")
-                    pe_ttm = basics_doc.get("pe_ttm")
+                from datetime import datetime, timedelta
 
-                    # 优先使用PE_TTM，如果没有则使用PE
-                    if pe is not None and pe > 0:
-                        metrics["pe"] = f"{pe:.2f}"
-                    elif pe_ttm is not None and pe_ttm > 0:
-                        metrics["pe"] = f"{pe_ttm:.2f} (TTM)"
+                # 获取最近10个自然日的数据（跳过周末）
+                end_date = datetime.now()
+                for i in range(10):
+                    check_date = end_date - timedelta(days=i)
+                    # 跳过周末
+                    if check_date.weekday() >= 5:  # 5=周六, 6=周日
+                        continue
+                    date_str = check_date.strftime("%Y%m%d")
+                    df = provider.api.daily_basic(
+                        ts_code=ts_code,
+                        trade_date=date_str,
+                        fields="ts_code,trade_date,pe,pb,pe_ttm,total_mv,circ_mv"
+                    )
+                    if df is not None and not df.empty:
+                        row = df.iloc[0]
+                        pe = row.get("pe")
+                        pb = row.get("pb")
+                        pe_ttm = row.get("pe_ttm")
 
-                    if pb is not None and pb > 0:
-                        metrics["pb"] = f"{pb:.2f}"
+                        if pe is not None and pe > 0:
+                            metrics["pe"] = f"{pe:.2f}"
+                        elif pe_ttm is not None and pe_ttm > 0:
+                            metrics["pe"] = f"{pe_ttm:.2f} (TTM)"
 
-                    logger.debug(f"✅ 从stock_basics获取估值指标: PE={metrics['pe']}, PB={metrics['pb']}")
+                        if pb is not None and pb > 0:
+                            metrics["pb"] = f"{pb:.2f}"
+
+                        logger.info(f"✅ 从daily_basic获取估值指标 {symbol}: PE={metrics['pe']}, PB={metrics['pb']}, 日期={date_str}")
+                        break
+                    else:
+                        logger.debug(f"⚠️ daily_basic无数据 {symbol}: {date_str}")
             except Exception as e:
-                logger.debug(f"⚠️ 从stock_basics获取估值指标失败: {e}")
+                logger.warning(f"⚠️ 从daily_basic获取估值指标失败 {symbol}: {e}")
 
-            # 2. 从 stock_financial_data 获取财务指标
+            # 2. 获取财务指标（ROE、ROA、毛利率、净利率）- 使用fina_indicator接口
+            financial_indicators = []
             try:
-                financial_doc = adapter.get_financial_data(symbol)
-                if financial_doc:
-                    # 标准化数据中的字段直接使用
-                    raw_data = financial_doc.get("raw_data", {})
-                    financial_indicators = raw_data.get("financial_indicators", [])
+                df = provider.api.fina_indicator(ts_code=ts_code, limit=8)
+                if df is not None and not df.empty:
+                    financial_indicators = df.to_dict("records")
+                    latest = financial_indicators[0]
 
-                    if financial_indicators:
-                        # 获取最新的财务指标
-                        latest_indicator = financial_indicators[0]
+                    # ROE - 使用加权平均ROE
+                    roe = latest.get("roe_waa") or latest.get("roe") or latest.get("roe_dt")
+                    if roe is not None:
+                        metrics["roe"] = f"{float(roe):.2f}%"
 
-                        # 提取ROE
-                        roe = latest_indicator.get("roe")
-                        if roe is not None:
-                            metrics["roe"] = f"{float(roe):.2f}%"
+                    # ROA
+                    roa = latest.get("roa") or latest.get("roa2")
+                    if roa is not None:
+                        metrics["roa"] = f"{float(roa):.2f}%"
 
-                        # 提取ROA
-                        roa = latest_indicator.get("roa")
-                        if roa is not None:
-                            metrics["roa"] = f"{float(roa):.2f}%"
+                    # 毛利率
+                    gross_margin = latest.get("grossprofit_margin")
+                    if gross_margin is not None:
+                        metrics["gross_margin"] = f"{float(gross_margin):.2f}%"
 
-                        # 提取毛利率
-                        gross_margin = latest_indicator.get("grossprofit_margin")
-                        if gross_margin is not None:
-                            metrics["gross_margin"] = f"{float(gross_margin):.2f}%"
+                    # 净利率
+                    net_margin = latest.get("netprofit_margin")
+                    if net_margin is not None:
+                        metrics["net_margin"] = f"{float(net_margin):.2f}%"
 
-                        # 提取净利率
-                        net_margin = latest_indicator.get("netprofit_margin")
-                        if net_margin is not None:
-                            metrics["net_margin"] = f"{float(net_margin):.2f}%"
-
-                    # 计算各项评分
-                    metrics["fundamental_score"] = self._calculate_fundamental_score(financial_doc)
-                    metrics["valuation_score"] = self._calculate_valuation_score(financial_doc, metrics)
-                    metrics["growth_score"] = self._calculate_growth_score(financial_doc)
-
-                    logger.debug(f"✅ 从financial_data获取财务指标: ROE={metrics['roe']}, ROA={metrics['roa']}")
+                    logger.debug(f"✅ 从fina_indicator获取盈利指标: ROE={metrics['roe']}, ROA={metrics['roa']}")
             except Exception as e:
-                logger.debug(f"⚠️ 从financial_data获取财务指标失败: {e}")
+                logger.debug(f"⚠️ 从fina_indicator获取盈利指标失败: {e}")
 
-            # 3. 根据指标计算风险等级
-            metrics["risk_level"] = self._calculate_risk_level(metrics)
+            # 3. 获取成长数据（营收、利润增长率）- 使用income接口
+            try:
+                df = provider.api.income(ts_code=ts_code, limit=8)
+                if df is not None and not df.empty:
+                    income_data = df.to_dict("records")
+
+                    if len(income_data) >= 2:
+                        # 获取最新和上一期数据
+                        current = income_data[0]
+                        previous = income_data[1]
+
+                        # 营收增长率
+                        current_revenue = current.get("total_revenue") or current.get("revenue")
+                        previous_revenue = previous.get("total_revenue") or previous.get("revenue")
+                        if current_revenue and previous_revenue:
+                            try:
+                                growth = (float(current_revenue) / float(previous_revenue) - 1) * 100
+                                metrics["revenue_growth"] = f"{growth:.2f}%"
+                            except (ValueError, ZeroDivisionError):
+                                pass
+
+                        # 净利润增长率
+                        current_profit = current.get("n_income_attr_p") or current.get("net_profit")
+                        previous_profit = previous.get("n_income_attr_p") or previous.get("net_profit")
+                        if current_profit and previous_profit:
+                            try:
+                                growth = (float(current_profit) / float(previous_profit) - 1) * 100
+                                metrics["profit_growth"] = f"{growth:.2f}%"
+                            except (ValueError, ZeroDivisionError):
+                                pass
+
+                    logger.debug(f"✅ 从income获取成长数据: 营收增长={metrics['revenue_growth']}, 利润增长={metrics['profit_growth']}")
+            except Exception as e:
+                logger.debug(f"⚠️ 从income获取成长数据失败: {e}")
+
+            # 4. 计算各项评分
+            metrics["fundamental_score"] = self._calculate_fundamental_score_from_metrics(metrics)
+            metrics["valuation_score"] = self._calculate_valuation_score_from_metrics(metrics)
+            metrics["growth_score"] = self._calculate_growth_score_from_metrics(metrics)
+            metrics["risk_level"] = self._calculate_risk_level_from_metrics(metrics)
 
             return metrics
 
         except Exception as e:
             logger.warning(f"⚠️ 获取财务指标失败: {e}")
-            return {
-                "pe": "N/A",
-                "pb": "N/A",
-                "roe": "N/A",
-                "roa": "N/A",
-                "gross_margin": "N/A",
-                "net_margin": "N/A",
-                "fundamental_score": 5.0,
-                "valuation_score": 5.0,
-                "growth_score": 5.0,
-                "risk_level": "中等",
-            }
+            return metrics
+
+    def _calculate_fundamental_score_from_metrics(self, metrics: Dict[str, Any]) -> float:
+        """从metrics计算基本面评分 (0-10分)"""
+        score = 5.0  # 基础分
+
+        try:
+            # ROE评分 (权重30%)
+            roe_str = metrics.get("roe", "N/A")
+            if roe_str != "N/A":
+                roe_val = float(roe_str.replace("%", ""))
+                if roe_val >= 20:
+                    score += 1.5
+                elif roe_val >= 15:
+                    score += 1.0
+                elif roe_val >= 10:
+                    score += 0.5
+                elif roe_val < 5:
+                    score -= 0.5
+
+            # ROA评分 (权重20%)
+            roa_str = metrics.get("roa", "N/A")
+            if roa_str != "N/A":
+                roa_val = float(roa_str.replace("%", ""))
+                if roa_val >= 10:
+                    score += 1.0
+                elif roa_val >= 5:
+                    score += 0.5
+
+            # 毛利率评分 (权重20%)
+            gross_margin_str = metrics.get("gross_margin", "N/A")
+            if gross_margin_str != "N/A":
+                gm_val = float(gross_margin_str.replace("%", ""))
+                if gm_val >= 40:
+                    score += 1.0
+                elif gm_val >= 30:
+                    score += 0.5
+
+            # 净利率评分 (权重20%)
+            net_margin_str = metrics.get("net_margin", "N/A")
+            if net_margin_str != "N/A":
+                nm_val = float(net_margin_str.replace("%", ""))
+                if nm_val >= 20:
+                    score += 1.0
+                elif nm_val >= 10:
+                    score += 0.5
+
+        except Exception as e:
+            logger.debug(f"计算基本面评分失败: {e}")
+
+        return max(0, min(10, score))
+
+    def _calculate_valuation_score_from_metrics(self, metrics: Dict[str, Any]) -> float:
+        """从metrics计算估值吸引力评分 (0-10分)"""
+        score = 5.0  # 基础分
+
+        try:
+            # PE评分
+            pe_str = metrics.get("pe", "N/A")
+            if pe_str != "N/A":
+                pe_val = float(pe_str.replace(" (TTM)", ""))
+                if 0 < pe_val <= 15:
+                    score += 2.5
+                elif 15 < pe_val <= 25:
+                    score += 1.5
+                elif 25 < pe_val <= 40:
+                    score += 0.5
+                elif pe_val > 60:
+                    score -= 1.0
+                elif pe_val < 0:
+                    score -= 0.5
+
+            # PB评分
+            pb_str = metrics.get("pb", "N/A")
+            if pb_str != "N/A":
+                pb_val = float(pb_str)
+                if 0 < pb_val <= 1.5:
+                    score += 1.5
+                elif 1.5 < pb_val <= 3:
+                    score += 0.5
+                elif pb_val > 6:
+                    score -= 0.5
+
+        except Exception as e:
+            logger.debug(f"计算估值评分失败: {e}")
+
+        return max(0, min(10, score))
+
+    def _calculate_growth_score_from_metrics(self, metrics: Dict[str, Any]) -> float:
+        """从metrics计算成长潜力评分 (0-10分)"""
+        score = 5.0  # 基础分
+
+        try:
+            # 营收增长率评分
+            revenue_growth_str = metrics.get("revenue_growth", "N/A")
+            if revenue_growth_str != "N/A":
+                rg_val = float(revenue_growth_str.replace("%", ""))
+                if rg_val >= 50:
+                    score += 2.0
+                elif rg_val >= 30:
+                    score += 1.5
+                elif rg_val >= 15:
+                    score += 1.0
+                elif rg_val < 0:
+                    score -= 0.5
+
+            # 净利润增长率评分
+            profit_growth_str = metrics.get("profit_growth", "N/A")
+            if profit_growth_str != "N/A":
+                pg_val = float(profit_growth_str.replace("%", ""))
+                if pg_val >= 50:
+                    score += 1.5
+                elif pg_val >= 30:
+                    score += 1.0
+                elif pg_val >= 15:
+                    score += 0.5
+                elif pg_val < -20:
+                    score -= 0.5
+
+        except Exception as e:
+            logger.debug(f"计算成长评分失败: {e}")
+
+        return max(0, min(10, score))
+
+    def _calculate_risk_level_from_metrics(self, metrics: Dict[str, Any]) -> str:
+        """从metrics计算风险等级"""
+        risk_score = 0
+
+        try:
+            # PE风险
+            pe_str = metrics.get("pe", "N/A")
+            if pe_str != "N/A":
+                pe_val = float(pe_str.replace(" (TTM)", ""))
+                if pe_val < 0:
+                    risk_score += 3
+                elif pe_val > 100:
+                    risk_score += 2
+                elif pe_val > 60:
+                    risk_score += 1
+
+            # PB风险
+            pb_str = metrics.get("pb", "N/A")
+            if pb_str != "N/A":
+                pb_val = float(pb_str)
+                if pb_val > 10:
+                    risk_score += 2
+                elif pb_val > 6:
+                    risk_score += 1
+
+            # ROE风险
+            roe_str = metrics.get("roe", "N/A")
+            if roe_str != "N/A":
+                roe_val = float(roe_str.replace("%", ""))
+                if roe_val < 5:
+                    risk_score += 2
+                elif roe_val < 10:
+                    risk_score += 1
+
+        except Exception as e:
+            logger.debug(f"计算风险等级失败: {e}")
+
+        if risk_score >= 6:
+            return "高"
+        elif risk_score >= 3:
+            return "中高"
+        elif risk_score >= 1:
+            return "中等"
+        else:
+            return "低"
 
     def _calculate_fundamental_score(self, financial_data: Dict[str, Any]) -> float:
         """计算基本面评分 (0-10分)"""
@@ -712,6 +917,10 @@ class FundamentalsLoader(BaseDataLoader):
 - **总资产收益率(ROA)**: {financial_metrics.get("roa", "N/A")}
 - **毛利率**: {financial_metrics.get("gross_margin", "N/A")}
 - **净利率**: {financial_metrics.get("net_margin", "N/A")}
+
+### 成长性指标
+- **营业收入增长率**: {financial_metrics.get("revenue_growth", "N/A")}
+- **净利润增长率**: {financial_metrics.get("profit_growth", "N/A")}
 
 ## 📈 行业分析
 {industry_info.get("analysis", "暂无行业分析")}
