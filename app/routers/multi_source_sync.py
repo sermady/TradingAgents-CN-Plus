@@ -147,37 +147,33 @@ async def run_stock_basics_sync(
     preferred_sources: Optional[str] = Query(None, description="优先使用的数据源，用逗号分隔")
 ):
     """运行多数据源股票基础信息同步"""
-    try:
-        service = get_multi_source_sync_service()
+    service = get_multi_source_sync_service()
 
-        # 解析优先数据源
-        sources_list = None
-        if preferred_sources and isinstance(preferred_sources, str):
-            sources_list = [s.strip() for s in preferred_sources.split(",") if s.strip()]
+    # 解析优先数据源
+    sources_list = None
+    if preferred_sources and isinstance(preferred_sources, str):
+        sources_list = [s.strip() for s in preferred_sources.split(",") if s.strip()]
 
-        # 运行同步（同步执行，前端已设置10分钟超时）
-        result = await service.run_full_sync(force=force, preferred_sources=sources_list)
+    # 运行同步（同步执行，前端已设置10分钟超时）
+    result = await service.run_full_sync(force=force, preferred_sources=sources_list)
 
-        # 判断是否成功
-        success = result.get("status") in ["success", "success_with_errors"]
-        message = "Synchronization completed successfully"
+    # 判断是否成功
+    success = result.get("status") in ["success", "success_with_errors"]
+    message = "Synchronization completed successfully"
 
-        if result.get("status") == "success_with_errors":
-            message = f"Synchronization completed with {result.get('errors', 0)} errors"
-        elif result.get("status") == "failed":
-            message = f"Synchronization failed: {result.get('message', 'Unknown error')}"
-            success = False
-        elif result.get("status") == "running":
-            message = "Synchronization is already running"
+    if result.get("status") == "success_with_errors":
+        message = f"Synchronization completed with {result.get('errors', 0)} errors"
+    elif result.get("status") == "failed":
+        message = f"Synchronization failed: {result.get('message', 'Unknown error')}"
+        success = False
+    elif result.get("status") == "running":
+        message = "Synchronization is already running"
 
-        return SyncResponse(
-            success=success,
-            message=message,
-            data=result
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to run synchronization: {str(e)}")
+    return SyncResponse(
+        success=success,
+        message=message,
+        data=result
+    )
 
 
 async def _test_single_adapter(adapter) -> dict:
@@ -339,54 +335,50 @@ async def test_data_sources(request: TestSourceRequest = TestSourceRequest()):
 @router.get("/recommendations")
 async def get_sync_recommendations():
     """获取数据源使用建议"""
-    try:
-        manager = DataSourceManager()
-        available_adapters = manager.get_available_adapters()
-        
-        recommendations = {
-            "primary_source": None,
-            "fallback_sources": [],
-            "suggestions": [],
-            "warnings": []
+    manager = DataSourceManager()
+    available_adapters = manager.get_available_adapters()
+
+    recommendations = {
+        "primary_source": None,
+        "fallback_sources": [],
+        "suggestions": [],
+        "warnings": []
+    }
+
+    if available_adapters:
+        # 推荐优先级最高的可用数据源作为主数据源
+        primary = available_adapters[0]
+        recommendations["primary_source"] = {
+            "name": primary.name,
+            "priority": primary.priority,
+            "reason": "Highest priority available data source"
         }
-        
-        if available_adapters:
-            # 推荐优先级最高的可用数据源作为主数据源
-            primary = available_adapters[0]
-            recommendations["primary_source"] = {
-                "name": primary.name,
-                "priority": primary.priority,
-                "reason": "Highest priority available data source"
-            }
-            
-            # 其他可用数据源作为备用
-            for adapter in available_adapters[1:]:
-                recommendations["fallback_sources"].append({
-                    "name": adapter.name,
-                    "priority": adapter.priority
-                })
-        
-        # 生成建议
-        if not available_adapters:
-            recommendations["warnings"].append("No data sources are available. Please check your configuration.")
-        elif len(available_adapters) == 1:
-            recommendations["suggestions"].append("Consider configuring additional data sources for redundancy.")
-        else:
-            recommendations["suggestions"].append(f"You have {len(available_adapters)} data sources available, which provides good redundancy.")
-        
-        # 特定数据源的建议
-        tushare_available = any(a.name == "tushare" for a in available_adapters)
-        if not tushare_available:
-            recommendations["suggestions"].append("Consider configuring Tushare for the most comprehensive financial data.")
-        
-        return SyncResponse(
-            success=True,
-            message="Recommendations generated successfully",
-            data=recommendations
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate recommendations: {str(e)}")
+
+        # 其他可用数据源作为备用
+        for adapter in available_adapters[1:]:
+            recommendations["fallback_sources"].append({
+                "name": adapter.name,
+                "priority": adapter.priority
+            })
+
+    # 生成建议
+    if not available_adapters:
+        recommendations["warnings"].append("No data sources are available. Please check your configuration.")
+    elif len(available_adapters) == 1:
+        recommendations["suggestions"].append("Consider configuring additional data sources for redundancy.")
+    else:
+        recommendations["suggestions"].append(f"You have {len(available_adapters)} data sources available, which provides good redundancy.")
+
+    # 特定数据源的建议
+    tushare_available = any(a.name == "tushare" for a in available_adapters)
+    if not tushare_available:
+        recommendations["suggestions"].append("Consider configuring Tushare for the most comprehensive financial data.")
+
+    return SyncResponse(
+        success=True,
+        message="Recommendations generated successfully",
+        data=recommendations
+    )
 
 
 @router.get("/history")
@@ -396,43 +388,39 @@ async def get_sync_history(
     status: Optional[str] = Query(None, description="状态筛选")
 ):
     """获取同步历史记录"""
-    try:
-        from app.core.database import get_mongo_db
-        db = get_mongo_db()
+    from app.core.database import get_mongo_db
+    db = get_mongo_db()
 
-        # 构建查询条件
-        query = {"job": "stock_basics_multi_source"}
-        if status:
-            query["status"] = status
+    # 构建查询条件
+    query = {"job": "stock_basics_multi_source"}
+    if status:
+        query["status"] = status
 
-        # 计算跳过的记录数
-        skip = (page - 1) * page_size
+    # 计算跳过的记录数
+    skip = (page - 1) * page_size
 
-        # 查询历史记录
-        cursor = db.sync_status.find(query).sort("started_at", -1).skip(skip).limit(page_size)
-        history_records = await cursor.to_list(length=page_size)
+    # 查询历史记录
+    cursor = db.sync_status.find(query).sort("started_at", -1).skip(skip).limit(page_size)
+    history_records = await cursor.to_list(length=page_size)
 
-        # 获取总数
-        total = await db.sync_status.count_documents(query)
+    # 获取总数
+    total = await db.sync_status.count_documents(query)
 
-        # 清理记录中的 _id 字段
-        for record in history_records:
-            record.pop("_id", None)
+    # 清理记录中的 _id 字段
+    for record in history_records:
+        record.pop("_id", None)
 
-        return SyncResponse(
-            success=True,
-            message="History retrieved successfully",
-            data={
-                "records": history_records,
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "has_more": skip + len(history_records) < total
-            }
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get sync history: {str(e)}")
+    return SyncResponse(
+        success=True,
+        message="History retrieved successfully",
+        data={
+            "records": history_records,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": skip + len(history_records) < total
+        }
+    )
 
 
 @router.delete("/cache")
