@@ -6,8 +6,8 @@ Tushare配置管理
 """
 
 import os
-from typing import Dict, Any, Optional
-from .env_utils import parse_bool_env, parse_str_env, get_env_info, validate_required_env_vars
+from typing import Dict, Any
+from .env_utils import parse_bool_env, parse_str_env, get_env_info
 
 
 class TushareConfig:

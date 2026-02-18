@@ -6,9 +6,9 @@ MongoDB存储适配器
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from dataclasses import asdict
 from .usage_models import UsageRecord
 

@@ -17,7 +17,7 @@ import warnings
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from pathlib import Path
 from dotenv import load_dotenv
 
