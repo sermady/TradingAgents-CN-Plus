@@ -1098,19 +1098,16 @@ async def cancel_task(
     svc: QueueService = Depends(get_queue_service),
 ):
     """取消任务"""
-    try:
-        # 验证任务所有权
-        task = await svc.get_task(task_id)
-        if not task or task.get("user") != user["id"]:
-            raise HTTPException(status_code=404, detail="任务不存在")
+    # 验证任务所有权
+    task = await svc.get_task(task_id)
+    if not task or task.get("user") != user["id"]:
+        raise HTTPException(status_code=404, detail="任务不存在")
 
-        success = await svc.cancel_task(task_id)
-        if success:
-            return {"success": True, "message": "任务已取消"}
-        else:
-            raise HTTPException(status_code=400, detail="取消任务失败")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    success = await svc.cancel_task(task_id)
+    if success:
+        return {"success": True, "message": "任务已取消"}
+    else:
+        raise HTTPException(status_code=400, detail="取消任务失败")
 
 
 @router.get("/user/queue-status")
@@ -1119,11 +1116,8 @@ async def get_user_queue_status(
     svc: QueueService = Depends(get_queue_service),
 ):
     """获取用户队列状态"""
-    try:
-        status = await svc.get_user_queue_status(user["id"])
-        return {"success": True, "data": status}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    status = await svc.get_user_queue_status(user["id"])
+    return {"success": True, "data": status}
 
 
 @router.get("/user/history")
@@ -1246,19 +1240,15 @@ async def get_zombie_tasks(
     if user.get("username") != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可访问")
 
-    try:
-        svc = get_simple_analysis_service()
-        zombie_tasks = await svc.get_zombie_tasks(max_running_hours)
+    svc = get_simple_analysis_service()
+    zombie_tasks = await svc.get_zombie_tasks(max_running_hours)
 
-        return {
-            "success": True,
-            "data": zombie_tasks,
-            "total": len(zombie_tasks),
-            "max_running_hours": max_running_hours,
-        }
-    except Exception as e:
-        logger.error(f"❌ 获取僵尸任务失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取僵尸任务失败: {str(e)}")
+    return {
+        "success": True,
+        "data": zombie_tasks,
+        "total": len(zombie_tasks),
+        "max_running_hours": max_running_hours,
+    }
 
 
 @router.post("/admin/cleanup-zombie-tasks")
@@ -1276,18 +1266,14 @@ async def cleanup_zombie_tasks(
     if user.get("username") != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可访问")
 
-    try:
-        svc = get_simple_analysis_service()
-        result = await svc.cleanup_zombie_tasks(max_running_hours)
+    svc = get_simple_analysis_service()
+    result = await svc.cleanup_zombie_tasks(max_running_hours)
 
-        return {
-            "success": True,
-            "data": result,
-            "message": f"已清理 {result.get('total_cleaned', 0)} 个僵尸任务",
-        }
-    except Exception as e:
-        logger.error(f"❌ 清理僵尸任务失败: {e}")
-        raise HTTPException(status_code=500, detail=f"清理僵尸任务失败: {str(e)}")
+    return {
+        "success": True,
+        "data": result,
+        "message": f"已清理 {result.get('total_cleaned', 0)} 个僵尸任务",
+    }
 
 
 @router.post("/tasks/{task_id}/mark-failed")
@@ -1296,46 +1282,42 @@ async def mark_task_as_failed(task_id: str, user: dict = Depends(get_current_use
 
     用于手动清理卡住的任务
     """
-    try:
-        svc = get_simple_analysis_service()
+    svc = get_simple_analysis_service()
 
-        # 更新内存中的任务状态
-        from app.services.memory_state_manager import TaskStatus
+    # 更新内存中的任务状态
+    from app.services.memory_state_manager import TaskStatus
 
-        await svc.memory_manager.update_task_status(
-            task_id=task_id,
-            status=TaskStatus.FAILED,
-            message="手动标记为失败",
-            error_message="用户手动标记为失败",
-        )
+    await svc.memory_manager.update_task_status(
+        task_id=task_id,
+        status=TaskStatus.FAILED,
+        message="手动标记为失败",
+        error_message="用户手动标记为失败",
+    )
 
-        # 更新 MongoDB 中的任务状态
-        from app.core.database import get_mongo_db
-        from datetime import datetime
+    # 更新 MongoDB 中的任务状态
+    from app.core.database import get_mongo_db
+    from datetime import datetime
 
-        db = get_mongo_db()
+    db = get_mongo_db()
 
-        result = await db.analysis_tasks.update_one(
-            {"task_id": task_id},
-            {
-                "$set": {
-                    "status": "failed",
-                    "last_error": "用户手动标记为失败",
-                    "completed_at": datetime.utcnow(),
-                    "updated_at": datetime.utcnow(),
-                }
-            },
-        )
+    result = await db.analysis_tasks.update_one(
+        {"task_id": task_id},
+        {
+            "$set": {
+                "status": "failed",
+                "last_error": "用户手动标记为失败",
+                "completed_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+        },
+    )
 
-        if result.modified_count > 0:
-            logger.info(f"✅ 任务 {task_id} 已标记为失败")
-            return {"success": True, "message": "任务已标记为失败"}
-        else:
-            logger.warning(f"⚠️ 任务 {task_id} 未找到或已是失败状态")
-            return {"success": True, "message": "任务未找到或已是失败状态"}
-    except Exception as e:
-        logger.error(f"❌ 标记任务失败: {e}")
-        raise HTTPException(status_code=500, detail=f"标记任务失败: {str(e)}")
+    if result.modified_count > 0:
+        logger.info(f"✅ 任务 {task_id} 已标记为失败")
+        return {"success": True, "message": "任务已标记为失败"}
+    else:
+        logger.warning(f"⚠️ 任务 {task_id} 未找到或已是失败状态")
+        return {"success": True, "message": "任务未找到或已是失败状态"}
 
 
 @router.get("/tasks/{task_id}/progress", response_model=Dict[str, Any])
@@ -1423,25 +1405,21 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
 
     从内存和数据库中删除任务记录
     """
-    try:
-        svc = get_simple_analysis_service()
+    svc = get_simple_analysis_service()
 
-        # 从内存中删除任务
-        await svc.memory_manager.remove_task(task_id)
+    # 从内存中删除任务
+    await svc.memory_manager.remove_task(task_id)
 
-        # 从 MongoDB 中删除任务
-        from app.core.database import get_mongo_db
+    # 从 MongoDB 中删除任务
+    from app.core.database import get_mongo_db
 
-        db = get_mongo_db()
+    db = get_mongo_db()
 
-        result = await db.analysis_tasks.delete_one({"task_id": task_id})
+    result = await db.analysis_tasks.delete_one({"task_id": task_id})
 
-        if result.deleted_count > 0:
-            logger.info(f"✅ 任务 {task_id} 已删除")
-            return {"success": True, "message": "任务已删除"}
-        else:
-            logger.warning(f"⚠️ 任务 {task_id} 未找到")
-            return {"success": True, "message": "任务未找到"}
-    except Exception as e:
-        logger.error(f"❌ 删除任务失败: {e}")
-        raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
+    if result.deleted_count > 0:
+        logger.info(f"✅ 任务 {task_id} 已删除")
+        return {"success": True, "message": "任务已删除"}
+    else:
+        logger.warning(f"⚠️ 任务 {task_id} 未找到")
+        return {"success": True, "message": "任务未找到"}
