@@ -6,11 +6,10 @@
 
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Callable, Optional
+from typing import Dict, Any, Callable
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
-from tradingagents.agents.utils.prompt_builder import build_debator_prompt
 
 logger = get_logger("default")
 
