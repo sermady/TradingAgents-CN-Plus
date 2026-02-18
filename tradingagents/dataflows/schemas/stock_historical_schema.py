@@ -6,7 +6,6 @@
 
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 
 @dataclass

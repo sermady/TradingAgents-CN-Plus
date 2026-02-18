@@ -7,7 +7,7 @@
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, Optional
 
 import requests
 
