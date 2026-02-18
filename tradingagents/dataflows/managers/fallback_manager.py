@@ -7,12 +7,11 @@
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 
 from tradingagents.utils.logging_manager import get_logger
 
 if TYPE_CHECKING:
-    from tradingagents.dataflows.data_sources.enums import ChinaDataSource
+    pass
 
 logger = get_logger("agents")
 

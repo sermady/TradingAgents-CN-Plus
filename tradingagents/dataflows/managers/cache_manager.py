@@ -4,7 +4,7 @@
 负责数据缓存的获取、保存和TTL管理
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import pandas as pd
 
