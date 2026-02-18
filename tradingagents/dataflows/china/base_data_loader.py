@@ -9,7 +9,7 @@ import time
 import random
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Any
 from zoneinfo import ZoneInfo
 
 from tradingagents.config.config_manager import config_manager

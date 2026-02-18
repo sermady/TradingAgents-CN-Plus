@@ -42,7 +42,7 @@ except ImportError:
 # 导入技术指标模块（新路径）
 try:
     from .technical import StockstatsUtils, STOCKSTATS_AVAILABLE
-except ImportError as e:
+except ImportError:
     # 向后兼容：尝试从旧路径导入
     try:
         from .technical.stockstats import StockstatsUtils

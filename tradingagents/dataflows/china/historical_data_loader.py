@@ -4,13 +4,11 @@
 提供A股历史行情数据加载功能
 """
 
-import os
-from typing import Optional, Dict, Any
+from typing import Optional
 
-from .base_data_loader import BaseDataLoader, DataSourceError, logger
+from .base_data_loader import BaseDataLoader, logger
 from ..cache.mongodb_cache_adapter import (
     get_mongodb_cache_adapter,
-    get_stock_data_with_fallback,
 )
 
 

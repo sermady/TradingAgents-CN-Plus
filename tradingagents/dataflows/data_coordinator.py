@@ -6,9 +6,8 @@ Supports hybrid cache strategy to reduce API calls
 """
 
 import logging
-import asyncio
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 from enum import Enum
@@ -498,7 +497,6 @@ class DataCoordinator:
     def _load_hk_fundamentals(self, ticker: str) -> str:
         """Load HK stock fundamentals data"""
         try:
-            from tradingagents.dataflows.interface import get_hk_stock_data_unified
             from tradingagents.dataflows.interface import get_hk_stock_info_unified
 
             info = get_hk_stock_info_unified(ticker)
@@ -739,7 +737,6 @@ class DataCoordinator:
         try:
             from tradingagents.dataflows.data_source_manager import (
                 DataSourceManager,
-                ValidatedDataResult,
             )
 
             # 创建数据源管理器

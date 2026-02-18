@@ -4,7 +4,6 @@
 提供A股基本面数据加载和分析功能
 """
 
-import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from zoneinfo import ZoneInfo

@@ -7,13 +7,12 @@ MongoDB + Redis 数据库缓存管理器
 
 import os
 import json
-import pickle
 import hashlib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from tradingagents.config.runtime_settings import get_timezone_name
 
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, Union
 import pandas as pd
 
 # 导入日志模块
