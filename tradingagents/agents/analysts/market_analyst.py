@@ -3,7 +3,6 @@ from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.tool_logging import log_analyst_module
 from tradingagents.utils.stock_utils import StockUtils
 from tradingagents.utils.company_name_utils import get_company_name
-from langchain_core.messages import AIMessage
 
 logger = get_logger("analysts.market")
 
