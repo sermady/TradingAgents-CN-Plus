@@ -36,7 +36,6 @@ class NewsDataMixin:
             from curl_cffi import requests as curl_requests
             import json
             import time
-            import os
 
             # 标准化股票代码
             symbol_6 = symbol.zfill(6)

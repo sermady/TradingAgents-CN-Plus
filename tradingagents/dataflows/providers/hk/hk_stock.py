@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from tradingagents.config.runtime_settings import get_timezone_name
 
-import os
 
 from tradingagents.config.runtime_settings import get_float, get_int
 # 导入日志模块

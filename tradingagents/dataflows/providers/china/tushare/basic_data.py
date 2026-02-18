@@ -10,8 +10,7 @@ from datetime import datetime
 import asyncio
 import pandas as pd
 
-from .base_provider import BaseTushareProvider, ts, TUSHARE_AVAILABLE, logger
-from ...base_provider import BaseStockDataProvider
+from .base_provider import BaseTushareProvider
 
 
 class BasicDataMixin(BaseTushareProvider):

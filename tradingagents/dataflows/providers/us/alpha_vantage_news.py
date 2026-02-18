@@ -7,8 +7,7 @@ Alpha Vantage 新闻数据提供者
 参考原版 TradingAgents 实现
 """
 
-from typing import Annotated, Dict, Any
-import json
+from typing import Annotated
 from datetime import datetime
 
 from .alpha_vantage_common import _make_api_request, format_datetime_for_api, format_response_as_string

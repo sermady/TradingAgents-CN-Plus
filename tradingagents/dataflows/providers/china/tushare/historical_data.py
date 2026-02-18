@@ -10,8 +10,7 @@ from datetime import datetime, date, timedelta
 import asyncio
 import pandas as pd
 
-from .base_provider import BaseTushareProvider, ts, logger
-from ...base_provider import BaseStockDataProvider
+from .base_provider import BaseTushareProvider, ts
 
 
 class HistoricalDataMixin(BaseTushareProvider):

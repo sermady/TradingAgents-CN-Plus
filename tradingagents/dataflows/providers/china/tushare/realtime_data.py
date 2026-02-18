@@ -9,8 +9,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import asyncio
 
-from .base_provider import BaseTushareProvider, ts, logger
-from ...base_provider import BaseStockDataProvider
+from .base_provider import BaseTushareProvider, ts
 from .cache_manager import (
     _get_cached_batch_quotes,
     _set_cached_batch_quotes,

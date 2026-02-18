@@ -10,8 +10,7 @@ from datetime import datetime, timedelta
 import asyncio
 import pandas as pd
 
-from .base_provider import BaseTushareProvider, logger
-from ...base_provider import BaseStockDataProvider
+from .base_provider import BaseTushareProvider
 
 
 class NewsDataMixin(BaseTushareProvider):

@@ -9,8 +9,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import asyncio
 
-from .base_provider import BaseTushareProvider, logger
-from ...base_provider import BaseStockDataProvider
+from .base_provider import BaseTushareProvider
 
 
 class FinancialDataMixin(BaseTushareProvider):

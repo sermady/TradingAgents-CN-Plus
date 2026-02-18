@@ -10,13 +10,11 @@ Created: 2026-01-31 (Phase 1 of DataSourceManager refactoring)
 
 import os
 import time
-import logging
 from typing import Dict, Optional, Any, List, Tuple, Callable
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
-import numpy as np
 
 from tradingagents.utils.logging_manager import get_logger
 

@@ -7,7 +7,7 @@ AKShare历史数据模块
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 
 import pandas as pd
 

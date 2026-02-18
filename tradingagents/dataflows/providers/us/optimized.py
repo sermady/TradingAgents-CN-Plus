@@ -5,13 +5,12 @@
 集成缓存策略，减少API调用，提高响应速度
 """
 
-import os
 import time
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from typing import Optional, Dict, Any
+from typing import Optional
 import yfinance as yf
 import pandas as pd
 
@@ -426,7 +425,7 @@ class OptimizedUSDataProvider:
         try:
             import finnhub
             import os
-            from datetime import datetime, timedelta
+            from datetime import datetime
 
             # 获取API密钥
             api_key = os.getenv("FINNHUB_API_KEY")
@@ -512,7 +511,6 @@ class OptimizedUSDataProvider:
                 get_api_key,
             )
             import requests
-            from datetime import datetime
 
             # 获取 API Key
             api_key = get_api_key()
