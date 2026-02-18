@@ -13,9 +13,9 @@
 from .base_config_service import BaseConfigService
 from .market_config_service import MarketConfigService
 from .llm_config_service import LLMConfigService
-from .datasource_config_service import DataSourceConfigService
+from .datasource import DataSourceConfigService
 from .database_config_service import DatabaseConfigService
-from .model_catalog_service import ModelCatalogService
+from .catalog import ModelCatalogService
 from .config_service import ConfigService
 
 __all__ = [
