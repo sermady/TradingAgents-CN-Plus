@@ -414,6 +414,20 @@ class BaseStockDataProvider(ABC):
         except Exception:
             return default
 
+    # ==================== 实例方法包装（供子类使用） ====================
+
+    def _safe_float(self, value: Any, default: float = 0.0) -> float:
+        """实例方法包装，调用静态方法 safe_float"""
+        return self.safe_float(value, default)
+
+    def _safe_int(self, value: Any, default: int = 0) -> int:
+        """实例方法包装，调用静态方法 safe_int"""
+        return self.safe_int(value, default)
+
+    def _safe_str(self, value: Any, default: str = "") -> str:
+        """实例方法包装，调用静态方法 safe_str"""
+        return self.safe_str(value, default)
+
     # ==================== 上下文管理器支持 ====================
 
     async def __aenter__(self):
