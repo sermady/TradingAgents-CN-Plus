@@ -332,6 +332,108 @@ def _clean_reports(reports: dict) -> dict:
     return cleaned_reports
 
 
+def _fill_missing_fields(result_data: dict) -> None:
+    """补全缺失的关键字段：recommendation/summary/key_points"""
+    reports = result_data.get("reports", {}) or {}
+    decision = result_data.get("decision", {}) or {}
+
+    # recommendation 优先使用决策摘要或报告中的决策
+    if not result_data.get("recommendation"):
+        rec_candidates = []
+        if isinstance(decision, dict) and decision.get("action"):
+            parts = [
+                f"操作: {decision.get('action')}",
+                f"目标价: {decision.get('target_price')}" if decision.get("target_price") else None,
+                f"置信度: {decision.get('confidence')}" if decision.get("confidence") is not None else None,
+            ]
+            rec_candidates.append("；".join([p for p in parts if p]))
+        # 从报告中兜底
+        for k in ["final_trade_decision", "investment_plan"]:
+            v = reports.get(k)
+            if isinstance(v, str) and len(v.strip()) > 10:
+                rec_candidates.append(v.strip())
+        if rec_candidates:
+            # 取最有信息量的一条（最长）
+            result_data["recommendation"] = max(rec_candidates, key=len)[:2000]
+
+    # summary 从若干报告拼接生成
+    if not result_data.get("summary"):
+        sum_candidates = []
+        for k in ["market_report", "fundamentals_report", "sentiment_report", "news_report"]:
+            v = reports.get(k)
+            if isinstance(v, str) and len(v.strip()) > 50:
+                sum_candidates.append(v.strip())
+        if sum_candidates:
+            result_data["summary"] = ("\n\n".join(sum_candidates))[:3000]
+
+    # key_points 兜底
+    if not result_data.get("key_points"):
+        kp = []
+        if isinstance(decision, dict):
+            if decision.get("action"):
+                kp.append(f"操作建议: {decision.get('action')}")
+            if decision.get("target_price"):
+                kp.append(f"目标价: {decision.get('target_price')}")
+            if decision.get("confidence") is not None:
+                kp.append(f"置信度: {decision.get('confidence')}")
+        # 从reports中截取前几句作为要点
+        for k in ["investment_plan", "final_trade_decision"]:
+            v = reports.get(k)
+            if isinstance(v, str) and len(v.strip()) > 10:
+                kp.append(v.strip()[:120])
+        if kp:
+            result_data["key_points"] = kp[:5]
+
+
+def _fill_from_detailed_analysis(result_data: dict) -> None:
+    """从 detailed_analysis 推断并补全缺失字段"""
+    da = result_data.get("detailed_analysis")
+    if not da:
+        return
+
+    # 若reports仍为空，放入一份原始详细分析
+    if not result_data.get("reports"):
+        if isinstance(da, str) and len(da.strip()) > 20:
+            result_data["reports"] = {"detailed_analysis": da.strip()}
+        elif isinstance(da, dict) and da:
+            # 将字典的长文本项放入reports
+            extracted = {
+                k: v.strip()
+                for k, v in da.items()
+                if isinstance(v, str) and len(v.strip()) > 20
+            }
+            if extracted:
+                result_data["reports"] = extracted
+
+    # 补 summary
+    if not result_data.get("summary"):
+        if isinstance(da, str) and da.strip():
+            result_data["summary"] = da.strip()[:3000]
+        elif isinstance(da, dict) and da:
+            # 取最长的文本作为摘要
+            texts = [v.strip() for v in da.values() if isinstance(v, str) and v.strip()]
+            if texts:
+                result_data["summary"] = max(texts, key=len)[:3000]
+
+    # 补 recommendation
+    if not result_data.get("recommendation"):
+        rec = None
+        if isinstance(da, str):
+            # 简单基于关键字提取包含"建议"的段落
+            import re
+            m = re.search(r"(投资建议|建议|结论)[:：]?\s*(.+)", da)
+            if m:
+                rec = m.group(0)
+        elif isinstance(da, dict):
+            for key in ["final_trade_decision", "investment_plan", "结论", "建议"]:
+                v = da.get(key)
+                if isinstance(v, str) and len(v.strip()) > 10:
+                    rec = v.strip()
+                    break
+        if rec:
+            result_data["recommendation"] = rec[:2000]
+
+
 # 新版API端点
 @router.post("/single", response_model=Dict[str, Any])
 async def submit_single_analysis(
@@ -611,128 +713,13 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
 
         # 补全关键字段：recommendation/summary/key_points
         try:
-            reports = result_data.get("reports", {}) or {}
-            decision = result_data.get("decision", {}) or {}
-
-            # recommendation 优先使用决策摘要或报告中的决策
-            if not result_data.get("recommendation"):
-                rec_candidates = []
-                if isinstance(decision, dict) and decision.get("action"):
-                    parts = [
-                        f"操作: {decision.get('action')}",
-                        f"目标价: {decision.get('target_price')}"
-                        if decision.get("target_price")
-                        else None,
-                        f"置信度: {decision.get('confidence')}"
-                        if decision.get("confidence") is not None
-                        else None,
-                    ]
-                    rec_candidates.append("；".join([p for p in parts if p]))
-                # 从报告中兜底
-                for k in ["final_trade_decision", "investment_plan"]:
-                    v = reports.get(k)
-                    if isinstance(v, str) and len(v.strip()) > 10:
-                        rec_candidates.append(v.strip())
-                if rec_candidates:
-                    # 取最有信息量的一条（最长）
-                    result_data["recommendation"] = max(rec_candidates, key=len)[:2000]
-
-            # summary 从若干报告拼接生成
-            if not result_data.get("summary"):
-                sum_candidates = []
-                for k in [
-                    "market_report",
-                    "fundamentals_report",
-                    "sentiment_report",
-                    "news_report",
-                ]:
-                    v = reports.get(k)
-                    if isinstance(v, str) and len(v.strip()) > 50:
-                        sum_candidates.append(v.strip())
-                if sum_candidates:
-                    result_data["summary"] = ("\n\n".join(sum_candidates))[:3000]
-
-            # key_points 兜底
-            if not result_data.get("key_points"):
-                kp = []
-                if isinstance(decision, dict):
-                    if decision.get("action"):
-                        kp.append(f"操作建议: {decision.get('action')}")
-                    if decision.get("target_price"):
-                        kp.append(f"目标价: {decision.get('target_price')}")
-                    if decision.get("confidence") is not None:
-                        kp.append(f"置信度: {decision.get('confidence')}")
-                # 从reports中截取前几句作为要点
-                for k in ["investment_plan", "final_trade_decision"]:
-                    v = reports.get(k)
-                    if isinstance(v, str) and len(v.strip()) > 10:
-                        kp.append(v.strip()[:120])
-                if kp:
-                    result_data["key_points"] = kp[:5]
+            _fill_missing_fields(result_data)
         except Exception as fill_err:
             logger.warning(f"⚠️ [RESULT] 补全关键字段时出错: {fill_err}")
 
         # 进一步兜底：从 detailed_analysis 推断并补全
         try:
-            if (
-                not result_data.get("summary")
-                or not result_data.get("recommendation")
-                or not result_data.get("reports")
-            ):
-                da = result_data.get("detailed_analysis")
-                # 若reports仍为空，放入一份原始详细分析，便于前端“查看报告详情”
-                if (
-                    (not result_data.get("reports"))
-                    and isinstance(da, str)
-                    and len(da.strip()) > 20
-                ):
-                    result_data["reports"] = {"detailed_analysis": da.strip()}
-                elif (not result_data.get("reports")) and isinstance(da, dict) and da:
-                    # 将字典的长文本项放入reports
-                    extracted = {}
-                    for k, v in da.items():
-                        if isinstance(v, str) and len(v.strip()) > 20:
-                            extracted[k] = v.strip()
-                    if extracted:
-                        result_data["reports"] = extracted
-
-                # 补 summary
-                if not result_data.get("summary"):
-                    if isinstance(da, str) and da.strip():
-                        result_data["summary"] = da.strip()[:3000]
-                    elif isinstance(da, dict) and da:
-                        # 取最长的文本作为摘要
-                        texts = [
-                            v.strip()
-                            for v in da.values()
-                            if isinstance(v, str) and v.strip()
-                        ]
-                        if texts:
-                            result_data["summary"] = max(texts, key=len)[:3000]
-
-                # 补 recommendation
-                if not result_data.get("recommendation"):
-                    rec = None
-                    if isinstance(da, str):
-                        # 简单基于关键字提取包含“建议”的段落
-                        import re
-
-                        m = re.search(r"(投资建议|建议|结论)[:：]?\s*(.+)", da)
-                        if m:
-                            rec = m.group(0)
-                    elif isinstance(da, dict):
-                        for key in [
-                            "final_trade_decision",
-                            "investment_plan",
-                            "结论",
-                            "建议",
-                        ]:
-                            v = da.get(key)
-                            if isinstance(v, str) and len(v.strip()) > 10:
-                                rec = v.strip()
-                                break
-                    if rec:
-                        result_data["recommendation"] = rec[:2000]
+            _fill_from_detailed_analysis(result_data)
         except Exception as da_err:
             logger.warning(f"⚠️ [RESULT] 从detailed_analysis补全失败: {da_err}")
 
