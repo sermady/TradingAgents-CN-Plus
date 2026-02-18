@@ -55,20 +55,17 @@ class ConnectionInfo:
 # 🔥 获取客户端 IP 地址（支持代理）
 def get_client_ip(websocket: WebSocket) -> str:
     """从 WebSocket 请求中提取客户端 IP"""
-    try:
-        if hasattr(websocket, "scope") and websocket.scope:
-            headers = dict(websocket.scope.get("headers", []))
-            # 检查代理头
-            for header in [b"x-forwarded-for", b"x-real-ip"]:
-                if header in headers:
-                    ip_list = headers[header].decode("utf-8").split(",")
-                    return ip_list[0].strip() if ip_list else "unknown"
-            # 回退到直接连接
-            client = websocket.scope.get("client")
-            if client:
-                return client[0]
-    except Exception as e:
-        logger.warning(f"获取客户端 IP 失败: {e}")
+    if hasattr(websocket, "scope") and websocket.scope:
+        headers = dict(websocket.scope.get("headers", []))
+        # 检查代理头
+        for header in [b"x-forwarded-for", b"x-real-ip"]:
+            if header in headers:
+                ip_list = headers[header].decode("utf-8").split(",")
+                return ip_list[0].strip() if ip_list else "unknown"
+        # 回退到直接连接
+        client = websocket.scope.get("client")
+        if client:
+            return client[0]
     return "unknown"
 
 
@@ -367,17 +364,13 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         # 心跳任务
         async def send_heartbeat():
             while True:
-                try:
-                    await asyncio.sleep(30)  # 每 30 秒发送一次心跳
-                    await websocket.send_json(
-                        {
-                            "type": "heartbeat",
-                            "data": {"timestamp": datetime.utcnow().isoformat()},
-                        }
-                    )
-                except Exception as e:
-                    logger.debug(f"💓 [WS] 心跳发送失败: {e}")
-                    break
+                await asyncio.sleep(30)  # 每 30 秒发送一次心跳
+                await websocket.send_json(
+                    {
+                        "type": "heartbeat",
+                        "data": {"timestamp": datetime.utcnow().isoformat()},
+                    }
+                )
 
         # 启动心跳任务
         heartbeat_task = asyncio.create_task(send_heartbeat())
@@ -390,27 +383,21 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
                     continue
 
                 # 🔥 解析并处理心跳消息
-                try:
-                    message = json.loads(data)
-                    msg_type = message.get("type")
+                message = json.loads(data)
+                msg_type = message.get("type")
 
-                    if msg_type == "ping":
-                        # 响应客户端心跳
-                        await websocket.send_json(
-                            {"type": "pong", "timestamp": time.time()}
-                        )
-                        logger.debug(f"📥 [WS] 收到 ping，已回复 pong: user={user_id}")
-                        continue
+                if msg_type == "ping":
+                    # 响应客户端心跳
+                    await websocket.send_json(
+                        {"type": "pong", "timestamp": time.time()}
+                    )
+                    logger.debug(f"📥 [WS] 收到 ping，已回复 pong: user={user_id}")
+                    continue
 
-                    # 处理其他消息类型
-                    logger.debug(
-                        f"📥 [WS] 收到客户端消息: user={user_id}, type={msg_type}"
-                    )
-                except json.JSONDecodeError:
-                    # 非 JSON 消息，记录日志
-                    logger.debug(
-                        f"📥 [WS] 收到非JSON消息: user={user_id}, data={data[:50]}"
-                    )
+                # 处理其他消息类型
+                logger.debug(
+                    f"📥 [WS] 收到客户端消息: user={user_id}, type={msg_type}"
+                )
 
             except WebSocketDisconnect:
                 logger.info(f"🔌 [WS] 客户端主动断开: user={user_id}")
