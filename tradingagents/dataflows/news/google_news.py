@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import json
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 import random
-import os
 from tenacity import (
     retry,
     stop_after_attempt,

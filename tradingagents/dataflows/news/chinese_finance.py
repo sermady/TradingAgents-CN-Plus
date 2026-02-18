@@ -6,14 +6,8 @@
 """
 
 import requests
-import json
-import time
-import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Optional
-import re
-from bs4 import BeautifulSoup
-import pandas as pd
 
 
 class ChineseFinanceDataAggregator:

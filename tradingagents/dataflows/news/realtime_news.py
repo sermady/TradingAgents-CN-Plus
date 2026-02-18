@@ -6,11 +6,10 @@
 """
 
 import requests
-import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from typing import List, Dict, Optional
+from typing import List
 import time
 import os
 from dataclasses import dataclass
