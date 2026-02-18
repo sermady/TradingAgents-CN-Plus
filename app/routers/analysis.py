@@ -203,6 +203,135 @@ def _build_result_data(mongo_result: dict) -> dict:
     }
 
 
+def _load_reports_from_filesystem(stock_symbol: str, analysis_date: str) -> dict:
+    """从文件系统加载报告文件"""
+    import os
+    from pathlib import Path
+
+    loaded_reports = {}
+    try:
+        # 1) 尝试从环境变量 TRADINGAGENTS_RESULTS_DIR 指定的位置读取
+        base_env = os.getenv("TRADINGAGENTS_RESULTS_DIR")
+        project_root = Path.cwd()
+        if base_env:
+            base_path = Path(base_env)
+            if not base_path.is_absolute():
+                base_path = project_root / base_env
+        else:
+            base_path = project_root / "results"
+
+        candidate_dirs = []
+        if stock_symbol and analysis_date:
+            candidate_dirs.append(base_path / stock_symbol / analysis_date / "reports")
+            # 兼容其他保存路径
+            candidate_dirs.append(
+                project_root
+                / "data"
+                / "analysis_results"
+                / stock_symbol
+                / analysis_date
+                / "reports"
+            )
+            candidate_dirs.append(
+                project_root
+                / "data"
+                / "analysis_results"
+                / "detailed"
+                / stock_symbol
+                / analysis_date
+                / "reports"
+            )
+
+        for d in candidate_dirs:
+            if d.exists() and d.is_dir():
+                for f in d.glob("*.md"):
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        if content and content.strip():
+                            loaded_reports[f.stem] = content.strip()
+                    except Exception:
+                        pass
+    except Exception as fs_err:
+        logger.warning(f"⚠️ [RESULT] 从文件系统加载报告失败: {fs_err}")
+
+    return loaded_reports
+
+
+def _extract_reports_from_state(state: dict) -> dict:
+    """从state字段中提取报告内容"""
+    reports = {}
+
+    if not isinstance(state, dict):
+        return reports
+
+    # 定义所有可能的报告字段
+    report_fields = [
+        "market_report",
+        "sentiment_report",
+        "news_report",
+        "fundamentals_report",
+        "investment_plan",
+        "trader_investment_plan",
+        "final_trade_decision",
+    ]
+
+    # 从state中提取报告内容
+    for field in report_fields:
+        value = state.get(field, "")
+        if isinstance(value, str) and len(value.strip()) > 10:
+            reports[field] = value.strip()
+
+    # 处理研究团队辩论状态报告
+    investment_debate_state = state.get("investment_debate_state", {})
+    if isinstance(investment_debate_state, dict):
+        for key, report_key in [
+            ("bull_history", "bull_researcher"),
+            ("bear_history", "bear_researcher"),
+            ("judge_decision", "research_team_decision"),
+        ]:
+            content = investment_debate_state.get(key, "")
+            if isinstance(content, str) and len(content.strip()) > 10:
+                reports[report_key] = content.strip()
+
+    # 处理风险管理团队辩论状态报告
+    risk_debate_state = state.get("risk_debate_state", {})
+    if isinstance(risk_debate_state, dict):
+        for key, report_key in [
+            ("risky_history", "risky_analyst"),
+            ("safe_history", "safe_analyst"),
+            ("neutral_history", "neutral_analyst"),
+            ("judge_decision", "risk_management_decision"),
+        ]:
+            content = risk_debate_state.get(key, "")
+            if isinstance(content, str) and len(content.strip()) > 10:
+                reports[report_key] = content.strip()
+
+    return reports
+
+
+def _clean_reports(reports: dict) -> dict:
+    """清理报告数据，确保所有值为非空字符串"""
+    if not isinstance(reports, dict):
+        return {}
+
+    cleaned_reports = {}
+    for key, value in reports.items():
+        safe_key = safe_string(key, "unknown_report")
+
+        if value is None:
+            continue
+        elif isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                cleaned_reports[safe_key] = stripped
+        else:
+            str_value = str(value).strip()
+            if str_value:
+                cleaned_reports[safe_key] = str_value
+
+    return cleaned_reports
+
+
 # 新版API端点
 @router.post("/single", response_model=Dict[str, Any])
 async def submit_single_analysis(
@@ -442,204 +571,43 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
 
         # 处理reports字段 - 如果没有reports字段，优先尝试从文件系统加载，其次从state中提取
         if "reports" not in result_data or not result_data["reports"]:
-            import os
-            from pathlib import Path
-
-            stock_symbol = result_data.get("stock_symbol") or result_data.get(
-                "stock_code"
-            )
-            # analysis_date 可能是日期或时间戳字符串，这里只取日期部分
+            stock_symbol = result_data.get("stock_symbol") or result_data.get("stock_code")
             analysis_date_raw = result_data.get("analysis_date")
             analysis_date = str(analysis_date_raw)[:10] if analysis_date_raw else None
 
-            loaded_reports = {}
-            try:
-                # 1) 尝试从环境变量 TRADINGAGENTS_RESULTS_DIR 指定的位置读取
-                base_env = os.getenv("TRADINGAGENTS_RESULTS_DIR")
-                project_root = Path.cwd()
-                if base_env:
-                    base_path = Path(base_env)
-                    if not base_path.is_absolute():
-                        base_path = project_root / base_env
-                else:
-                    base_path = project_root / "results"
+            # 1) 尝试从文件系统加载
+            loaded_reports = _load_reports_from_filesystem(stock_symbol, analysis_date)
+            if loaded_reports:
+                result_data["reports"] = loaded_reports
+                # 若 summary / recommendation 缺失，尝试从同名报告补全
+                if not result_data.get("summary") and loaded_reports.get("summary"):
+                    result_data["summary"] = loaded_reports.get("summary")
+                if not result_data.get("recommendation") and loaded_reports.get("recommendation"):
+                    result_data["recommendation"] = loaded_reports.get("recommendation")
+                logger.info(
+                    f"📁 [RESULT] 从文件系统加载到 {len(loaded_reports)} 个报告: {list(loaded_reports.keys())}"
+                )
 
-                candidate_dirs = []
-                if stock_symbol and analysis_date:
-                    candidate_dirs.append(
-                        base_path / stock_symbol / analysis_date / "reports"
-                    )
-                # 2) 兼容其他保存路径
-                if stock_symbol and analysis_date:
-                    candidate_dirs.append(
-                        project_root
-                        / "data"
-                        / "analysis_results"
-                        / stock_symbol
-                        / analysis_date
-                        / "reports"
-                    )
-                    candidate_dirs.append(
-                        project_root
-                        / "data"
-                        / "analysis_results"
-                        / "detailed"
-                        / stock_symbol
-                        / analysis_date
-                        / "reports"
-                    )
-
-                for d in candidate_dirs:
-                    if d.exists() and d.is_dir():
-                        for f in d.glob("*.md"):
-                            try:
-                                content = f.read_text(encoding="utf-8")
-                                if content and content.strip():
-                                    loaded_reports[f.stem] = content.strip()
-                            except Exception:
-                                pass
-                if loaded_reports:
-                    result_data["reports"] = loaded_reports
-                    # 若 summary / recommendation 缺失，尝试从同名报告补全
-                    if not result_data.get("summary") and loaded_reports.get("summary"):
-                        result_data["summary"] = loaded_reports.get("summary")
-                    if not result_data.get("recommendation") and loaded_reports.get(
-                        "recommendation"
-                    ):
-                        result_data["recommendation"] = loaded_reports.get(
-                            "recommendation"
-                        )
-                    logger.info(
-                        f"📁 [RESULT] 从文件系统加载到 {len(loaded_reports)} 个报告: {list(loaded_reports.keys())}"
-                    )
-            except Exception as fs_err:
-                logger.warning(f"⚠️ [RESULT] 从文件系统加载报告失败: {fs_err}")
-
+            # 2) 如果文件系统没有，尝试从state中提取
             if "reports" not in result_data or not result_data["reports"]:
                 logger.info(f"📊 [RESULT] reports字段缺失，尝试从state中提取")
-
-                # 从state中提取报告内容
-                reports = {}
                 state = result_data.get("state", {})
-
                 if isinstance(state, dict):
-                    # 定义所有可能的报告字段
-                    report_fields = [
-                        "market_report",
-                        "sentiment_report",
-                        "news_report",
-                        "fundamentals_report",
-                        "investment_plan",
-                        "trader_investment_plan",
-                        "final_trade_decision",
-                    ]
-
-                    # 从state中提取报告内容
-                    for field in report_fields:
-                        value = state.get(field, "")
-                        if isinstance(value, str) and len(value.strip()) > 10:
-                            reports[field] = value.strip()
-
-                    # 处理研究团队辩论状态报告
-                    investment_debate_state = state.get("investment_debate_state", {})
-                    if isinstance(investment_debate_state, dict):
-                        # 提取多头研究员历史
-                        bull_content = investment_debate_state.get("bull_history", "")
-                        if (
-                            isinstance(bull_content, str)
-                            and len(bull_content.strip()) > 10
-                        ):
-                            reports["bull_researcher"] = bull_content.strip()
-
-                        # 提取空头研究员历史
-                        bear_content = investment_debate_state.get("bear_history", "")
-                        if (
-                            isinstance(bear_content, str)
-                            and len(bear_content.strip()) > 10
-                        ):
-                            reports["bear_researcher"] = bear_content.strip()
-
-                        # 提取研究经理决策
-                        judge_decision = investment_debate_state.get(
-                            "judge_decision", ""
+                    reports = _extract_reports_from_state(state)
+                    if reports:
+                        result_data["reports"] = reports
+                        logger.info(
+                            f"📊 [RESULT] 从state中提取到 {len(reports)} 个报告: {list(reports.keys())}"
                         )
-                        if (
-                            isinstance(judge_decision, str)
-                            and len(judge_decision.strip()) > 10
-                        ):
-                            reports["research_team_decision"] = judge_decision.strip()
-
-                    # 处理风险管理团队辩论状态报告
-                    risk_debate_state = state.get("risk_debate_state", {})
-                    if isinstance(risk_debate_state, dict):
-                        # 提取激进分析师历史
-                        risky_content = risk_debate_state.get("risky_history", "")
-                        if (
-                            isinstance(risky_content, str)
-                            and len(risky_content.strip()) > 10
-                        ):
-                            reports["risky_analyst"] = risky_content.strip()
-
-                        # 提取保守分析师历史
-                        safe_content = risk_debate_state.get("safe_history", "")
-                        if (
-                            isinstance(safe_content, str)
-                            and len(safe_content.strip()) > 10
-                        ):
-                            reports["safe_analyst"] = safe_content.strip()
-
-                        # 提取中性分析师历史
-                        neutral_content = risk_debate_state.get("neutral_history", "")
-                        if (
-                            isinstance(neutral_content, str)
-                            and len(neutral_content.strip()) > 10
-                        ):
-                            reports["neutral_analyst"] = neutral_content.strip()
-
-                        # 提取投资组合经理决策
-                        risk_decision = risk_debate_state.get("judge_decision", "")
-                        if (
-                            isinstance(risk_decision, str)
-                            and len(risk_decision.strip()) > 10
-                        ):
-                            reports["risk_management_decision"] = risk_decision.strip()
-
-                    logger.info(
-                        f"📊 [RESULT] 从state中提取到 {len(reports)} 个报告: {list(reports.keys())}"
-                    )
-                    result_data["reports"] = reports
                 else:
                     logger.warning(f"⚠️ [RESULT] state字段不是字典类型: {type(state)}")
 
-        # 确保reports字段中的所有内容都是字符串类型
-        if "reports" in result_data and result_data["reports"]:
-            reports = result_data["reports"]
-            if isinstance(reports, dict):
-                # 确保每个报告内容都是字符串且不为空
-                cleaned_reports = {}
-                for key, value in reports.items():
-                    if isinstance(value, str) and value.strip():
-                        # 确保字符串不为空
-                        cleaned_reports[key] = value.strip()
-                    elif value is not None:
-                        # 如果不是字符串，转换为字符串
-                        str_value = str(value).strip()
-                        if str_value:  # 只保存非空字符串
-                            cleaned_reports[key] = str_value
-                    # 如果value为None或空字符串，则跳过该报告
-
-                result_data["reports"] = cleaned_reports
-                logger.info(
-                    f"📊 [RESULT] 清理reports字段，包含 {len(cleaned_reports)} 个有效报告"
-                )
-
-                # 如果清理后没有有效报告，设置为空字典
-                if not cleaned_reports:
-                    logger.warning(f"⚠️ [RESULT] 清理后没有有效报告")
-                    result_data["reports"] = {}
-            else:
-                logger.warning(f"⚠️ [RESULT] reports字段不是字典类型: {type(reports)}")
-                result_data["reports"] = {}
+        # 清理reports字段
+        if "reports" in result_data:
+            result_data["reports"] = _clean_reports(result_data["reports"])
+            logger.info(
+                f"📊 [RESULT] 清理reports字段，包含 {len(result_data['reports'])} 个有效报告"
+            )
 
         # 补全关键字段：recommendation/summary/key_points
         try:
