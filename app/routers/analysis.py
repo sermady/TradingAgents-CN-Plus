@@ -57,52 +57,48 @@ async def submit_single_analysis(
     user: dict = Depends(get_current_user),
 ):
     """提交单股分析任务 - 使用 BackgroundTasks 异步执行"""
-    try:
-        logger.info(f"🎯 收到单股分析请求")
-        logger.info(f"👤 用户信息: {user}")
-        logger.info(f"📊 请求数据: {request}")
+    logger.info(f"🎯 收到单股分析请求")
+    logger.info(f"👤 用户信息: {user}")
+    logger.info(f"📊 请求数据: {request}")
 
-        # 立即创建任务记录并返回，不等待执行完成
-        analysis_service = get_simple_analysis_service()
-        result = await analysis_service.create_analysis_task(user["id"], request)
+    # 立即创建任务记录并返回，不等待执行完成
+    analysis_service = get_simple_analysis_service()
+    result = await analysis_service.create_analysis_task(user["id"], request)
 
-        # 提取变量，避免闭包问题
-        task_id = result["task_id"]
-        user_id = user["id"]
+    # 提取变量，避免闭包问题
+    task_id = result["task_id"]
+    user_id = user["id"]
 
-        # 定义一个包装函数来运行异步任务
-        async def run_analysis_task():
-            """包装函数：在后台运行分析任务"""
-            try:
-                logger.info(f"🚀 [BackgroundTask] 开始执行分析任务: {task_id}")
-                logger.info(f"📝 [BackgroundTask] task_id={task_id}, user_id={user_id}")
-                logger.info(f"📝 [BackgroundTask] request={request}")
+    # 定义一个包装函数来运行异步任务
+    async def run_analysis_task():
+        """包装函数：在后台运行分析任务"""
+        try:
+            logger.info(f"🚀 [BackgroundTask] 开始执行分析任务: {task_id}")
+            logger.info(f"📝 [BackgroundTask] task_id={task_id}, user_id={user_id}")
+            logger.info(f"📝 [BackgroundTask] request={request}")
 
-                # 重新获取服务实例，确保在正确的上下文中
-                logger.info(f"🔧 [BackgroundTask] 正在获取服务实例...")
-                service = get_simple_analysis_service()
-                logger.info(f"✅ [BackgroundTask] 服务实例获取成功: {id(service)}")
+            # 重新获取服务实例，确保在正确的上下文中
+            logger.info(f"🔧 [BackgroundTask] 正在获取服务实例...")
+            service = get_simple_analysis_service()
+            logger.info(f"✅ [BackgroundTask] 服务实例获取成功: {id(service)}")
 
-                logger.info(
-                    f"🚀 [BackgroundTask] 准备调用 execute_analysis_background..."
-                )
-                await service.execute_analysis_background(task_id, user_id, request)
-                logger.info(f"✅ [BackgroundTask] 分析任务完成: {task_id}")
-            except Exception as e:
-                logger.error(
-                    f"❌ [BackgroundTask] 分析任务失败: {task_id}, 错误: {e}",
-                    exc_info=True,
-                )
+            logger.info(
+                f"🚀 [BackgroundTask] 准备调用 execute_analysis_background..."
+            )
+            await service.execute_analysis_background(task_id, user_id, request)
+            logger.info(f"✅ [BackgroundTask] 分析任务完成: {task_id}")
+        except Exception as e:
+            logger.error(
+                f"❌ [BackgroundTask] 分析任务失败: {task_id}, 错误: {e}",
+                exc_info=True,
+            )
 
-        # 使用 BackgroundTasks 执行异步任务
-        background_tasks.add_task(run_analysis_task)
+    # 使用 BackgroundTasks 执行异步任务
+    background_tasks.add_task(run_analysis_task)
 
-        logger.info(f"✅ 分析任务已在后台启动: {result}")
+    logger.info(f"✅ 分析任务已在后台启动: {result}")
 
-        return {"success": True, "data": result, "message": "分析任务已在后台启动"}
-    except Exception as e:
-        logger.error(f"❌ 提交单股分析任务失败: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": result, "message": "分析任务已在后台启动"}
 
 
 # 测试路由 - 验证路由是否被正确注册
@@ -855,27 +851,22 @@ async def list_all_tasks(
     offset: int = Query(0, ge=0, description="偏移量"),
 ):
     """获取所有任务列表（不限用户）"""
-    try:
-        logger.info(f"📋 查询所有任务列表")
+    logger.info(f"📋 查询所有任务列表")
 
-        tasks = await get_simple_analysis_service().list_all_tasks(
-            status=status, limit=limit, offset=offset
-        )
+    tasks = await get_simple_analysis_service().list_all_tasks(
+        status=status, limit=limit, offset=offset
+    )
 
-        return {
-            "success": True,
-            "data": {
-                "tasks": tasks,
-                "total": len(tasks),
-                "limit": limit,
-                "offset": offset,
-            },
-            "message": "任务列表获取成功",
-        }
-
-    except Exception as e:
-        logger.error(f"❌ 获取任务列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "success": True,
+        "data": {
+            "tasks": tasks,
+            "total": len(tasks),
+            "limit": limit,
+            "offset": offset,
+        },
+        "message": "任务列表获取成功",
+    }
 
 
 @router.get("/tasks", response_model=Dict[str, Any])
@@ -886,27 +877,22 @@ async def list_user_tasks(
     offset: int = Query(0, ge=0, description="偏移量"),
 ):
     """获取用户的任务列表"""
-    try:
-        logger.info(f"📋 查询用户任务列表: {user['id']}")
+    logger.info(f"📋 查询用户任务列表: {user['id']}")
 
-        tasks = await get_simple_analysis_service().list_user_tasks(
-            user_id=user["id"], status=status, limit=limit, offset=offset
-        )
+    tasks = await get_simple_analysis_service().list_user_tasks(
+        user_id=user["id"], status=status, limit=limit, offset=offset
+    )
 
-        return {
-            "success": True,
-            "data": {
-                "tasks": tasks,
-                "total": len(tasks),
-                "limit": limit,
-                "offset": offset,
-            },
-            "message": "任务列表获取成功",
-        }
-
-    except Exception as e:
-        logger.error(f"❌ 获取任务列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "success": True,
+        "data": {
+            "tasks": tasks,
+            "total": len(tasks),
+            "limit": limit,
+            "offset": offset,
+        },
+        "message": "任务列表获取成功",
+    }
 
 
 @router.post("/batch", response_model=Dict[str, Any])
@@ -1153,76 +1139,73 @@ async def get_user_analysis_history(
     page_size: int = Query(20, ge=1, le=100, description="每页大小"),
 ):
     """获取用户分析历史（支持基础筛选与分页）"""
-    try:
-        # 先获取用户任务列表（内存优先，MongoDB兜底）
-        raw_tasks = await get_simple_analysis_service().list_user_tasks(
-            user_id=user["id"],
-            status=status,
-            limit=page_size,
-            offset=(page - 1) * page_size,
-        )
+    # 先获取用户任务列表（内存优先，MongoDB兜底）
+    raw_tasks = await get_simple_analysis_service().list_user_tasks(
+        user_id=user["id"],
+        status=status,
+        limit=page_size,
+        offset=(page - 1) * page_size,
+    )
 
-        # 进行基础筛选
-        from datetime import datetime
+    # 进行基础筛选
+    from datetime import datetime
 
-        def in_date_range(t: Optional[str]) -> bool:
-            if not t:
-                return True
+    def in_date_range(t: Optional[str]) -> bool:
+        if not t:
+            return True
+        try:
+            dt = (
+                datetime.fromisoformat(t.replace("Z", "+00:00"))
+                if "Z" in t
+                else datetime.fromisoformat(t)
+            )
+        except Exception:
+            return True
+        ok = True
+        if start_date:
             try:
-                dt = (
-                    datetime.fromisoformat(t.replace("Z", "+00:00"))
-                    if "Z" in t
-                    else datetime.fromisoformat(t)
-                )
+                ok = ok and (dt.date() >= datetime.fromisoformat(start_date).date())
             except Exception:
-                return True
-            ok = True
-            if start_date:
-                try:
-                    ok = ok and (dt.date() >= datetime.fromisoformat(start_date).date())
-                except Exception:
-                    pass
-            if end_date:
-                try:
-                    ok = ok and (dt.date() <= datetime.fromisoformat(end_date).date())
-                except Exception:
-                    pass
-            return ok
+                pass
+        if end_date:
+            try:
+                ok = ok and (dt.date() <= datetime.fromisoformat(end_date).date())
+            except Exception:
+                pass
+        return ok
 
-        # 获取查询的股票代码 (兼容旧字段)
-        query_symbol = symbol or stock_code
+    # 获取查询的股票代码 (兼容旧字段)
+    query_symbol = symbol or stock_code
 
-        filtered = []
-        for x in raw_tasks:
-            if query_symbol:
-                task_symbol = (
-                    x.get("symbol") or x.get("stock_code") or x.get("stock_symbol")
-                )
-                if task_symbol not in [query_symbol]:
-                    continue
-            # 市场类型暂时从参数内判断（如有）
-            if market_type:
-                params = x.get("parameters") or {}
-                if params.get("market_type") != market_type:
-                    continue
-            # 时间范围（使用 start_time 或 created_at）
-            t = x.get("start_time") or x.get("created_at")
-            if not in_date_range(t):
+    filtered = []
+    for x in raw_tasks:
+        if query_symbol:
+            task_symbol = (
+                x.get("symbol") or x.get("stock_code") or x.get("stock_symbol")
+            )
+            if task_symbol not in [query_symbol]:
                 continue
-            filtered.append(x)
+        # 市场类型暂时从参数内判断（如有）
+        if market_type:
+            params = x.get("parameters") or {}
+            if params.get("market_type") != market_type:
+                continue
+        # 时间范围（使用 start_time 或 created_at）
+        t = x.get("start_time") or x.get("created_at")
+        if not in_date_range(t):
+            continue
+        filtered.append(x)
 
-        return {
-            "success": True,
-            "data": {
-                "tasks": filtered,
-                "total": len(filtered),
-                "page": page,
-                "page_size": page_size,
-            },
-            "message": "历史查询成功",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "success": True,
+        "data": {
+            "tasks": filtered,
+            "total": len(filtered),
+            "page": page,
+            "page_size": page_size,
+        },
+        "message": "历史查询成功",
+    }
 
 
 # WebSocket 端点已迁移到 app/routers/websocket_notifications.py
