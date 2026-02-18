@@ -878,6 +878,14 @@ app.add_middleware(
 app.add_middleware(OperationLogMiddleware)
 
 
+# ========== 全局异常处理器 ==========
+from app.core.exceptions import setup_exception_handlers
+
+# 注册全局异常处理器
+setup_exception_handlers(app)
+logger.info("✅ 全局异常处理器已注册")
+
+
 # ========== Phase 1.3: 速率限制中间件 ==========
 try:
     from app.middleware.rate_limit import RateLimitMiddleware, QuotaMiddleware

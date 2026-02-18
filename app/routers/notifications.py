@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 通知 REST API
+
+使用全局异常处理器，无需手动捕获常规异常。
+对于需要特定HTTP状态码的情况，仍可使用HTTPException。
 """
 import logging
 from typing import Optional
@@ -55,44 +58,45 @@ async def mark_all_read(user: dict = Depends(get_current_user)):
 
 @router.get("/notifications/debug/redis_pool")
 async def debug_redis_pool(user: dict = Depends(get_current_user)):
-    """调试端点：查看 Redis 连接池状态"""
+    """
+    调试端点：查看 Redis 连接池状态
+
+    注意：常规异常由全局异常处理器处理，
+    特定业务逻辑异常仍可使用HTTPException。
+    """
+    r = get_redis_client()
+    pool = r.connection_pool
+
+    # 获取连接池信息
+    pool_info = {
+        "max_connections": pool.max_connections,
+        "connection_class": str(pool.connection_class),
+        "available_connections": len(pool._available_connections) if hasattr(pool, '_available_connections') else "N/A",
+        "in_use_connections": len(pool._in_use_connections) if hasattr(pool, '_in_use_connections') else "N/A",
+    }
+
+    # 获取 Redis 服务器信息
+    info = await r.info("clients")
+    redis_info = {
+        "connected_clients": info.get("connected_clients", "N/A"),
+        "client_recent_max_input_buffer": info.get("client_recent_max_input_buffer", "N/A"),
+        "client_recent_max_output_buffer": info.get("client_recent_max_output_buffer", "N/A"),
+        "blocked_clients": info.get("blocked_clients", "N/A"),
+    }
+
+    # 🔥 新增：获取 PubSub 频道信息
     try:
-        r = get_redis_client()
-        pool = r.connection_pool
-
-        # 获取连接池信息
-        pool_info = {
-            "max_connections": pool.max_connections,
-            "connection_class": str(pool.connection_class),
-            "available_connections": len(pool._available_connections) if hasattr(pool, '_available_connections') else "N/A",
-            "in_use_connections": len(pool._in_use_connections) if hasattr(pool, '_in_use_connections') else "N/A",
+        pubsub_info = await r.execute_command("PUBSUB", "CHANNELS", "notifications:*")
+        pubsub_channels = {
+            "active_channels": len(pubsub_info) if pubsub_info else 0,
+            "channels": pubsub_info if pubsub_info else []
         }
-
-        # 获取 Redis 服务器信息
-        info = await r.info("clients")
-        redis_info = {
-            "connected_clients": info.get("connected_clients", "N/A"),
-            "client_recent_max_input_buffer": info.get("client_recent_max_input_buffer", "N/A"),
-            "client_recent_max_output_buffer": info.get("client_recent_max_output_buffer", "N/A"),
-            "blocked_clients": info.get("blocked_clients", "N/A"),
-        }
-
-        # 🔥 新增：获取 PubSub 频道信息
-        try:
-            pubsub_info = await r.execute_command("PUBSUB", "CHANNELS", "notifications:*")
-            pubsub_channels = {
-                "active_channels": len(pubsub_info) if pubsub_info else 0,
-                "channels": pubsub_info if pubsub_info else []
-            }
-        except Exception as e:
-            logger.warning(f"获取 PubSub 频道信息失败: {e}")
-            pubsub_channels = {"error": str(e)}
-
-        return ok(data={
-            "pool": pool_info,
-            "redis_server": redis_info,
-            "pubsub": pubsub_channels
-        })
     except Exception as e:
-        logger.error(f"获取 Redis 连接池信息失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"获取 PubSub 频道信息失败: {e}")
+        pubsub_channels = {"error": str(e)}
+
+    return ok(data={
+        "pool": pool_info,
+        "redis_server": redis_info,
+        "pubsub": pubsub_channels
+    })
