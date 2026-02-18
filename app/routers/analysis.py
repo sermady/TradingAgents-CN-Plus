@@ -93,6 +93,116 @@ class BatchAnalyzeRequest(BaseModel):
     description: Optional[str] = Field(None, description="批次描述")
 
 
+# ========== 辅助函数 ==========
+async def _fetch_result_from_mongodb(task_id: str) -> Optional[dict]:
+    """从MongoDB获取分析结果"""
+    from app.core.database import get_mongo_db
+
+    db = get_mongo_db()
+
+    # 从analysis_reports集合中查找（优先使用 task_id 匹配）
+    mongo_result = await db.analysis_reports.find_one({"task_id": task_id})
+
+    if not mongo_result:
+        # 兼容旧数据：旧记录可能没有 task_id，但 analysis_id 存在于 analysis_tasks.result
+        tasks_doc_for_id = await db.analysis_tasks.find_one(
+            {"task_id": task_id}, {"result.analysis_id": 1}
+        )
+        analysis_id = (
+            tasks_doc_for_id.get("result", {}).get("analysis_id")
+            if tasks_doc_for_id
+            else None
+        )
+        if analysis_id:
+            logger.info(
+                f"🔎 [RESULT] 按analysis_id兜底查询 analysis_reports: {analysis_id}"
+            )
+            mongo_result = await db.analysis_reports.find_one(
+                {"analysis_id": analysis_id}
+            )
+
+    if mongo_result:
+        logger.info(f"✅ [RESULT] 从MongoDB找到结果: {task_id}")
+        return mongo_result
+
+    # 兜底：尝试从 analysis_tasks 集合中的 result 字段获取
+    tasks_doc = await db.analysis_tasks.find_one(
+        {"task_id": task_id},
+        {
+            "result": 1,
+            "symbol": 1,
+            "stock_code": 1,
+            "created_at": 1,
+            "completed_at": 1,
+        },
+    )
+    if tasks_doc and tasks_doc.get("result"):
+        logger.info("✅ [RESULT] 从analysis_tasks.result 找到结果")
+        return {"_source": "analysis_tasks", "_doc": tasks_doc}
+
+    return None
+
+
+def _build_result_data(mongo_result: dict) -> dict:
+    """根据MongoDB结果构建标准化的结果数据"""
+    # 处理来自 analysis_tasks 的特殊格式
+    if mongo_result.get("_source") == "analysis_tasks":
+        tasks_doc = mongo_result["_doc"]
+        r = tasks_doc.get("result") or {}
+        symbol = (
+            tasks_doc.get("symbol")
+            or tasks_doc.get("stock_code")
+            or r.get("stock_symbol")
+            or r.get("stock_code")
+        )
+        return {
+            "analysis_id": r.get("analysis_id"),
+            "stock_symbol": symbol,
+            "stock_code": symbol,
+            "analysis_date": r.get("analysis_date"),
+            "summary": r.get("summary", ""),
+            "recommendation": r.get("recommendation", ""),
+            "confidence_score": r.get("confidence_score", 0.0),
+            "risk_level": r.get("risk_level", "中等"),
+            "key_points": r.get("key_points", []),
+            "execution_time": r.get("execution_time", 0),
+            "tokens_used": r.get("tokens_used", 0),
+            "analysts": r.get("analysts", []),
+            "research_depth": r.get("research_depth", "快速"),
+            "reports": r.get("reports", {}),
+            "state": r.get("state", {}),
+            "detailed_analysis": r.get("detailed_analysis", {}),
+            "created_at": tasks_doc.get("created_at"),
+            "updated_at": tasks_doc.get("completed_at"),
+            "status": r.get("status", "completed"),
+            "decision": r.get("decision", {}),
+            "source": "analysis_tasks",
+        }
+
+    # 标准MongoDB结果（来自analysis_reports）
+    return {
+        "analysis_id": mongo_result.get("analysis_id"),
+        "stock_symbol": mongo_result.get("stock_symbol"),
+        "stock_code": mongo_result.get("stock_symbol"),
+        "analysis_date": mongo_result.get("analysis_date"),
+        "summary": mongo_result.get("summary", ""),
+        "recommendation": mongo_result.get("recommendation", ""),
+        "confidence_score": mongo_result.get("confidence_score", 0.0),
+        "risk_level": mongo_result.get("risk_level", "中等"),
+        "key_points": mongo_result.get("key_points", []),
+        "execution_time": mongo_result.get("execution_time", 0),
+        "tokens_used": mongo_result.get("tokens_used", 0),
+        "analysts": mongo_result.get("analysts", []),
+        "research_depth": mongo_result.get("research_depth", "快速"),
+        "reports": mongo_result.get("reports", {}),
+        "created_at": mongo_result.get("created_at"),
+        "updated_at": mongo_result.get("updated_at"),
+        "status": mongo_result.get("status", "completed"),
+        "decision": mongo_result.get("decision", {}),
+        "source": "mongodb",
+    }
+
+
 # 新版API端点
 @router.post("/single", response_model=Dict[str, Any])
 async def submit_single_analysis(
@@ -312,124 +422,22 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
             # 内存中没有找到，尝试从MongoDB中查找
             logger.info(f"📊 [RESULT] 内存中未找到，尝试从MongoDB查找: {task_id}")
 
-            from app.core.database import get_mongo_db
-
-            db = get_mongo_db()
-
-            # 从analysis_reports集合中查找（优先使用 task_id 匹配）
-            mongo_result = await db.analysis_reports.find_one({"task_id": task_id})
-
-            if not mongo_result:
-                # 兼容旧数据：旧记录可能没有 task_id，但 analysis_id 存在于 analysis_tasks.result
-                tasks_doc_for_id = await db.analysis_tasks.find_one(
-                    {"task_id": task_id}, {"result.analysis_id": 1}
-                )
-                analysis_id = (
-                    tasks_doc_for_id.get("result", {}).get("analysis_id")
-                    if tasks_doc_for_id
-                    else None
-                )
-                if analysis_id:
-                    logger.info(
-                        f"🔎 [RESULT] 按analysis_id兜底查询 analysis_reports: {analysis_id}"
-                    )
-                    mongo_result = await db.analysis_reports.find_one(
-                        {"analysis_id": analysis_id}
-                    )
+            mongo_result = await _fetch_result_from_mongodb(task_id)
 
             if mongo_result:
-                logger.info(f"✅ [RESULT] 从MongoDB找到结果: {task_id}")
-
-                # 直接使用MongoDB中的数据结构（与web目录保持一致）
-                result_data = {
-                    "analysis_id": mongo_result.get("analysis_id"),
-                    "stock_symbol": mongo_result.get("stock_symbol"),
-                    "stock_code": mongo_result.get("stock_symbol"),  # 兼容性
-                    "analysis_date": mongo_result.get("analysis_date"),
-                    "summary": mongo_result.get("summary", ""),
-                    "recommendation": mongo_result.get("recommendation", ""),
-                    "confidence_score": mongo_result.get("confidence_score", 0.0),
-                    "risk_level": mongo_result.get("risk_level", "中等"),
-                    "key_points": mongo_result.get("key_points", []),
-                    "execution_time": mongo_result.get("execution_time", 0),
-                    "tokens_used": mongo_result.get("tokens_used", 0),
-                    "analysts": mongo_result.get("analysts", []),
-                    "research_depth": mongo_result.get("research_depth", "快速"),
-                    "reports": mongo_result.get("reports", {}),
-                    "created_at": mongo_result.get("created_at"),
-                    "updated_at": mongo_result.get("updated_at"),
-                    "status": mongo_result.get("status", "completed"),
-                    "decision": mongo_result.get("decision", {}),
-                    "source": "mongodb",  # 标记数据来源
-                }
+                result_data = _build_result_data(mongo_result)
 
                 # 添加调试信息
                 logger.info(f"📊 [RESULT] MongoDB数据结构: {list(result_data.keys())}")
                 logger.info(
-                    f"📊 [RESULT] MongoDB summary长度: {len(result_data['summary'])}"
-                )
-                logger.info(
-                    f"📊 [RESULT] MongoDB recommendation长度: {len(result_data['recommendation'])}"
+                    f"📊 [RESULT] MongoDB summary长度: {len(result_data.get('summary', ''))}"
                 )
                 logger.info(
                     f"📊 [RESULT] MongoDB decision字段: {bool(result_data.get('decision'))}"
                 )
-                if result_data.get("decision"):
-                    decision = result_data["decision"]
-                    logger.info(
-                        f"📊 [RESULT] MongoDB decision内容: action={decision.get('action')}, target_price={decision.get('target_price')}, confidence={decision.get('confidence')}"
-                    )
-            else:
-                # 兜底：analysis_tasks 集合中的 result 字段
-                tasks_doc = await db.analysis_tasks.find_one(
-                    {"task_id": task_id},
-                    {
-                        "result": 1,
-                        "symbol": 1,
-                        "stock_code": 1,
-                        "created_at": 1,
-                        "completed_at": 1,
-                    },
-                )
-                if tasks_doc and tasks_doc.get("result"):
-                    r = tasks_doc["result"] or {}
-                    logger.info("✅ [RESULT] 从analysis_tasks.result 找到结果")
-                    # 获取股票代码 (优先使用symbol)
-                    symbol = (
-                        tasks_doc.get("symbol")
-                        or tasks_doc.get("stock_code")
-                        or r.get("stock_symbol")
-                        or r.get("stock_code")
-                    )
-                    result_data = {
-                        "analysis_id": r.get("analysis_id"),
-                        "stock_symbol": symbol,
-                        "stock_code": symbol,  # 兼容字段
-                        "analysis_date": r.get("analysis_date"),
-                        "summary": r.get("summary", ""),
-                        "recommendation": r.get("recommendation", ""),
-                        "confidence_score": r.get("confidence_score", 0.0),
-                        "risk_level": r.get("risk_level", "中等"),
-                        "key_points": r.get("key_points", []),
-                        "execution_time": r.get("execution_time", 0),
-                        "tokens_used": r.get("tokens_used", 0),
-                        "analysts": r.get("analysts", []),
-                        "research_depth": r.get("research_depth", "快速"),
-                        "reports": r.get("reports", {}),
-                        "state": r.get("state", {}),
-                        "detailed_analysis": r.get("detailed_analysis", {}),
-                        "created_at": tasks_doc.get("created_at"),
-                        "updated_at": tasks_doc.get("completed_at"),
-                        "status": r.get("status", "completed"),
-                        "decision": r.get("decision", {}),
-                        "source": "analysis_tasks",  # 数据来源标记
-                    }
 
         if not result_data:
             logger.warning(f"❌ [RESULT] 所有数据源都未找到结果: {task_id}")
-            raise HTTPException(status_code=404, detail="分析结果不存在")
-
-        if not result_data:
             raise HTTPException(status_code=404, detail="分析结果不存在")
 
         # 处理reports字段 - 如果没有reports字段，优先尝试从文件系统加载，其次从state中提取
