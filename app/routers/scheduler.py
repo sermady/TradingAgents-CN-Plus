@@ -44,15 +44,12 @@ async def list_jobs(
 ):
     """
     获取所有定时任务列表
-    
+
     Returns:
         任务列表，包含任务ID、名称、状态、下次执行时间等信息
     """
-    try:
-        jobs = await service.list_jobs()
-        return ok(data=jobs, message=f"获取到 {len(jobs)} 个定时任务")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+    jobs = await service.list_jobs()
+    return ok(data=jobs, message=f"获取到 {len(jobs)} 个定时任务")
 
 
 @router.put("/jobs/{job_id}/metadata")
@@ -76,20 +73,15 @@ async def update_job_metadata_route(
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可以更新任务元数据")
 
-    try:
-        success = await service.update_job_metadata(
-            job_id,
-            display_name=request.display_name,
-            description=request.description
-        )
-        if success:
-            return ok(message=f"任务 {job_id} 元数据已更新")
-        else:
-            raise HTTPException(status_code=400, detail=f"更新任务 {job_id} 元数据失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"更新任务元数据失败: {str(e)}")
+    success = await service.update_job_metadata(
+        job_id,
+        display_name=request.display_name,
+        description=request.description
+    )
+    if success:
+        return ok(message=f"任务 {job_id} 元数据已更新")
+    else:
+        raise HTTPException(status_code=400, detail=f"更新任务 {job_id} 元数据失败")
 
 
 @router.get("/jobs/{job_id}")
@@ -107,15 +99,10 @@ async def get_job_detail(
     Returns:
         任务详细信息
     """
-    try:
-        job = await service.get_job(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
-        return ok(data=job, message="获取任务详情成功")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
+    job = await service.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务 {job_id} 不存在")
+    return ok(data=job, message="获取任务详情成功")
 
 
 @router.post("/jobs/{job_id}/pause")
@@ -126,27 +113,22 @@ async def pause_job(
 ):
     """
     暂停任务
-    
+
     Args:
         job_id: 任务ID
-        
+
     Returns:
         操作结果
     """
     # 检查管理员权限
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可以暂停任务")
-    
-    try:
-        success = await service.pause_job(job_id)
-        if success:
-            return ok(message=f"任务 {job_id} 已暂停")
-        else:
-            raise HTTPException(status_code=400, detail=f"暂停任务 {job_id} 失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"暂停任务失败: {str(e)}")
+
+    success = await service.pause_job(job_id)
+    if success:
+        return ok(message=f"任务 {job_id} 已暂停")
+    else:
+        raise HTTPException(status_code=400, detail=f"暂停任务 {job_id} 失败")
 
 
 @router.post("/jobs/{job_id}/resume")
@@ -157,27 +139,22 @@ async def resume_job(
 ):
     """
     恢复任务
-    
+
     Args:
         job_id: 任务ID
-        
+
     Returns:
         操作结果
     """
     # 检查管理员权限
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可以恢复任务")
-    
-    try:
-        success = await service.resume_job(job_id)
-        if success:
-            return ok(message=f"任务 {job_id} 已恢复")
-        else:
-            raise HTTPException(status_code=400, detail=f"恢复任务 {job_id} 失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"恢复任务失败: {str(e)}")
+
+    success = await service.resume_job(job_id)
+    if success:
+        return ok(message=f"任务 {job_id} 已恢复")
+    else:
+        raise HTTPException(status_code=400, detail=f"恢复任务 {job_id} 失败")
 
 
 @router.post("/jobs/{job_id}/trigger")
@@ -201,24 +178,19 @@ async def trigger_job(
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可以手动触发任务")
 
-    try:
-        # 为特定任务传递 force 参数
-        kwargs = {}
-        if force and job_id in ["tushare_quotes_sync", "akshare_quotes_sync"]:
-            kwargs["force"] = True
+    # 为特定任务传递 force 参数
+    kwargs = {}
+    if force and job_id in ["tushare_quotes_sync", "akshare_quotes_sync"]:
+        kwargs["force"] = True
 
-        success = await service.trigger_job(job_id, kwargs=kwargs)
-        if success:
-            message = f"任务 {job_id} 已触发执行"
-            if force:
-                message += "（强制模式）"
-            return ok(message=message)
-        else:
-            raise HTTPException(status_code=400, detail=f"触发任务 {job_id} 失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"触发任务失败: {str(e)}")
+    success = await service.trigger_job(job_id, kwargs=kwargs)
+    if success:
+        message = f"任务 {job_id} 已触发执行"
+        if force:
+            message += "（强制模式）"
+        return ok(message=message)
+    else:
+        raise HTTPException(status_code=400, detail=f"触发任务 {job_id} 失败")
 
 
 @router.get("/jobs/{job_id}/history")
@@ -231,30 +203,27 @@ async def get_job_history(
 ):
     """
     获取任务执行历史
-    
+
     Args:
         job_id: 任务ID
         limit: 返回数量限制
         offset: 偏移量
-        
+
     Returns:
         任务执行历史记录
     """
-    try:
-        history = await service.get_job_history(job_id, limit=limit, offset=offset)
-        total = await service.count_job_history(job_id)
-        
-        return ok(
-            data={
-                "history": history,
-                "total": total,
-                "limit": limit,
-                "offset": offset
-            },
-            message=f"获取到 {len(history)} 条执行记录"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取执行历史失败: {str(e)}")
+    history = await service.get_job_history(job_id, limit=limit, offset=offset)
+    total = await service.count_job_history(job_id)
+
+    return ok(
+        data={
+            "history": history,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        },
+        message=f"获取到 {len(history)} 条执行记录"
+    )
 
 
 @router.get("/history")
@@ -268,36 +237,33 @@ async def get_all_history(
 ):
     """
     获取所有任务执行历史
-    
+
     Args:
         limit: 返回数量限制
         offset: 偏移量
         job_id: 任务ID过滤
         status: 状态过滤
-        
+
     Returns:
         所有任务执行历史记录
     """
-    try:
-        history = await service.get_all_history(
-            limit=limit,
-            offset=offset,
-            job_id=job_id,
-            status=status
-        )
-        total = await service.count_all_history(job_id=job_id, status=status)
-        
-        return ok(
-            data={
-                "history": history,
-                "total": total,
-                "limit": limit,
-                "offset": offset
-            },
-            message=f"获取到 {len(history)} 条执行记录"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取执行历史失败: {str(e)}")
+    history = await service.get_all_history(
+        limit=limit,
+        offset=offset,
+        job_id=job_id,
+        status=status
+    )
+    total = await service.count_all_history(job_id=job_id, status=status)
+
+    return ok(
+        data={
+            "history": history,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        },
+        message=f"获取到 {len(history)} 条执行记录"
+    )
 
 
 @router.get("/stats")
@@ -307,15 +273,12 @@ async def get_scheduler_stats(
 ):
     """
     获取调度器统计信息
-    
+
     Returns:
         调度器统计信息，包括任务总数、运行中任务数、暂停任务数等
     """
-    try:
-        stats = await service.get_stats()
-        return ok(data=stats, message="获取统计信息成功")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
+    stats = await service.get_stats()
+    return ok(data=stats, message="获取统计信息成功")
 
 
 @router.get("/health")
@@ -329,11 +292,8 @@ async def scheduler_health_check(
     Returns:
         调度器健康状态
     """
-    try:
-        health = await service.health_check()
-        return ok(data=health, message="调度器运行正常")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"健康检查失败: {str(e)}")
+    health = await service.health_check()
+    return ok(data=health, message="调度器运行正常")
 
 
 @router.get("/executions")
@@ -359,23 +319,20 @@ async def get_job_executions(
     Returns:
         执行历史列表
     """
-    try:
-        executions = await service.get_job_executions(
-            job_id=job_id,
-            status=status,
-            is_manual=is_manual,
-            limit=limit,
-            offset=offset
-        )
-        total = await service.count_job_executions(job_id=job_id, status=status, is_manual=is_manual)
-        return ok(data={
-            "items": executions,
-            "total": total,
-            "limit": limit,
-            "offset": offset
-        }, message=f"获取到 {len(executions)} 条执行记录")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取执行历史失败: {str(e)}")
+    executions = await service.get_job_executions(
+        job_id=job_id,
+        status=status,
+        is_manual=is_manual,
+        limit=limit,
+        offset=offset
+    )
+    total = await service.count_job_executions(job_id=job_id, status=status, is_manual=is_manual)
+    return ok(data={
+        "items": executions,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }, message=f"获取到 {len(executions)} 条执行记录")
 
 
 @router.get("/jobs/{job_id}/executions")
@@ -401,23 +358,20 @@ async def get_single_job_executions(
     Returns:
         执行历史列表
     """
-    try:
-        executions = await service.get_job_executions(
-            job_id=job_id,
-            status=status,
-            is_manual=is_manual,
-            limit=limit,
-            offset=offset
-        )
-        total = await service.count_job_executions(job_id=job_id, status=status, is_manual=is_manual)
-        return ok(data={
-            "items": executions,
-            "total": total,
-            "limit": limit,
-            "offset": offset
-        }, message=f"获取到 {len(executions)} 条执行记录")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取执行历史失败: {str(e)}")
+    executions = await service.get_job_executions(
+        job_id=job_id,
+        status=status,
+        is_manual=is_manual,
+        limit=limit,
+        offset=offset
+    )
+    total = await service.count_job_executions(job_id=job_id, status=status, is_manual=is_manual)
+    return ok(data={
+        "items": executions,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }, message=f"获取到 {len(executions)} 条执行记录")
 
 
 @router.get("/jobs/{job_id}/execution-stats")
@@ -435,11 +389,8 @@ async def get_job_execution_stats(
     Returns:
         统计信息
     """
-    try:
-        stats = await service.get_job_execution_stats(job_id)
-        return ok(data=stats, message="获取统计信息成功")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
+    stats = await service.get_job_execution_stats(job_id)
+    return ok(data=stats, message="获取统计信息成功")
 
 
 @router.post("/executions/{execution_id}/cancel")
@@ -460,16 +411,11 @@ async def cancel_execution(
     Returns:
         操作结果
     """
-    try:
-        success = await service.cancel_job_execution(execution_id)
-        if success:
-            return ok(message="已设置取消标记，任务将在下次检查时停止")
-        else:
-            raise HTTPException(status_code=400, detail="取消任务失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
+    success = await service.cancel_job_execution(execution_id)
+    if success:
+        return ok(message="已设置取消标记，任务将在下次检查时停止")
+    else:
+        raise HTTPException(status_code=400, detail="取消任务失败")
 
 
 @router.post("/executions/{execution_id}/mark-failed")
@@ -491,16 +437,11 @@ async def mark_execution_failed(
     Returns:
         操作结果
     """
-    try:
-        success = await service.mark_execution_as_failed(execution_id, reason)
-        if success:
-            return ok(message="已标记为失败状态")
-        else:
-            raise HTTPException(status_code=400, detail="标记失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"标记失败: {str(e)}")
+    success = await service.mark_execution_as_failed(execution_id, reason)
+    if success:
+        return ok(message="已标记为失败状态")
+    else:
+        raise HTTPException(status_code=400, detail="标记失败")
 
 
 @router.delete("/executions/{execution_id}")
@@ -518,13 +459,8 @@ async def delete_execution(
     Returns:
         操作结果
     """
-    try:
-        success = await service.delete_execution(execution_id)
-        if success:
-            return ok(message="执行记录已删除")
-        else:
-            raise HTTPException(status_code=400, detail="删除失败")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除执行记录失败: {str(e)}")
+    success = await service.delete_execution(execution_id)
+    if success:
+        return ok(message="执行记录已删除")
+    else:
+        raise HTTPException(status_code=400, detail="删除失败")
