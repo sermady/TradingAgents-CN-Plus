@@ -8,7 +8,6 @@ SimFin API 接口模块
 from typing import Annotated
 import os
 import pandas as pd
-from datetime import datetime
 
 from .base_interface import logger, DATA_DIR
 

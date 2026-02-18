@@ -5,7 +5,6 @@ OpenAI 集成接口模块
 提供基于 OpenAI 的新闻和全球数据获取功能
 """
 
-from datetime import datetime
 from openai import OpenAI
 
 from .base_interface import get_config

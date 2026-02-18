@@ -11,7 +11,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-from .base_interface import logger, DATA_DIR, YF_AVAILABLE, yf
+from .base_interface import DATA_DIR, YF_AVAILABLE, yf
 
 
 def get_YFin_data_window(

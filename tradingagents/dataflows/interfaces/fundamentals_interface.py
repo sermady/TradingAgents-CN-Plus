@@ -6,7 +6,6 @@
 """
 
 import os
-from datetime import datetime
 from openai import OpenAI
 
 from .base_interface import logger, get_config

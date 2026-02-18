@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-from .base_interface import logger, DATA_DIR, STOCKSTATS_AVAILABLE, StockstatsUtils
+from .base_interface import DATA_DIR, STOCKSTATS_AVAILABLE, StockstatsUtils
 
 
 def get_stock_stats_indicators_window(
