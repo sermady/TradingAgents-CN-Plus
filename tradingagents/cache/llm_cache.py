@@ -10,14 +10,7 @@ LLM响应缓存模块
 
 # 重新导出增强版的所有功能
 from tradingagents.cache.llm_cache_enhanced import (
-    LLMCache,
-    EnhancedLLMCache,
-    CacheBackend,
-    PromptType,
     get_llm_cache,
-    get_enhanced_llm_cache,
-    clear_llm_cache,
-    get_cache_stats,
 )
 
 # 保留便捷函数以保持向后兼容
