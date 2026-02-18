@@ -1,14 +1,14 @@
 # TradingAgents-CN 代码简化分析报告
 
-**分析时间**: 2026-02-15 23:06:23
-**分析文件数**: 409
+**分析时间**: 2026-02-15 23:53:09
+**分析文件数**: 406
 **项目路径**: E:\WorkSpace\TradingAgents-CN
 
 ## 执行摘要
 
 - **超大文件 (>1000行)**: 6 个
-- **重复函数**: 56 组
-- **重复模式**: 190 类
+- **重复函数**: 53 组
+- **重复模式**: 187 类
 
 ## 1. 超大文件分析 (P0 - 高优先级)
 
@@ -50,17 +50,9 @@
 
 ## 2. 重复函数检测 (P1 - 中优先级)
 
-发现 56 组重复函数:
+发现 53 组重复函数:
 
-### 2.1 get_task_status
-- **相似度**: 100%
-- **出现次数**: 2
-- **位置**:
-  - `app\routers\analysis\routes.py:54-66`
-  - `app\routers\analysis\routes.py:71-83`
-- **建议**: 提取到公共模块 `utils/common.py`
-
-### 2.2 migrate_env_to_providers
+### 2.1 migrate_env_to_providers
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -68,7 +60,7 @@
   - `app\routers\config\llm_provider.py:313-347`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.3 stream_task_progress
+### 2.2 stream_task_progress
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -76,7 +68,7 @@
   - `app\routers\sse.py:245-260`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.4 get_cost_by_provider
+### 2.3 get_cost_by_provider
 - **相似度**: 100%
 - **出现次数**: 3
 - **位置**:
@@ -85,7 +77,7 @@
   - `app\routers\usage_statistics.py:143-153`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.5 __init__
+### 2.4 __init__
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -93,7 +85,7 @@
   - `app\services\alert\statistics.py:32-41`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.6 send_notifications
+### 2.5 send_notifications
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -101,7 +93,7 @@
   - `app\services\alert_manager_old.py:443-453`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.7 _send_email_notification
+### 2.6 _send_email_notification
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -109,15 +101,15 @@
   - `app\services\alert_manager_old.py:473-563`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.8 collection_name
+### 2.7 collection_name
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
-  - `app\services\base_crud_service.py:52-61`
+  - `app\services\base_crud_service.py:58-67`
   - `app\services\message_base_service.py:45-54`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.9 get_quote
+### 2.8 get_quote
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -125,7 +117,7 @@
   - `app\services\foreign_stock_service.py:81-97`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.10 get_hk_news
+### 2.9 get_hk_news
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -133,7 +125,7 @@
   - `app\services\foreign_stock_service.py:133-144`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.11 search_messages
+### 2.10 search_messages
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -141,7 +133,7 @@
   - `app\services\social_media_service.py:233-256`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.12 get_research_reports
+### 2.11 get_research_reports
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -149,7 +141,7 @@
   - `app\services\internal_message_service.py:306-321`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.13 pause_job
+### 2.12 pause_job
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
@@ -157,23 +149,28 @@
   - `app\services\scheduler_service.py:173-189`
 - **建议**: 提取到公共模块 `utils/common.py`
 
-### 2.14 _normalize_code
+### 2.13 _get_cached_info
 - **相似度**: 100%
 - **出现次数**: 2
 - **位置**:
-  - `app\worker\foreign_data_service_base.py:204-215`
-  - `app\worker\us_data_service_v2.py:45-56`
+  - `app\worker\hk_data_service.py:119-134`
+  - `app\worker\us_data_service.py:118-133`
+- **建议**: 提取到公共模块 `utils/common.py`
+
+### 2.14 _save_to_cache
+- **相似度**: 100%
+- **出现次数**: 2
+- **位置**:
+  - `app\worker\hk_data_service.py:136-148`
+  - `app\worker\us_data_service.py:135-147`
 - **建议**: 提取到公共模块 `utils/common.py`
 
 ### 2.15 _normalize_stock_info
 - **相似度**: 100%
-- **出现次数**: 5
+- **出现次数**: 2
 - **位置**:
-  - `app\worker\foreign_data_service_base.py:217-246`
-  - `app\worker\hk_data_service.py:149-179`
-  - `app\worker\hk_data_service_v2.py:59-88`
-  - `app\worker\us_data_service.py:148-178`
-  - `app\worker\us_data_service_v2.py:58-87`
+  - `app\worker\hk_data_service.py:150-162`
+  - `app\worker\us_data_service.py:149-161`
 - **建议**: 提取到公共模块 `utils/common.py`
 
 
@@ -181,8 +178,8 @@
 
 | 模式类型 | 出现次数 | 建议 |
 |---------|---------|------|
-| CRUD操作模式 | 559 | 使用通用CRUD基类 |
-| 重复的错误处理模式 | 513 | 创建 @handle_errors 装饰器 |
+| CRUD操作模式 | 556 | 使用通用CRUD基类 |
+| 重复的错误处理模式 | 489 | 创建 @handle_errors 装饰器 |
 
 ## 4. 文件复杂度统计
 
@@ -193,7 +190,7 @@
 | app\services\config\config_service.py | 941 | 54 | 1 |
 | app\services\unified_cache_service.py | 988 | 33 | 2 |
 | tradingagents\config\config_manager.py | 919 | 33 | 2 |
-| app\services\base_crud_service.py | 928 | 32 | 4 |
+| app\services\base_crud_service.py | 862 | 32 | 4 |
 | app\services\scheduler_service.py | 1161 | 30 | 2 |
 | tradingagents\agents\utils\toolkit\base_toolkit.py | 319 | 30 | 1 |
 | tradingagents\llm_adapters\llm_factory.py | 688 | 28 | 8 |
@@ -214,17 +211,17 @@
 - [ ] 拆分 `tradingagents\graph\data_coordinator.py` (1311 行)
 - [ ] 拆分 `app\worker\akshare_sync_service.py` (1251 行)
 - [ ] 拆分 `app\services\scheduler_service.py` (1161 行)
-- [ ] 统一重复函数 `get_task_status` (2 处)
 - [ ] 统一重复函数 `migrate_env_to_providers` (2 处)
 - [ ] 统一重复函数 `stream_task_progress` (2 处)
+- [ ] 统一重复函数 `get_cost_by_provider` (3 处)
 
 ### P1 - 短期处理 (本月)
 - [ ] 重构 `tradingagents\dataflows\providers\china\baostock.py`
-- [ ] 提取公共函数 `get_cost_by_provider`
 - [ ] 提取公共函数 `__init__`
 - [ ] 提取公共函数 `send_notifications`
 - [ ] 提取公共函数 `_send_email_notification`
 - [ ] 提取公共函数 `collection_name`
+- [ ] 提取公共函数 `get_quote`
 
 ### P2 - 中期处理 (下月)
 - [ ] 建立代码规范检查自动化
@@ -236,12 +233,12 @@
 
 ### 代码量减少
 - 通过拆分超大文件，预计可减少 **2753** 行代码
-- 通过消除重复函数，预计可减少 **1480** 行代码
-- 总计预计减少: **4233** 行
+- 通过消除重复函数，预计可减少 **1380** 行代码
+- 总计预计减少: **4133** 行
 
 ### 维护性提升
 - 超大文件拆分后，平均文件大小降低 **180%**
-- 重复代码统一后，修改点减少 **74** 处
+- 重复代码统一后，修改点减少 **69** 处
 - 代码可读性显著提升
 
 ### 质量改善

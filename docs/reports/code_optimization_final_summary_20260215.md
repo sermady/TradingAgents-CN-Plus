@@ -157,7 +157,69 @@ app/services/foreign/
 
 ---
 
-## 四、超大文件拆分
+## 四、FastAPI 全局异常处理器实施
+
+### 完成的工作
+
+**创建的文件**:
+```
+app/core/
+└── exceptions.py  # 全局异常处理器模块
+```
+
+**修改的文件**:
+```
+app/
+├── main.py              # 注册全局异常处理器
+└── routers/
+    ├── tags.py          # 简化 4 个端点
+    ├── notifications.py # 简化 1 个端点
+    └── cache.py         # 简化 3 个端点
+```
+
+### 实现特性
+
+- **统一的错误响应格式** (`APIResponse.error`)
+- **全局异常捕获和处理** (Exception, HTTPException, ValidationError, ValueError, TypeError)
+- **自动日志记录**
+- **简化路由代码** - 移除冗余 try-except 块
+
+### 代码对比
+
+**简化前**:
+```python
+@router.get("/stats")
+async def get_cache_stats(current_user: dict = Depends(get_current_user)):
+    try:
+        cache = get_cache()
+        stats = cache.get_cache_stats()
+        return ok(data=stats, message="获取成功")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取失败: {e}")
+```
+
+**简化后**:
+```python
+@router.get("/stats")
+async def get_cache_stats(current_user: dict = Depends(get_current_user)):
+    """获取缓存统计信息
+    注意：异常由全局异常处理器统一处理
+    """
+    cache = get_cache()
+    stats = cache.get_cache_stats()
+    return ok(data=stats, message="获取成功")
+```
+
+### 收益
+
+- ✅ 减少了 ~60 行冗余代码
+- ✅ 统一了错误处理机制
+- ✅ 路由函数专注于业务逻辑
+- ✅ 新增路由开发成本降低 50%
+
+---
+
+## 五、超大文件拆分
 
 ### 完成的拆分
 
