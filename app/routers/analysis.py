@@ -36,7 +36,51 @@ router = APIRouter()
 logger = logging.getLogger("webapi")
 
 
-# 兼容性：保留原有的请求模型
+# ========== 工具函数 ==========
+def safe_string(value, default=""):
+    """安全地转换为字符串"""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def safe_number(value, default=0):
+    """安全地转换为数字"""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_list(value, default=None):
+    """安全地转换为列表"""
+    if default is None:
+        default = []
+    if value is None:
+        return default
+    if isinstance(value, list):
+        return value
+    return default
+
+
+def safe_dict(value, default=None):
+    """安全地转换为字典"""
+    if default is None:
+        default = {}
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value
+    return default
+
+
+# ========== 兼容性模型 ==========
 class SingleAnalyzeRequest(BaseModel):
     symbol: str
     parameters: dict = Field(default_factory=dict)
@@ -716,46 +760,7 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
         except Exception as da_err:
             logger.warning(f"⚠️ [RESULT] 从detailed_analysis补全失败: {da_err}")
 
-        # 严格的数据格式化和验证
-        def safe_string(value, default=""):
-            """安全地转换为字符串"""
-            if value is None:
-                return default
-            if isinstance(value, str):
-                return value
-            return str(value)
-
-        def safe_number(value, default=0):
-            """安全地转换为数字"""
-            if value is None:
-                return default
-            if isinstance(value, (int, float)):
-                return value
-            try:
-                return float(value)
-            except (ValueError, TypeError):
-                return default
-
-        def safe_list(value, default=None):
-            """安全地转换为列表"""
-            if default is None:
-                default = []
-            if value is None:
-                return default
-            if isinstance(value, list):
-                return value
-            return default
-
-        def safe_dict(value, default=None):
-            """安全地转换为字典"""
-            if default is None:
-                default = {}
-            if value is None:
-                return default
-            if isinstance(value, dict):
-                return value
-            return default
-
+        # 使用模块级别的工具函数进行数据格式化和验证
         # 🔍 调试：检查最终构建前的result_data
         logger.info(
             f"🔍 [FINAL] 构建最终结果前，result_data键: {list(result_data.keys())}"
