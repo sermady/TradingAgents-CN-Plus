@@ -27,7 +27,7 @@ try:
 
     def _get_stock_info_safe(stock_code: str):
         """获取股票基础信息的安全封装"""
-        return _data_source_manager.get_stock_basic_info(stock_code)
+        return _data_source_manager.get_stock_info(stock_code)
 except Exception:
     _get_stock_info_safe = None
 
