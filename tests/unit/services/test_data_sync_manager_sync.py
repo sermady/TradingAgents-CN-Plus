@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.data_sync_manager import (
+from app.services.sync import (
     DataSyncManager,
     SyncStatus,
     DataType,

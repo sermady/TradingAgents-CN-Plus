@@ -101,7 +101,7 @@ class TushareFinancialSync(TushareSyncBase):
 
                         # 更新任务进度
                         if job_id:
-                            from app.services.scheduler_service import (
+                            from app.services.scheduler import (
                                 update_job_progress,
                                 TaskCancelledException,
                             )

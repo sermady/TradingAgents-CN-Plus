@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from bson import ObjectId
 
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 
 
 class TagsService(BaseCRUDService):

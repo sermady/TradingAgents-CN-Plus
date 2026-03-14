@@ -10,7 +10,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, TokenStatus
+from app.services.refresh_token_service import refresh_token_service
 from app.services.user_service import user_service
 from app.models.user import UserCreate, UserUpdate
 from app.services.operation_log_service import log_operation
@@ -67,6 +68,10 @@ class CreateUserRequest(BaseModel):
     password: str
     is_admin: bool = False
 
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 async def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """获取当前用户信息"""
     logger.debug(f"🔐 认证检查开始")
@@ -84,24 +89,29 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)) 
     logger.debug(f"🎫 提取的token长度: {len(token)}")
     logger.debug(f"🎫 Token前20位: {token[:20]}...")
 
-    token_data = AuthService.verify_token(token)
-    logger.debug(f"🔍 Token验证结果: {token_data is not None}")
+    # 使用新的验证方法
+    result = AuthService.verify_access_token(token)
+    logger.debug(f"🔍 Token验证结果: status={result.status.value}")
 
-    if not token_data:
-        logger.warning("❌ Token验证失败")
+    if result.status == TokenStatus.EXPIRED:
+        logger.warning("⏰ Access token 已过期")
+        raise HTTPException(status_code=401, detail="Token expired")
+
+    if result.status != TokenStatus.VALID or not result.data:
+        logger.warning(f"❌ Access token 验证失败: {result.error_message}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
     # 从数据库获取用户信息
-    user = await user_service.get_user_by_username(token_data.sub)
+    user = await user_service.get_user_by_username(result.data.sub)
     if not user:
-        logger.warning(f"❌ 用户不存在: {token_data.sub}")
+        logger.warning(f"❌ 用户不存在: {result.data.sub}")
         raise HTTPException(status_code=401, detail="User not found")
 
     if not user.is_active:
-        logger.warning(f"❌ 用户已禁用: {token_data.sub}")
+        logger.warning(f"❌ 用户已禁用: {result.data.sub}")
         raise HTTPException(status_code=401, detail="User is inactive")
 
-    logger.debug(f"✅ 认证成功，用户: {token_data.sub}")
+    logger.debug(f"✅ 认证成功，用户: {result.data.sub}")
 
     # 返回完整的用户信息，包括偏好设置
     return {
@@ -113,6 +123,7 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)) 
         "roles": ["admin"] if user.is_admin else ["user"],
         "preferences": user.preferences.model_dump() if user.preferences else {}
     }
+
 
 @router.post("/login")
 async def login(payload: LoginRequest, request: Request):
@@ -166,9 +177,28 @@ async def login(payload: LoginRequest, request: Request):
             )
             raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-        # 生成 token
-        token = AuthService.create_access_token(sub=user.username)
-        refresh_token = AuthService.create_access_token(sub=user.username, expires_delta=60*60*24*7)  # 7天有效期
+        # 生成 access token (短有效期)
+        access_token = AuthService.create_access_token(sub=user.username)
+
+        # 生成 refresh token (长有效期，带 JWT ID)
+        refresh_token = AuthService.create_refresh_token(sub=user.username)
+
+        # 解析 refresh token 获取 jti 并注册
+        import jwt
+        from app.core.config import settings
+        try:
+            refresh_payload = jwt.decode(
+                refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+            )
+            jti = refresh_payload.get("jti")
+            if jti:
+                await refresh_token_service.register_refresh_token(
+                    user_id=str(user.id),
+                    jti=jti,
+                    expires_days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ 注册 refresh token 失败: {e}")
 
         # 记录登录成功日志
         await log_operation(
@@ -186,9 +216,9 @@ async def login(payload: LoginRequest, request: Request):
         return {
             "success": True,
             "data": {
-                "access_token": token,
+                "access_token": access_token,
                 "refresh_token": refresh_token,
-                "expires_in": 60 * 60,
+                "expires_in": 60 * 60,  # 1小时
                 "user": {
                     "id": str(user.id),
                     "username": user.username,
@@ -217,6 +247,7 @@ async def login(payload: LoginRequest, request: Request):
         )
         raise HTTPException(status_code=500, detail="登录过程中发生系统错误")
 
+
 @router.post("/refresh")
 async def refresh_token(payload: RefreshTokenRequest):
     """刷新访问令牌"""
@@ -228,32 +259,76 @@ async def refresh_token(payload: RefreshTokenRequest):
             logger.warning("❌ Refresh token为空")
             raise HTTPException(status_code=401, detail="Refresh token is required")
 
-        # 验证refresh token
-        token_data = AuthService.verify_token(payload.refresh_token)
-        logger.debug(f"🔍 Token验证结果: {token_data is not None}")
+        # 验证 refresh token
+        result = AuthService.verify_refresh_token(payload.refresh_token)
+        logger.debug(f"🔍 Token验证结果: status={result.status.value}")
 
-        if not token_data:
-            logger.warning("❌ Refresh token验证失败")
+        if result.status == TokenStatus.EXPIRED:
+            logger.warning("⏰ Refresh token 已过期，需要重新登录")
+            raise HTTPException(status_code=401, detail="Refresh token expired, please login again")
+
+        if result.status != TokenStatus.VALID or not result.data:
+            logger.warning(f"❌ Refresh token 验证失败: {result.error_message}")
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
         # 验证用户是否仍然存在且激活
-        user = await user_service.get_user_by_username(token_data.sub)
+        user = await user_service.get_user_by_username(result.data.sub)
         if not user or not user.is_active:
-            logger.warning(f"❌ 用户不存在或已禁用: {token_data.sub}")
+            logger.warning(f"❌ 用户不存在或已禁用: {result.data.sub}")
             raise HTTPException(status_code=401, detail="User not found or inactive")
 
-        logger.debug(f"✅ Token验证成功，用户: {token_data.sub}")
+        # 检查 token 是否已被撤销
+        import jwt
+        from app.core.config import settings
+        try:
+            refresh_payload = jwt.decode(
+                payload.refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+            )
+            jti = refresh_payload.get("jti")
+            if jti:
+                is_revoked = await refresh_token_service.is_token_revoked(jti)
+                if is_revoked:
+                    logger.warning(f"🚫 Refresh token 已被撤销: user={user.username}")
+                    raise HTTPException(status_code=401, detail="Token has been revoked")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"⚠️ 检查 token 撤销状态失败: {e}")
 
-        # 生成新的tokens
-        new_token = AuthService.create_access_token(sub=token_data.sub)
-        new_refresh_token = AuthService.create_access_token(sub=token_data.sub, expires_delta=60*60*24*7)
+        logger.debug(f"✅ Refresh token验证成功，用户: {result.data.sub}")
+
+        # 生成新的 tokens
+        new_access_token = AuthService.create_access_token(sub=result.data.sub)
+        new_refresh_token = AuthService.create_refresh_token(sub=result.data.sub)
+
+        # 注册新的 refresh token
+        try:
+            new_refresh_payload = jwt.decode(
+                new_refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+            )
+            new_jti = new_refresh_payload.get("jti")
+            if new_jti:
+                await refresh_token_service.register_refresh_token(
+                    user_id=str(user.id),
+                    jti=new_jti,
+                    expires_days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+                )
+
+            # 撤销旧的 refresh token（单设备登录模式）
+            if jti:
+                await refresh_token_service.revoke_refresh_token(
+                    user_id=str(user.id),
+                    jti=jti
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ 处理 refresh token 轮换失败: {e}")
 
         logger.debug(f"🎉 新token生成成功")
 
         return {
             "success": True,
             "data": {
-                "access_token": new_token,
+                "access_token": new_access_token,
                 "refresh_token": new_refresh_token,
                 "expires_in": 60 * 60
             },
@@ -265,9 +340,14 @@ async def refresh_token(payload: RefreshTokenRequest):
         logger.error(f"❌ Refresh token处理异常: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Token refresh failed: {str(e)}")
 
+
 @router.post("/logout")
-async def logout(request: Request, user: dict = Depends(get_current_user)):
-    """用户登出"""
+async def logout(
+    request: Request,
+    payload: Optional[LogoutRequest] = None,
+    user: dict = Depends(get_current_user)
+):
+    """用户登出 - 撤销 refresh token"""
     start_time = time.time()
 
     # 获取客户端信息
@@ -275,6 +355,24 @@ async def logout(request: Request, user: dict = Depends(get_current_user)):
     user_agent = request.headers.get("user-agent", "")
 
     try:
+        # 如果提供了 refresh token，撤销它
+        if payload and payload.refresh_token:
+            import jwt
+            from app.core.config import settings
+            try:
+                refresh_payload = jwt.decode(
+                    payload.refresh_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+                )
+                jti = refresh_payload.get("jti")
+                if jti:
+                    await refresh_token_service.revoke_refresh_token(
+                        user_id=user["id"],
+                        jti=jti
+                    )
+                    logger.info(f"🚫 Refresh token 已撤销: user={user['username']}")
+            except Exception as e:
+                logger.warning(f"⚠️ 撤销 refresh token 失败: {e}")
+
         # 记录登出日志
         await log_operation(
             user_id=user["id"],
@@ -301,6 +399,49 @@ async def logout(request: Request, user: dict = Depends(get_current_user)):
             "message": "登出成功"
         }
 
+
+@router.post("/logout-all")
+async def logout_all_devices(
+    request: Request,
+    user: dict = Depends(get_current_user)
+):
+    """从所有设备登出 - 撤销用户的所有 refresh token"""
+    start_time = time.time()
+
+    # 获取客户端信息
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "")
+
+    try:
+        # 撤销用户的所有 refresh token
+        success = await refresh_token_service.revoke_all_user_tokens(user["id"])
+
+        if success:
+            logger.info(f"🚫 用户所有设备已登出: user={user['username']}")
+
+        # 记录登出日志
+        await log_operation(
+            user_id=user["id"],
+            username=user["username"],
+            action_type=ActionType.USER_LOGOUT,
+            action="从所有设备登出",
+            details={"logout_method": "all_devices"},
+            success=True,
+            duration_ms=int((time.time() - start_time) * 1000),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        return {
+            "success": True,
+            "data": {},
+            "message": "已从所有设备登出"
+        }
+    except Exception as e:
+        logger.error(f"全设备登出失败: {e}")
+        raise HTTPException(status_code=500, detail=f"登出失败: {str(e)}")
+
+
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     """获取当前用户信息"""
@@ -309,6 +450,7 @@ async def me(user: dict = Depends(get_current_user)):
         "data": user,
         "message": "获取用户信息成功"
     }
+
 
 @router.put("/me")
 async def update_me(
@@ -367,6 +509,7 @@ async def update_me(
         logger.error(f"更新用户信息失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"更新用户信息失败: {str(e)}")
 
+
 @router.post("/change-password")
 async def change_password(
     payload: ChangePasswordRequest,
@@ -377,24 +520,29 @@ async def change_password(
     try:
         # 使用数据库服务修改密码
         success = await user_service.change_password(
-            user["username"], 
-            payload.old_password, 
+            user["username"],
+            payload.old_password,
             payload.new_password
         )
-        
+
         if not success:
             raise HTTPException(status_code=400, detail="旧密码错误")
+
+        # 修改密码后撤销所有 refresh token，要求重新登录
+        await refresh_token_service.revoke_all_user_tokens(user["id"])
+        logger.info(f"🚫 密码修改后撤销所有 token: user={user['username']}")
 
         return {
             "success": True,
             "data": {},
-            "message": "密码修改成功"
+            "message": "密码修改成功，请重新登录"
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"修改密码失败: {e}")
         raise HTTPException(status_code=500, detail=f"修改密码失败: {str(e)}")
+
 
 @router.post("/reset-password")
 async def reset_password(
@@ -410,9 +558,15 @@ async def reset_password(
 
         # 重置密码
         success = await user_service.reset_password(payload.username, payload.new_password)
-        
+
         if not success:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 重置密码后撤销该用户的所有 refresh token
+        target_user = await user_service.get_user_by_username(payload.username)
+        if target_user:
+            await refresh_token_service.revoke_all_user_tokens(str(target_user.id))
+            logger.info(f"🚫 管理员重置密码后撤销用户所有 token: user={payload.username}")
 
         return {
             "success": True,
@@ -424,6 +578,7 @@ async def reset_password(
     except Exception as e:
         logger.error(f"重置密码失败: {e}")
         raise HTTPException(status_code=500, detail=f"重置密码失败: {str(e)}")
+
 
 @router.post("/create-user")
 async def create_user(
@@ -443,9 +598,9 @@ async def create_user(
             email=payload.email,
             password=payload.password
         )
-        
+
         new_user = await user_service.create_user(user_create)
-        
+
         if not new_user:
             raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
 
@@ -476,6 +631,7 @@ async def create_user(
         logger.error(f"创建用户失败: {e}")
         raise HTTPException(status_code=500, detail=f"创建用户失败: {str(e)}")
 
+
 @router.get("/users")
 async def list_users(
     skip: int = 0,
@@ -489,7 +645,7 @@ async def list_users(
             raise HTTPException(status_code=403, detail="权限不足")
 
         users = await user_service.list_users(skip=skip, limit=limit)
-        
+
         return {
             "success": True,
             "data": {

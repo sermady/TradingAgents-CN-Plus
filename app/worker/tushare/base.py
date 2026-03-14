@@ -89,7 +89,7 @@ class TushareSyncBase(BaseSyncService):
 
     async def news_data_service(self):
         """延迟初始化新闻数据服务"""
-        from app.services.news_data_service import get_news_data_service
+        from app.services.news import get_news_data_service
         if self.news_service is None:
             self.news_service = await get_news_data_service()
         return self.news_service

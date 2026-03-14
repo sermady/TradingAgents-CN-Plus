@@ -299,7 +299,7 @@ class UnifiedNewsAnalyzer:
                     logger.info(f"[统一新闻工具] 📥 获取到 {len(news_data)} 条新闻")
 
                     # 🔥 使用同步方法保存到数据库（不依赖事件循环）
-                    from app.services.news_data_service import NewsDataService
+                    from app.services.news import NewsDataService
 
                     news_service = NewsDataService()
                     saved_count = news_service.save_news_data_sync(

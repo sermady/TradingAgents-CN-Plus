@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 
 from app.utils.timezone import now_tz
 from app.models.config import MarketCategory, DataSourceGrouping
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 from .base_config_service import BaseConfigService
 
 logger = logging.getLogger(__name__)

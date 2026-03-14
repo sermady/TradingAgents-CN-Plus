@@ -631,13 +631,25 @@ def create_trader(llm, memory):
         logger.debug(f"[DEBUG] 交易员回复长度: {len(result.content)}")
         logger.debug(f"[DEBUG] 交易员回复前500字符: {result.content[:500]}...")
 
-        # 从基本面报告中提取当前股价
+        # P0-1: 优先从结构化数据获取当前股价（精确值）
         current_price = None
-        price_pattern = r"当前股价[：:\s]*[¥￥]?\s*(\d+\.?\d*)"
-        price_match = re.search(price_pattern, fundamentals_report)
-        if price_match:
-            current_price = float(price_match.group(1))
-            logger.debug(f"[DEBUG] 从基本面报告提取当前股价: {current_price}")
+        market_structured = state.get("market_data_structured", {})
+        china_structured = state.get("china_market_data_structured", {})
+        financial_structured = state.get("financial_data_structured", {})
+
+        if market_structured and market_structured.get("current_price"):
+            current_price = float(market_structured["current_price"])
+            logger.debug(f"[DEBUG] 从 market_data_structured 获取当前股价: {current_price}")
+        elif china_structured and china_structured.get("current_price"):
+            current_price = float(china_structured["current_price"])
+            logger.debug(f"[DEBUG] 从 china_market_data_structured 获取当前股价: {current_price}")
+        else:
+            # 回退: 从基本面报告 regex 提取
+            price_pattern = r"当前股价[：:\s]*[¥￥]?\s*(\d+\.?\d*)"
+            price_match = re.search(price_pattern, fundamentals_report)
+            if price_match:
+                current_price = float(price_match.group(1))
+                logger.debug(f"[DEBUG] 从基本面报告 regex 提取当前股价: {current_price}")
 
         # 从 state 中获取数据质量评分 (Phase 1.1)
         data_quality_score = state.get("data_quality_score", 100.0)

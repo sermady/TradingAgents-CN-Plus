@@ -13,7 +13,7 @@ from bson import ObjectId
 
 from app.core.config import settings
 from app.models.user import User, UserCreate, UserUpdate, UserResponse
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 
 # 尝试导入日志管理器
 try:

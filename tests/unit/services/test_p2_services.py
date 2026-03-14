@@ -19,7 +19,7 @@ class TestDataSyncManager:
 
     def test_datatype_enum(self):
         """测试数据类型枚举"""
-        from app.services.data_sync_manager import DataType
+        from app.services.sync import DataType
 
         assert DataType.STOCK_BASICS.value == "stock_basics"
         assert DataType.STOCK_DAILY.value == "stock_daily"
@@ -29,7 +29,7 @@ class TestDataSyncManager:
 
     def test_syncstatus_enum(self):
         """测试同步状态枚举"""
-        from app.services.data_sync_manager import SyncStatus
+        from app.services.sync import SyncStatus
 
         assert SyncStatus.IDLE.value == "idle"
         assert SyncStatus.RUNNING.value == "running"
@@ -39,7 +39,7 @@ class TestDataSyncManager:
 
     def test_syncjob_creation(self):
         """测试同步作业创建"""
-        from app.services.data_sync_manager import SyncJob, DataType, SyncStatus
+        from app.services.sync import SyncJob, DataType, SyncStatus
 
         job = SyncJob(
             id="test_job_001",
@@ -61,7 +61,7 @@ class TestDataSyncManager:
 
     def test_syncjob_default_values(self):
         """测试同步作业默认值"""
-        from app.services.data_sync_manager import SyncJob, DataType, SyncStatus
+        from app.services.sync import SyncJob, DataType, SyncStatus
 
         job = SyncJob(
             id="test_job", data_type=DataType.STOCK_DAILY, status=SyncStatus.IDLE
@@ -76,7 +76,7 @@ class TestDataSyncManager:
 
     def test_syncmanager_import(self):
         """测试同步管理器导入"""
-        from app.services.data_sync_manager import get_sync_manager, DataSyncManager
+        from app.services.sync import get_sync_manager, DataSyncManager
 
         mgr = get_sync_manager()
         assert isinstance(mgr, DataSyncManager)
@@ -84,7 +84,7 @@ class TestDataSyncManager:
     @pytest.mark.asyncio
     async def test_get_sync_status_empty(self):
         """测试获取空同步状态"""
-        from app.services.data_sync_manager import get_sync_manager, DataType
+        from app.services.sync import get_sync_manager, DataType
 
         mgr = get_sync_manager()
         # Mock MongoDB to avoid connection errors
@@ -102,7 +102,7 @@ class TestDataSyncManager:
     @pytest.mark.asyncio
     async def test_trigger_sync_returns_job_id(self):
         """测试触发同步返回作业ID"""
-        from app.services.data_sync_manager import get_sync_manager, DataType
+        from app.services.sync import get_sync_manager, DataType
 
         mgr = get_sync_manager()
 
@@ -329,7 +329,7 @@ class TestP2ServicesIntegration:
 
     def test_all_services_singleton(self):
         """测试所有服务都是单例"""
-        from app.services.data_sync_manager import get_sync_manager
+        from app.services.sync import get_sync_manager
         from app.services.metrics_collector import get_metrics_collector
         from app.services.alert import get_alert_manager
 
@@ -348,17 +348,240 @@ class TestP2ServicesIntegration:
 
     def test_all_services_different_types(self):
         """测试服务类型不同"""
-        from app.services.data_sync_manager import DataSyncManager
+        from app.services.sync import DataSyncManager
         from app.services.metrics_collector import MetricsCollector
         from app.services.alert import AlertManager
 
-        from app.services.data_sync_manager import get_sync_manager
+        from app.services.sync import get_sync_manager
         from app.services.metrics_collector import get_metrics_collector
         from app.services.alert import get_alert_manager
 
         assert isinstance(get_sync_manager(), DataSyncManager)
         assert isinstance(get_metrics_collector(), MetricsCollector)
         assert isinstance(get_alert_manager(), AlertManager)
+
+
+# ==================== P2-2: 数据质量评分 ====================
+
+
+class TestDataQuality:
+    """测试多维数据质量评分"""
+
+    @pytest.mark.unit
+    def test_evaluate_completeness_full_data(self):
+        """完整数据应得高分"""
+        from tradingagents.graph.data_quality import evaluate_completeness
+
+        data = {
+            "current_price": 12.5, "open": 12.3, "high": 12.8,
+            "low": 12.1, "volume": 50000,
+            "MA5": 12.4, "MA20": 12.2, "MA60": 11.8,
+            "RSI": 55.0, "MACD_DIF": 0.05, "KDJ_K": 60.0,
+            "ATR14": 0.3, "BOLL_UPPER": 13.0, "BOLL_MID": 12.3, "BOLL_LOWER": 11.6,
+        }
+        result = evaluate_completeness(data)
+        assert result.score >= 0.9
+        assert len(result.issues) == 0
+
+    @pytest.mark.unit
+    def test_evaluate_completeness_empty_data(self):
+        """空数据应得 0 分"""
+        from tradingagents.graph.data_quality import evaluate_completeness
+
+        result = evaluate_completeness({})
+        assert result.score == 0.0
+
+    @pytest.mark.unit
+    def test_evaluate_consistency_valid_ohlc(self):
+        """合法 OHLC 应通过一致性检查"""
+        from tradingagents.graph.data_quality import evaluate_consistency
+
+        data = {
+            "open": 10.0, "high": 10.5, "low": 9.8, "current_price": 10.3,
+            "BOLL_UPPER": 11.0, "BOLL_MID": 10.2, "BOLL_LOWER": 9.4,
+            "RSI": 55.0,
+        }
+        result = evaluate_consistency(data)
+        assert result.score >= 0.9
+
+    @pytest.mark.unit
+    def test_evaluate_consistency_invalid_ohlc(self):
+        """High < Low 应报告异常"""
+        from tradingagents.graph.data_quality import evaluate_consistency
+
+        data = {"open": 10.0, "high": 9.0, "low": 10.5, "current_price": 10.2}
+        result = evaluate_consistency(data)
+        assert result.score < 0.9
+        assert any("High" in i or "Low" in i for i in result.issues)
+
+    @pytest.mark.unit
+    def test_evaluate_timeliness_same_day(self):
+        """同日数据时效性满分"""
+        from tradingagents.graph.data_quality import evaluate_timeliness
+
+        result = evaluate_timeliness({}, "20260304", "... 2026-03-04 ...")
+        assert result.score >= 0.95
+
+    @pytest.mark.unit
+    def test_evaluate_anomaly_normal_data(self):
+        """正常数据无异常"""
+        from tradingagents.graph.data_quality import evaluate_anomaly
+
+        data = {"current_price": 10.0, "MA20": 10.1, "MA5": 10.05, "RSI": 50.0}
+        result = evaluate_anomaly(data)
+        assert result.score >= 0.8
+
+    @pytest.mark.unit
+    def test_evaluate_data_quality_overall(self):
+        """完整评估应返回正确格式"""
+        from tradingagents.graph.data_quality import evaluate_data_quality
+
+        data = {
+            "current_price": 12.5, "open": 12.3, "high": 12.8,
+            "low": 12.1, "volume": 50000,
+            "MA5": 12.4, "MA20": 12.2, "MA60": 11.8,
+            "RSI": 55.0, "MACD_DIF": 0.05, "KDJ_K": 60.0,
+            "ATR14": 0.3, "BOLL_UPPER": 13.0, "BOLL_MID": 12.3, "BOLL_LOWER": 11.6,
+        }
+        report = evaluate_data_quality(data, "20260304", "... 2026-03-04 ...")
+        assert 0.0 <= report.overall_score <= 1.0
+        assert report.grade in ("A", "B", "C", "D", "F")
+        d = report.to_dict()
+        assert "dimensions" in d
+        assert report.format_for_prompt()
+
+    @pytest.mark.unit
+    def test_score_to_grade(self):
+        """评级映射测试"""
+        from tradingagents.graph.data_quality import _score_to_grade
+
+        assert _score_to_grade(0.95) == "A"
+        assert _score_to_grade(0.80) == "B"
+        assert _score_to_grade(0.65) == "C"
+        assert _score_to_grade(0.45) == "D"
+        assert _score_to_grade(0.20) == "F"
+
+
+# ==================== P2-3: 技术信号预计算 ====================
+
+
+class TestTechnicalSignals:
+    """测试技术信号预计算"""
+
+    @pytest.mark.unit
+    def test_compute_empty_data(self):
+        """空数据应返回 unknown 趋势"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        result = compute_technical_signals({})
+        assert result["trend"] == "unknown"
+
+    @pytest.mark.unit
+    def test_compute_bullish_signals(self):
+        """多头信号应得正 trend_score"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        data = {
+            "current_price": 15.0, "MA5": 14.8, "MA10": 14.5,
+            "MA20": 14.0, "MA60": 13.0,
+            "RSI14": 55.0, "MACD_DIF": 0.2, "MACD_DEA": 0.1,
+        }
+        result = compute_technical_signals(data)
+        assert result["trend_score"] > 0
+        assert result["trend"] in ("bullish", "strong_bullish")
+
+    @pytest.mark.unit
+    def test_compute_bearish_signals(self):
+        """空头信号应得负 trend_score"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        data = {
+            "current_price": 8.0, "MA5": 8.5, "MA10": 9.0,
+            "MA20": 9.5, "MA60": 10.0,
+            "RSI14": 25.0, "MACD_DIF": -0.2, "MACD_DEA": -0.1,
+        }
+        result = compute_technical_signals(data)
+        assert result["trend_score"] < 0
+        assert result["trend"] in ("bearish", "strong_bearish")
+
+    @pytest.mark.unit
+    def test_rsi_overbought_signal(self):
+        """RSI > 80 应生成超买信号"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        result = compute_technical_signals({"RSI14": 85.0})
+        assert any("超买" in s for s in result["signals"])
+
+    @pytest.mark.unit
+    def test_macd_golden_cross(self):
+        """DIF > DEA 且 > 0 应生成多头信号"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        result = compute_technical_signals({"MACD_DIF": 0.15, "MACD_DEA": 0.08})
+        assert any("多头" in s for s in result["signals"])
+
+    @pytest.mark.unit
+    def test_ma_bullish_arrangement(self):
+        """多头排列应被识别"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        data = {"current_price": 15.0, "MA5": 14.5, "MA10": 14.0, "MA20": 13.5, "MA60": 13.0}
+        result = compute_technical_signals(data)
+        assert any("多头排列" in s for s in result["signals"])
+
+    @pytest.mark.unit
+    def test_cross_validation_overbought(self):
+        """RSI超买 + KDJ高位 应触发共振信号"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        data = {"RSI14": 75.0, "KDJ_K": 85.0, "KDJ_D": 80.0}
+        result = compute_technical_signals(data)
+        assert any("共振" in s for s in result["signals"])
+
+    @pytest.mark.unit
+    def test_format_signals_for_prompt(self):
+        """格式化输出应包含关键内容"""
+        from tradingagents.graph.technical_signals import (
+            compute_technical_signals, format_signals_for_prompt,
+        )
+
+        data = {
+            "current_price": 15.0, "MA5": 14.8, "MA20": 14.0,
+            "RSI14": 55.0, "MACD_DIF": 0.2, "MACD_DEA": 0.1,
+        }
+        result = compute_technical_signals(data)
+        text = format_signals_for_prompt(result)
+        assert "技术信号预计算摘要" in text
+
+    @pytest.mark.unit
+    def test_get_float_robustness(self):
+        """_get_float 应安全处理异常输入"""
+        from tradingagents.graph.technical_signals import _get_float
+
+        assert _get_float({"a": 1.5}, "a") == 1.5
+        assert _get_float({"a": None}, "a") is None
+        assert _get_float({}, "a") is None
+        assert _get_float({"a": float("nan")}, "a") is None
+        assert _get_float({"a": float("inf")}, "a") is None
+        assert _get_float({"a": float("-inf")}, "a") is None
+        assert _get_float({"a": 0.0}, "a") == 0.0
+        assert _get_float({"a": "12.5"}, "a") == 12.5
+        assert _get_float({"a": "not_a_number"}, "a") is None
+
+    @pytest.mark.unit
+    def test_ma_arrangement_missing_middle(self):
+        """缺少中间 MA 值时仍应正确检测排列"""
+        from tradingagents.graph.technical_signals import compute_technical_signals
+
+        # MA5=15, MA20=13, MA60=11 (缺少 MA10) → 多头排列
+        data = {"MA5": 15.0, "MA20": 13.0, "MA60": 11.0}
+        result = compute_technical_signals(data)
+        assert any("多头排列" in s for s in result["signals"])
+
+        # MA5=11, MA20=13, MA60=15 (缺少 MA10) → 空头排列
+        data = {"MA5": 11.0, "MA20": 13.0, "MA60": 15.0}
+        result = compute_technical_signals(data)
+        assert any("空头排列" in s for s in result["signals"])
 
 
 if __name__ == "__main__":

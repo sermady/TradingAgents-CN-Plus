@@ -8,6 +8,7 @@ import logging
 import uuid
 from typing import Any, Dict, Optional
 
+from app.services.memory_state_manager import TaskStatus
 from app.utils.report_extractor import ReportExtractor
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 from app.core.database import get_mongo_db
 from app.models.notification import (
     NotificationCreate, NotificationOut, NotificationList

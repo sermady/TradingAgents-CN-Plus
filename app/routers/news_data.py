@@ -11,7 +11,7 @@ import logging
 
 from app.routers.auth_db import get_current_user
 from app.core.response import ok
-from app.services.news_data_service import get_news_data_service, NewsQueryParams
+from app.services.news import get_news_data_service, NewsQueryParams
 from app.worker.news_data_sync_service import get_news_data_sync_service
 
 router = APIRouter(prefix="/api/news-data", tags=["新闻数据"])

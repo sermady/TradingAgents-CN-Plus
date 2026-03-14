@@ -139,12 +139,36 @@ def create_bear_researcher(llm, memory):
             f"🐻 [空头研究员] 发言完成，计数: {investment_debate_state['count']} -> {new_count}"
         )
 
+        # P1-4: 辩论质量评估
+        from tradingagents.graph.debate_quality import (
+            evaluate_argument_quality,
+            compute_cumulative_evidence_strength,
+            extract_citations,
+        )
+
+        quality_scores = evaluate_argument_quality(
+            text=response.content, history=history, role="bear"
+        )
+        prev_strength = investment_debate_state.get("evidence_strength", 0.0)
+        new_strength = compute_cumulative_evidence_strength(
+            quality_scores, prev_strength, new_count
+        )
+        new_citations = extract_citations(response.content)
+        prev_citations = investment_debate_state.get("citations", [])
+
+        logger.info(
+            f"🐻 [空头研究员] 证据强度: {prev_strength:.3f} -> {new_strength:.3f} "
+            f"(本轮质量: {quality_scores['overall']:.3f})"
+        )
+
         new_investment_debate_state = {
             "history": history + "\n" + argument,
             "bear_history": bear_history + "\n" + argument,
             "bull_history": investment_debate_state.get("bull_history", ""),
             "current_response": argument,
             "count": new_count,
+            "evidence_strength": new_strength,
+            "citations": prev_citations + new_citations,
         }
 
         return {"investment_debate_state": new_investment_debate_state}

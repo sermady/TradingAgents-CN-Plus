@@ -6,6 +6,22 @@ Redis客户端配置和连接管理
 import redis.asyncio as redis
 import logging
 from typing import Optional
+
+# 延迟导入database模块以避免循环导入
+# database模块会在应用启动时初始化redis_client
+_database = None
+
+
+def _get_database_module():
+    """延迟加载database模块"""
+    global _database
+    if _database is None:
+        from app.core import database
+
+        _database = database
+    return _database
+
+
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -63,10 +79,20 @@ async def close_redis():
         logger.error(f"❌ 关闭Redis连接时出错: {e}")
 
 
-def get_redis() -> redis.Redis:
+def get_redis() -> Optional[redis.Redis]:
     """获取Redis客户端实例"""
+    # 优先从database模块获取（推荐）
+    try:
+        db_module = _get_database_module()
+        if db_module.redis_client is not None:
+            return db_module.redis_client
+    except Exception:
+        pass
+
+    # 降级到本地redis_client（兼容旧代码）
     if redis_client is None:
-        raise RuntimeError("Redis客户端未初始化")
+        # 返回None而不是抛出异常，让调用方处理
+        return None
     return redis_client
 
 
@@ -108,7 +134,8 @@ class RedisService:
     """Redis服务封装类"""
 
     def __init__(self):
-        self.redis: redis.Redis = get_redis()
+        # 获取Redis客户端，如果未初始化则设置为None
+        self.redis: Optional[redis.Redis] = get_redis()
 
     async def set_with_ttl(self, key: str, value: str, ttl: int = 3600):
         """设置带TTL的键值"""
@@ -202,9 +229,16 @@ class RedisService:
 redis_service: Optional[RedisService] = None
 
 
-def get_redis_service() -> RedisService:
+def get_redis_service() -> Optional[RedisService]:
     """获取Redis服务实例"""
     global redis_service
+
+    # 检查Redis是否可用
+    redis_client = get_redis()
+    if redis_client is None:
+        # Redis未初始化，返回None
+        return None
+
     if redis_service is None:
         redis_service = RedisService()
     return redis_service

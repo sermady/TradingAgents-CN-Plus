@@ -69,7 +69,17 @@ class PromptBuilder:
 社交媒体情绪报告：{reports["sentiment"]}
 最新世界事务报告：{reports["news"]}
 公司基本面报告：{reports["fundamentals"]}
+"""
 
+        # P1-2: 注入量化风险指标
+        quant_risk = reports.get("quant_risk", "")
+        if quant_risk:
+            prompt += f"""
+量化风险指标（请基于这些定量数据支撑或质疑风险论点）：
+{quant_risk}
+"""
+
+        prompt += f"""
 以下是当前对话历史：
 {history_text}
 

@@ -700,6 +700,9 @@ class DataSourceManager:
             if data is None or data.empty:
                 return f"❌ 无数据: {symbol}"
 
+            # 标准化列名，确保 volume→vol, Close→close 等统一
+            data = self._standardize_dataframe(data)
+
             # 确保数据有日期列
             if "date" not in data.columns and "trade_date" not in data.columns:
                 if isinstance(data.index, pd.DatetimeIndex) and len(data) > 0:
@@ -736,6 +739,54 @@ class DataSourceManager:
             std = data["close"].rolling(window=20, min_periods=1).std()
             data["boll_upper"] = data["boll_mid"] + 2 * std
             data["boll_lower"] = data["boll_mid"] - 2 * std
+
+            # ========== P1-1: 扩展技术指标 ==========
+
+            # RSI14 (标准14周期)
+            avg_gain14 = gain.ewm(com=13, adjust=True).mean()
+            avg_loss14 = loss.ewm(com=13, adjust=True).mean()
+            rs14 = avg_gain14 / avg_loss14.replace(0, np.nan)
+            data["rsi14"] = 100 - (100 / (1 + rs14))
+
+            # KDJ
+            low_min = data["low"].rolling(window=9, min_periods=1).min()
+            high_max = data["high"].rolling(window=9, min_periods=1).max()
+            rsv = (data["close"] - low_min) / (high_max - low_min).replace(0, np.nan) * 100
+            data["kdj_k"] = rsv.ewm(com=2, adjust=False).mean()
+            data["kdj_d"] = data["kdj_k"].ewm(com=2, adjust=False).mean()
+            data["kdj_j"] = 3 * data["kdj_k"] - 2 * data["kdj_d"]
+
+            # ATR (Average True Range, 14周期)
+            tr1 = data["high"] - data["low"]
+            tr2 = (data["high"] - data["close"].shift(1)).abs()
+            tr3 = (data["low"] - data["close"].shift(1)).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            data["atr14"] = tr.rolling(window=14, min_periods=1).mean()
+
+            # OBV (On Balance Volume) - 需要成交量列
+            if "vol" in data.columns:
+                obv = [0]
+                for i in range(1, len(data)):
+                    if data["close"].iloc[i] > data["close"].iloc[i - 1]:
+                        obv.append(obv[-1] + data["vol"].iloc[i])
+                    elif data["close"].iloc[i] < data["close"].iloc[i - 1]:
+                        obv.append(obv[-1] - data["vol"].iloc[i])
+                    else:
+                        obv.append(obv[-1])
+                data["obv"] = obv
+            else:
+                data["obv"] = np.nan
+
+            # Williams %R (14周期)
+            data["wr14"] = (high_max - data["close"]) / (high_max - low_min).replace(0, np.nan) * -100
+
+            # CCI (Commodity Channel Index, 14周期)
+            typical_price = (data["high"] + data["low"] + data["close"]) / 3
+            tp_sma = typical_price.rolling(window=14, min_periods=1).mean()
+            tp_mad = typical_price.rolling(window=14, min_periods=1).apply(
+                lambda x: np.mean(np.abs(x - np.mean(x))), raw=True
+            )
+            data["cci14"] = (typical_price - tp_sma) / (0.015 * tp_mad.replace(0, np.nan))
 
             # 获取最新数据
             latest_data = data.iloc[-1]
@@ -793,12 +844,24 @@ class DataSourceManager:
             result += f"   MACD: {latest_data['macd']:.3f}\n\n"
 
             result += f"📉 RSI指标:\n"
-            result += f"   RSI6:  {latest_data['rsi6']:.2f}\n\n"
+            result += f"   RSI6:  {latest_data['rsi6']:.2f}\n"
+            result += f"   RSI14: {latest_data['rsi14']:.2f}\n\n"
 
             result += f"📊 布林带 (BOLL):\n"
             result += f"   上轨: ¥{latest_data['boll_upper']:.2f}\n"
             result += f"   中轨: ¥{latest_data['boll_mid']:.2f}\n"
             result += f"   下轨: ¥{latest_data['boll_lower']:.2f}\n\n"
+
+            # P1-1: 扩展指标输出
+            result += f"📊 KDJ指标:\n"
+            result += f"   K: {latest_data['kdj_k']:.2f}\n"
+            result += f"   D: {latest_data['kdj_d']:.2f}\n"
+            result += f"   J: {latest_data['kdj_j']:.2f}\n\n"
+
+            result += f"📊 ATR(14): {latest_data['atr14']:.4f}\n"
+            result += f"📊 Williams %R(14): {latest_data['wr14']:.2f}\n"
+            result += f"📊 CCI(14): {latest_data['cci14']:.2f}\n"
+            result += f"📊 OBV: {latest_data['obv']:,.0f}\n\n"
 
             # 成交量统计
             volume_latest = self._get_volume_safely(display_data)

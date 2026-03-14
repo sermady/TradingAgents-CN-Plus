@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-from app.services.model_capability_service import get_model_capability_service
+from app.services.model_capability import get_model_capability_service
 from app.constants.model_capabilities import (
     DEFAULT_MODEL_CAPABILITIES,
     ANALYSIS_DEPTH_REQUIREMENTS,

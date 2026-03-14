@@ -19,7 +19,7 @@ from typing import Dict, Set, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
 from datetime import datetime
 
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, TokenStatus
 
 router = APIRouter()
 logger = logging.getLogger("webapi.websocket")
@@ -311,20 +311,16 @@ async def websocket_notifications_endpoint(websocket: WebSocket):
         return
 
     # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized: Invalid token")
-        logger.warning("🚫 [WS] 拒绝连接：Token 验证失败")
+    result = AuthService.verify_access_token(token)
+    if result.status != TokenStatus.VALID:
+        reason = "Token expired" if result.status == TokenStatus.EXPIRED else "Invalid token"
+        await websocket.close(code=1008, reason=f"Unauthorized: {reason}")
+        logger.warning(f"🚫 [WS] 拒绝连接：{reason}")
         return
 
     # 🔥 安全修复：从 token 中解析用户 ID，不再硬编码
     try:
-        if hasattr(token_data, "sub"):
-            user_id = token_data.sub
-        elif isinstance(token_data, dict):
-            user_id = token_data.get("sub") or token_data.get("username")
-        else:
-            user_id = str(token_data)
+        user_id = result.data.sub if result.data else None
 
         if not user_id:
             logger.error("❌ [WS] Token 中未找到用户标识")
@@ -445,19 +441,16 @@ async def websocket_task_progress_endpoint(
     }
     """
     # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized")
+    result = AuthService.verify_access_token(token)
+    if result.status != TokenStatus.VALID:
+        reason = "Token expired" if result.status == TokenStatus.EXPIRED else "Invalid token"
+        await websocket.close(code=1008, reason=f"Unauthorized: {reason}")
+        logger.warning(f"🚫 [WS-Task] 拒绝连接：{reason}")
         return
 
-    # 🔥 安全修复：从 token 中解析用户 ID，不再硬编码
+    # 🔥 安全修复：从 token 中解析用户 ID
     try:
-        if hasattr(token_data, "sub"):
-            user_id = token_data.sub
-        elif isinstance(token_data, dict):
-            user_id = token_data.get("sub") or token_data.get("username")
-        else:
-            user_id = str(token_data)
+        user_id = result.data.sub if result.data else None
 
         if not user_id:
             logger.error("❌ [WS-Task] Token 中未找到用户标识")
@@ -535,12 +528,14 @@ async def websocket_task_progress_endpoint_v2(
     }
     """
     # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized")
+    result = AuthService.verify_access_token(token)
+    if result.status != TokenStatus.VALID:
+        reason = "Token expired" if result.status == TokenStatus.EXPIRED else "Invalid token"
+        await websocket.close(code=1008, reason=f"Unauthorized: {reason}")
+        logger.warning(f"🚫 [WS-Task-v2] 拒绝连接：{reason}")
         return
 
-    user_id = token_data.sub
+    user_id = result.data.sub if result.data else None
 
     # 连接 WebSocket
     await websocket.accept()

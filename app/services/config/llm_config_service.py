@@ -13,7 +13,7 @@ from bson import ObjectId
 from app.utils.timezone import now_tz
 from app.utils.api_tester import LLMAPITester
 from app.models.config import LLMConfig, LLMProvider
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 from .base_config_service import BaseConfigService
 
 logger = logging.getLogger(__name__)

@@ -70,7 +70,7 @@ from app.routers import websocket_notifications as websocket_notifications_route
 from app.routers import scheduler as scheduler_router
 from app.services.basics_sync_service import get_basics_sync_service
 from app.services.multi_source_basics_sync_service import MultiSourceBasicsSyncService
-from app.services.scheduler_service import set_scheduler_instance
+from app.services.scheduler import set_scheduler_instance
 from app.worker.tushare_sync_service import (
     run_tushare_basic_info_sync,
     run_tushare_quotes_sync,
@@ -100,7 +100,7 @@ from app.middleware.operation_log_middleware import OperationLogMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from app.services.quotes_ingestion_service import QuotesIngestionService
+from app.services.quotes import QuotesIngestionService
 from app.routers import paper as paper_router
 
 

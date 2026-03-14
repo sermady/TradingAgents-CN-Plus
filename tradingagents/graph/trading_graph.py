@@ -323,8 +323,16 @@ class TradingAgentsGraph:
 
         # 处理决策并添加模型信息
         if final_state is not None:
+            # P0-1: 传递结构化数据供 SignalProcessor 精确提取
+            structured_data = {
+                "market_data_structured": final_state.get("market_data_structured", {}),
+                "financial_data_structured": final_state.get("financial_data_structured", {}),
+                "china_market_data_structured": final_state.get("china_market_data_structured", {}),
+            }
             decision = self.process_signal(
-                final_state.get("final_trade_decision", {}), company_name
+                final_state.get("final_trade_decision", {}),
+                company_name,
+                structured_data=structured_data,
             )
         else:
             decision = {}
@@ -354,6 +362,8 @@ class TradingAgentsGraph:
             self.curr_state, returns_losses, self.risk_manager_memory
         )
 
-    def process_signal(self, full_signal, stock_symbol=None):
+    def process_signal(self, full_signal, stock_symbol=None, structured_data=None):
         """Process a signal to extract core decision."""
-        return self.signal_processor.process_signal(full_signal, stock_symbol)
+        return self.signal_processor.process_signal(
+            full_signal, stock_symbol, structured_data=structured_data
+        )

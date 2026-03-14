@@ -149,10 +149,10 @@ class OperationLogMiddleware(BaseHTTPMiddleware):
                 token = auth_header.split(" ", 1)[1]
 
                 # 使用AuthService验证token
-                from app.services.auth_service import AuthService
-                token_data = AuthService.verify_token(token)
+                from app.services.auth_service import AuthService, TokenStatus
+                result = AuthService.verify_access_token(token)
 
-                if token_data:
+                if result.status == TokenStatus.VALID and result.data:
                     # 返回用户信息（开源版只有admin用户）
                     return {
                         "id": "admin",

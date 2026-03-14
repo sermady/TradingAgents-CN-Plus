@@ -365,7 +365,7 @@ async def get_quotes_sync_status(
         }
     """
     try:
-        from app.services.quotes_ingestion_service import QuotesIngestionService
+        from app.services.quotes import QuotesIngestionService
 
         service = QuotesIngestionService()
         status_data = await service.get_sync_status()

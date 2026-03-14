@@ -56,6 +56,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def check_rate_limit(self, user_id: str, endpoint: str):
         """检查速率限制"""
         redis_service = get_redis_service()
+        
+        # 如果Redis不可用，跳过速率限制检查
+        if redis_service is None or redis_service.redis is None:
+            logger.warning("Redis不可用，跳过速率限制检查")
+            return
+        
+        # 获取端点的速率限制
+        rate_limit = self.endpoint_limits.get(endpoint, self.default_rate_limit)
+        """检查速率限制"""
+        redis_service = get_redis_service()
+        
+        # 如果Redis不可用，跳过速率限制检查
+        if redis_service is None or redis_service.redis is None:
+            logger.warning("Redis不可用，跳过速率限制检查")
+            return
+        
+        # 获取端点的速率限制
+        """检查速率限制"""
+        redis_service = get_redis_service()
 
         # 获取端点的速率限制
         rate_limit = self.endpoint_limits.get(endpoint, self.default_rate_limit)
@@ -134,6 +153,29 @@ class QuotaMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
     async def check_daily_quota(self, user_id: str):
+        """检查每日配额"""
+        import datetime
+
+        redis_service = get_redis_service()
+        
+        # 如果Redis不可用，跳过配额检查
+        if redis_service is None or redis_service.redis is None:
+            logger.warning("Redis不可用，跳过每日配额检查")
+            return
+        
+        # 获取今天的日期
+        today = datetime.date.today().isoformat()
+        """检查每日配额"""
+        import datetime
+
+        redis_service = get_redis_service()
+        
+        # 如果Redis不可用，跳过配额检查
+        if redis_service is None or redis_service.redis is None:
+            logger.warning("Redis不可用，跳过每日配额检查")
+            return
+        
+        # 获取今天的日期
         """检查每日配额"""
         import datetime
 

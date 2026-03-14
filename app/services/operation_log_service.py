@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 from app.core.database import get_mongo_db
 from app.models.operation_log import (
     OperationLogCreate,

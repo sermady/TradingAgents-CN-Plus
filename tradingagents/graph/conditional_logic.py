@@ -291,7 +291,12 @@ class ConditionalLogic:
         return next_speaker
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
-        """Determine if risk analysis should continue."""
+        """Determine if risk analysis should continue.
+
+        P1-4 增强版:
+        - 添加论点质量检查
+        - 高质量论点时可提前收敛（>=0.75 且已完成1轮）
+        """
         current_count = state["risk_debate_state"]["count"]
         max_count = 3 * self.max_risk_discuss_rounds
         latest_speaker = state["risk_debate_state"]["latest_speaker"]
@@ -301,6 +306,20 @@ class ConditionalLogic:
             f"🔍 [风险讨论控制] 当前发言次数: {current_count}, 最大次数: {max_count} (配置轮次: {self.max_risk_discuss_rounds})"
         )
         logger.info(f"🔍 [风险讨论控制] 最后发言者: {latest_speaker}")
+
+        # ========== P1-4: 论点质量检查 ==========
+        argument_quality = state["risk_debate_state"].get("argument_quality", 0.0)
+
+        # 高质量论点且已完成至少1轮(3次发言)时可提前收敛
+        if argument_quality >= 0.75 and current_count >= 3:
+            logger.info(
+                f"⚡ [风险讨论控制] 论点质量高 ({argument_quality:.2f} >= 0.75) "
+                f"且已过1轮，提前收敛 -> Risk Judge"
+            )
+            return "Risk Judge"
+
+        if argument_quality > 0:
+            logger.info(f"📊 [风险讨论控制] 当前论点质量: {argument_quality:.2f}/1.0")
 
         if current_count >= max_count:
             logger.info(f"✅ [风险讨论控制] 达到最大次数，结束讨论 -> Risk Judge")

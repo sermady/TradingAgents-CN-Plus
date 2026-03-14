@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.quotes_ingestion_service import QuotesIngestionService
+from app.services.quotes import QuotesIngestionService
 from app.core.config import settings
 
 

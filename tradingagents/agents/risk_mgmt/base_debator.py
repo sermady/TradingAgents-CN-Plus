@@ -100,10 +100,26 @@ class BaseDebator(ABC):
             # 构建论点
             argument = f"{self.description} Analyst: {response.content}"
 
+            # P1-4: 辩论质量评估
+            from tradingagents.graph.debate_quality import (
+                evaluate_argument_quality,
+                compute_cumulative_evidence_strength,
+            )
+
+            quality_scores = evaluate_argument_quality(
+                text=response.content, history=history, role=self.debator_type
+            )
+            prev_quality = risk_debate_state.get("argument_quality", 0.0)
+
             # 更新状态
             new_count = risk_debate_state["count"] + 1
+            new_quality = compute_cumulative_evidence_strength(
+                quality_scores, prev_quality, new_count
+            )
+
             logger.info(
-                f"{self.emoji} [{self.description}分析师] 发言完成，计数: {risk_debate_state['count']} -> {new_count}"
+                f"{self.emoji} [{self.description}分析师] 发言完成，计数: {risk_debate_state['count']} -> {new_count}，"
+                f"论点质量: {prev_quality:.3f} -> {new_quality:.3f}"
             )
 
             new_risk_debate_state = {
@@ -123,6 +139,7 @@ class BaseDebator(ABC):
                 ),
                 f"current_{self.debator_type}_response": argument,
                 "count": new_count,
+                "argument_quality": new_quality,
             }
 
             return {"risk_debate_state": new_risk_debate_state}
@@ -179,12 +196,19 @@ class BaseDebator(ABC):
         Returns:
             报告字典
         """
-        return {
+        reports = {
             "market": state.get("market_report", ""),
             "sentiment": state.get("sentiment_report", ""),
             "news": state.get("news_report", ""),
             "fundamentals": state.get("fundamentals_report", ""),
         }
+
+        # P1-2: 注入量化风险指标文本
+        quant_risk_text = state.get("quant_risk_text", "")
+        if quant_risk_text:
+            reports["quant_risk"] = quant_risk_text
+
+        return reports
 
     def _log_input_statistics(
         self,

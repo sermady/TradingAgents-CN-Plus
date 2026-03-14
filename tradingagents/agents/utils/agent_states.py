@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Annotated, List
+from typing import Annotated, Any, Dict, List, Optional
 from typing_extensions import TypedDict
 from tradingagents.agents import *
 from langgraph.graph import MessagesState
@@ -53,6 +53,8 @@ class RiskDebateState(TypedDict):
     ]  # Last response
     judge_decision: Annotated[str, "Judge's decision"]
     count: Annotated[int, "Length of the current conversation"]  # Conversation length
+    # Phase P1-4: 辩论质量评估
+    argument_quality: Annotated[float, "Cumulative argument quality score (0-1)"]  # 累积论点质量
 
 
 class AgentState(MessagesState):
@@ -62,11 +64,43 @@ class AgentState(MessagesState):
     sender: Annotated[str, "Agent that sent this message"]
 
     # Centralized Data Store (Pre-fetched by DataCoordinator)
+    # 文本数据通道 (向后兼容，供分析师 LLM 使用)
     market_data: Annotated[str, "Raw technical analysis data"]
     financial_data: Annotated[str, "Raw fundamental data"]
     news_data: Annotated[str, "Raw aggregated news data"]
     sentiment_data: Annotated[str, "Raw social sentiment data"]
     china_market_data: Annotated[str, "Raw China A-share market features data"]
+
+    # 结构化数据通道 (P0-1: 供 Trader/SignalProcessor/QualityChecker 精确使用)
+    # 这些字段存储从 DataFrame 解析出的结构化数值，避免 text→LLM→regex 的精度丢失
+    market_data_structured: Annotated[
+        Dict[str, Any], "Parsed market data (prices, indicators, volume)"
+    ] = {}
+    financial_data_structured: Annotated[
+        Dict[str, Any], "Parsed fundamental data (PE, PB, PS, margins)"
+    ] = {}
+    china_market_data_structured: Annotated[
+        Dict[str, Any], "Parsed China market features (turnover, volume_ratio)"
+    ] = {}
+
+    # 数据源和问题跟踪 (从 DataCoordinator 传递)
+    data_sources: Annotated[
+        Dict[str, str], "Data source used for each data type"
+    ] = {}
+    data_issues: Annotated[
+        Dict[str, List[Dict[str, Any]]], "Quality issues per data type"
+    ] = {}
+    data_metadata: Annotated[
+        Dict[str, Any], "Additional metadata (PS correction, volume unit, etc.)"
+    ] = {}
+
+    # P1-2: 量化风险指标 (由 DataCoordinator 计算并注入)
+    quant_risk_metrics: Annotated[
+        Dict[str, Any], "Quantitative risk metrics (VaR, CVaR, MDD, Vol, Beta, Sharpe)"
+    ] = {}
+    quant_risk_text: Annotated[
+        str, "Formatted risk metrics text for injection into debate prompts"
+    ] = ""
 
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]
@@ -110,11 +144,19 @@ class AgentState(MessagesState):
 
     # ========== 数据质量风控字段 (Phase 1.1/1.4) ==========
     data_quality_score: Annotated[
-        float, "Data quality score (0-100)"
-    ] = 100.0  # 默认满分
+        float, "Data quality score (0.0-1.0)"
+    ] = 1.0  # 默认满分
     data_quality_grade: Annotated[
         str, "Data quality grade (A/B/C/D/F)"
     ] = "A"  # 默认A级
     data_quality_issues: Annotated[
         List[str], "List of data quality issues"
     ] = []  # 默认无问题
+
+    # P2-3: 技术信号预计算摘要 (由 DataCoordinator 计算, 注入分析师 prompt)
+    technical_signals: Annotated[
+        Dict[str, Any], "Pre-computed technical signals (trend, signals list, summary)"
+    ] = {}
+    technical_signals_text: Annotated[
+        str, "Formatted technical signals text for analyst prompt injection"
+    ] = ""

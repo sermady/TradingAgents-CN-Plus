@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 
 from app.core.database import get_mongo_db
 from app.services.historical_data_service import get_historical_data_service
-from app.services.news_data_service import get_news_data_service
+from app.services.news import get_news_data_service
 from app.services.base_sync_service import BaseSyncService
 from tradingagents.dataflows.providers.china.akshare import get_akshare_provider
 from tradingagents.utils.time_utils import get_today_str, get_days_ago_str

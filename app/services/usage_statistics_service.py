@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, cast
 from collections import defaultdict
 
-from app.services.base_crud_service import BaseCRUDService
+from app.services.crud import BaseCRUDService
 from app.core.database import get_mongo_db
 from app.models.config import UsageRecord, UsageStatistics
 

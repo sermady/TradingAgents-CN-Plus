@@ -10,6 +10,8 @@ Analysis Service 单元测试
 - 任务执行
 - 进度跟踪
 - Token使用记录
+
+注意：AnalysisService 已重构为 SimpleAnalysisService
 """
 
 import pytest
@@ -17,7 +19,7 @@ from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from datetime import datetime
 from bson import ObjectId
 
-from app.services.analysis_service import AnalysisService
+from app.services.analysis.simple_analysis_service import SimpleAnalysisService
 from app.models.analysis import (
     AnalysisParameters,
     AnalysisTask,
@@ -42,7 +44,7 @@ def test_analysis_service_init():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     assert service.queue_service is not None
                     assert service.usage_service is not None
@@ -64,7 +66,7 @@ def test_convert_user_id_valid_string():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     # 测试有效的ObjectId字符串
                     valid_id = "507f1f77bcf86cd799439011"
@@ -87,7 +89,7 @@ def test_convert_user_id_admin():
                     ) as mock_settings:
                         mock_settings.ADMIN_USER_ID = "507f1f77bcf86cd799439011"
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         result = service._convert_user_id("admin")
 
@@ -102,7 +104,7 @@ def test_convert_user_id_invalid_string():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     # 测试无效的ObjectId字符串
                     invalid_id = "invalid_id_string"
@@ -119,7 +121,7 @@ def test_convert_user_id_none():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     result = service._convert_user_id(None)
 
@@ -144,7 +146,7 @@ def test_get_trading_graph_cache():
                         # 每次调用返回新的Mock实例
                         MockGraph.side_effect = [Mock(), Mock()]
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         config1 = {
                             "llm_provider": "openai",
@@ -181,7 +183,7 @@ def test_get_trading_graph_default_config():
                     ) as MockGraph:
                         MockGraph.return_value = Mock()
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         # 最小配置
                         minimal_config = {}
@@ -236,7 +238,7 @@ async def test_submit_single_analysis_success():
                         mock_queue.submit_task.return_value = True
                         MockQueueService.return_value = mock_queue
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         request = SingleAnalysisRequest(
                             stock_code="000001",
@@ -274,7 +276,7 @@ async def test_submit_single_analysis_concurrent_limit():
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
                     with patch("app.services.analysis_service.QueueService"):
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         request = SingleAnalysisRequest(
                             stock_code="000001",
@@ -300,7 +302,7 @@ async def test_submit_single_analysis_invalid_stock():
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
                     with patch("app.services.analysis_service.QueueService"):
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         # 无效的股票代码
                         request = SingleAnalysisRequest(
@@ -349,7 +351,7 @@ async def test_submit_batch_analysis_success():
                     mock_queue.submit_task.return_value = True
                     MockQueueService.return_value = mock_queue
 
-                service = AnalysisService()
+                service = SimpleAnalysisService()
 
                 request = BatchAnalysisRequest(
                     stock_codes=["000001", "600519", "000002"],
@@ -378,7 +380,7 @@ async def test_submit_batch_analysis_too_many_stocks():
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
                     with patch("app.services.analysis_service.QueueService"):
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         # 超过限制的股票数量
                         too_many_stocks = [
@@ -411,7 +413,7 @@ async def test_update_task_status():
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
                     with patch("app.services.analysis_service.QueueService"):
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         task_id = "task_123"
                         new_status = AnalysisStatus.RUNNING
@@ -454,7 +456,7 @@ async def test_record_token_usage():
             mock_usage.record_token_usage.return_value = True
             MockUsageService.return_value = mock_usage
 
-            service = AnalysisService()
+            service = SimpleAnalysisService()
 
             user_id = "507f1f77bcf86cd799439011"
             task_id = "task_123"
@@ -491,7 +493,7 @@ def test_error_handling_in_convert_user_id():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     # 测试各种无效输入（除了None，因为类型检查会在传入前失败）
                     invalid_inputs = ["", "invalid", "12345", {"id": "test"}]
@@ -521,7 +523,7 @@ async def test_error_handling_in_submit_analysis():
 
             with patch("app.services.analysis_service.get_billing_service"):
                 with patch("app.services.analysis_service.QueueService"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     request = SingleAnalysisRequest(
                         stock_code="000001",
@@ -553,7 +555,7 @@ def test_trading_graph_cache_with_different_configs():
                     ) as MockGraph:
                         MockGraph.return_value = Mock()
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         configs = [
                             {"model": "gpt-4"},
@@ -596,7 +598,7 @@ def test_trading_graph_cache_performance():
                     ) as MockGraph:
                         MockGraph.return_value = Mock()
 
-                        service = AnalysisService()
+                        service = SimpleAnalysisService()
 
                         config = {"model": "gpt-4"}
 
@@ -626,7 +628,7 @@ def test_validate_analysis_parameters():
         with patch("app.services.analysis_service.UsageStatisticsService"):
             with patch("app.services.analysis_service.get_progress_manager"):
                 with patch("app.services.analysis_service.get_billing_service"):
-                    service = AnalysisService()
+                    service = SimpleAnalysisService()
 
                     # 有效参数
                     valid_params = {

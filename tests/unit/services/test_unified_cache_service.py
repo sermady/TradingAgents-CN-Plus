@@ -11,7 +11,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 
-from app.services.unified_cache_service import (
+from app.services.cache import (
     UnifiedCacheService,
     CacheEntry,
 )

@@ -29,7 +29,7 @@ class ConfigBuilderMixin:
             create_analysis_config,
             ModelProviderService,
         )
-        from app.services.model_capability_service import get_model_capability_service
+        from app.services.model_capability import get_model_capability_service
 
         capability_service = get_model_capability_service()
         research_depth = (

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
-from app.services.news_data_service import get_news_data_service
+from app.services.news import get_news_data_service
 from tradingagents.dataflows.providers.china.tushare import get_tushare_provider
 from tradingagents.dataflows.providers.china.akshare import get_akshare_provider
 from tradingagents.dataflows.news.realtime_news import RealtimeNewsAggregator

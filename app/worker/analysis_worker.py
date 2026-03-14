@@ -19,7 +19,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.services.queue_service import get_queue_service
-from app.services.analysis_service import get_analysis_service
+from app.services.analysis.api import get_analysis_service
 from app.core.database import init_database, close_database
 from app.core.redis_client import init_redis, close_redis
 from app.core.config import settings

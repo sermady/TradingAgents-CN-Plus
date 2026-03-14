@@ -23,8 +23,8 @@ import asyncio
 
 from app.routers.auth_db import get_current_user
 from app.services.queue_service import get_queue_service, QueueService
-from app.services.analysis_service import get_analysis_service
-from app.services.simple_analysis_service import get_simple_analysis_service
+from app.services.analysis.api import get_analysis_service
+from app.services.analysis import get_simple_analysis_service
 from app.services.websocket_manager import get_websocket_manager
 from app.models.analysis import (
     SingleAnalysisRequest,
@@ -343,8 +343,12 @@ def _fill_missing_fields(result_data: dict) -> None:
         if isinstance(decision, dict) and decision.get("action"):
             parts = [
                 f"操作: {decision.get('action')}",
-                f"目标价: {decision.get('target_price')}" if decision.get("target_price") else None,
-                f"置信度: {decision.get('confidence')}" if decision.get("confidence") is not None else None,
+                f"目标价: {decision.get('target_price')}"
+                if decision.get("target_price")
+                else None,
+                f"置信度: {decision.get('confidence')}"
+                if decision.get("confidence") is not None
+                else None,
             ]
             rec_candidates.append("；".join([p for p in parts if p]))
         # 从报告中兜底
@@ -359,7 +363,12 @@ def _fill_missing_fields(result_data: dict) -> None:
     # summary 从若干报告拼接生成
     if not result_data.get("summary"):
         sum_candidates = []
-        for k in ["market_report", "fundamentals_report", "sentiment_report", "news_report"]:
+        for k in [
+            "market_report",
+            "fundamentals_report",
+            "sentiment_report",
+            "news_report",
+        ]:
             v = reports.get(k)
             if isinstance(v, str) and len(v.strip()) > 50:
                 sum_candidates.append(v.strip())
@@ -421,6 +430,7 @@ def _fill_from_detailed_analysis(result_data: dict) -> None:
         if isinstance(da, str):
             # 简单基于关键字提取包含"建议"的段落
             import re
+
             m = re.search(r"(投资建议|建议|结论)[:：]?\s*(.+)", da)
             if m:
                 rec = m.group(0)
@@ -467,9 +477,7 @@ async def submit_single_analysis(
             service = get_simple_analysis_service()
             logger.info(f"✅ [BackgroundTask] 服务实例获取成功: {id(service)}")
 
-            logger.info(
-                f"🚀 [BackgroundTask] 准备调用 execute_analysis_background..."
-            )
+            logger.info(f"🚀 [BackgroundTask] 准备调用 execute_analysis_background...")
             await service.execute_analysis_background(task_id, user_id, request)
             logger.info(f"✅ [BackgroundTask] 分析任务完成: {task_id}")
         except Exception as e:
@@ -673,7 +681,9 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
 
         # 处理reports字段 - 如果没有reports字段，优先尝试从文件系统加载，其次从state中提取
         if "reports" not in result_data or not result_data["reports"]:
-            stock_symbol = result_data.get("stock_symbol") or result_data.get("stock_code")
+            stock_symbol = result_data.get("stock_symbol") or result_data.get(
+                "stock_code"
+            )
             analysis_date_raw = result_data.get("analysis_date")
             analysis_date = str(analysis_date_raw)[:10] if analysis_date_raw else None
 
@@ -684,7 +694,9 @@ async def get_task_result(task_id: str, user: dict = Depends(get_current_user)):
                 # 若 summary / recommendation 缺失，尝试从同名报告补全
                 if not result_data.get("summary") and loaded_reports.get("summary"):
                     result_data["summary"] = loaded_reports.get("summary")
-                if not result_data.get("recommendation") and loaded_reports.get("recommendation"):
+                if not result_data.get("recommendation") and loaded_reports.get(
+                    "recommendation"
+                ):
                     result_data["recommendation"] = loaded_reports.get("recommendation")
                 logger.info(
                     f"📁 [RESULT] 从文件系统加载到 {len(loaded_reports)} 个报告: {list(loaded_reports.keys())}"
@@ -1317,12 +1329,16 @@ async def get_task_progress(
                     "progress_percentage": progress_data.get("progress_percentage", 0),
                     "current_step": progress_data.get("current_step", 0),
                     "current_step_name": progress_data.get("current_step_name", ""),
-                    "current_step_description": progress_data.get("current_step_description", ""),
+                    "current_step_description": progress_data.get(
+                        "current_step_description", ""
+                    ),
                     "steps": progress_data.get("steps", []),
                     "agent_status": progress_data.get("agent_status", {}),
                     "elapsed_time": progress_data.get("elapsed_time", 0),
                     "remaining_time": progress_data.get("remaining_time", 0),
-                    "estimated_total_time": progress_data.get("estimated_total_time", 0),
+                    "estimated_total_time": progress_data.get(
+                        "estimated_total_time", 0
+                    ),
                     "analysts": progress_data.get("analysts", []),
                     "research_depth": progress_data.get("research_depth", ""),
                     "llm_provider": progress_data.get("llm_provider", ""),

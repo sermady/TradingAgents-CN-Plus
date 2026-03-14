@@ -74,6 +74,7 @@ class DataFetchResult:
     issues: List[Dict[str, Any]]
     fetch_time: float
     metadata: Dict[str, Any] = field(default_factory=dict)
+    parsed_data: Dict[str, Any] = field(default_factory=dict)  # P0-1: 结构化数据
 
 
 class DataCoordinator:
@@ -200,10 +201,26 @@ class DataCoordinator:
                 "volume": r"成交量[：:]\s*(\d+\.?\d*)",
                 "volume_unit": r"成交量[：:]\s*\d+\.?\d*\s*(\w+)",
                 "turnover_rate": r"换手率[：:]\s*(\d+\.?\d*)",
-                "MA5": r"MA5[：:]\s*(\d+\.?\d*)",
-                "MA10": r"MA10[：:]\s*(\d+\.?\d*)",
-                "MA20": r"MA20[：:]\s*(\d+\.?\d*)",
+                "MA5": r"MA5[：:]\s*[¥]?(\d+\.?\d*)",
+                "MA10": r"MA10[：:]\s*[¥]?(\d+\.?\d*)",
+                "MA20": r"MA20[：:]\s*[¥]?(\d+\.?\d*)",
+                "MA60": r"MA60[：:]\s*[¥]?(\d+\.?\d*)",
                 "RSI": r"RSI\d*[：:]\s*(\d+\.?\d*)",
+                # P1-1: 扩展指标模式
+                "RSI14": r"RSI14[：:]\s*(\d+\.?\d*)",
+                "MACD_DIF": r"DIF[：:]\s*(-?\d+\.?\d*)",
+                "MACD_DEA": r"DEA[：:]\s*(-?\d+\.?\d*)",
+                "MACD": r"MACD[：:]\s*(-?\d+\.?\d*)",
+                "KDJ_K": r"K[：:]\s*(\d+\.?\d*)",
+                "KDJ_D": r"D[：:]\s*(\d+\.?\d*)",
+                "KDJ_J": r"J[：:]\s*(-?\d+\.?\d*)",
+                "ATR14": r"ATR\(?14\)?[：:]\s*(\d+\.?\d*)",
+                "WR14": r"Williams\s*%?R\(?14\)?[：:]\s*(-?\d+\.?\d*)",
+                "CCI14": r"CCI\(?14\)?[：:]\s*(-?\d+\.?\d*)",
+                "OBV": r"OBV[：:]\s*(-?[\d,]+\.?\d*)",
+                "BOLL_UPPER": r"上轨[：:]\s*[¥]?(\d+\.?\d*)",
+                "BOLL_MID": r"中轨[：:]\s*[¥]?(\d+\.?\d*)",
+                "BOLL_LOWER": r"下轨[：:]\s*[¥]?(\d+\.?\d*)",
             }
 
             for key, pattern in patterns.items():
@@ -371,6 +388,7 @@ class DataCoordinator:
                     # 标记数据来源
                     if parsed:
                         data += f"\n数据来源: {source}"
+                        parsed["source"] = source
 
                     # 缓存成功数据
                     self._set_cached_data(cache_key, data)
@@ -386,6 +404,7 @@ class DataCoordinator:
                         quality_score=quality_score,
                         issues=issues,
                         fetch_time=fetch_time,
+                        parsed_data=parsed,
                     )
 
             except Exception as e:
@@ -462,6 +481,7 @@ class DataCoordinator:
                         if corrected_ps:
                             # 如果有修正值，在数据中标注
                             data = self._add_ps_correction_to_data(data, corrected_ps)
+                            parsed["PS_corrected"] = corrected_ps
                             quality_score = max(0.3, quality_score - 0.1)  # 轻微扣分
                         else:
                             quality_score = max(0.3, quality_score - 0.2)  # 严重扣分
@@ -481,6 +501,7 @@ class DataCoordinator:
                     # 标记数据来源
                     if parsed:
                         data += f"\n数据来源: {source}"
+                        parsed["source"] = source
 
                     # 缓存成功数据
                     self._set_cached_data(cache_key, data)
@@ -500,6 +521,7 @@ class DataCoordinator:
                             "corrected_ps": corrected_ps,
                             "volume_unit_info": volume_unit_info,
                         },
+                        parsed_data=parsed,
                     )
 
             except Exception as e:
@@ -768,45 +790,70 @@ class DataCoordinator:
             )
 
     def _get_sentiment_data(self, symbol: str, trade_date: str) -> DataFetchResult:
-        """获取舆情数据"""
-        start_time = time.time()
+        """获取市场情绪数据 (资金流向 + 舆情)
 
+        P1-3: 用真实的市场资金流向数据替代空的社交媒体情绪数据。
+        数据来源包括：龙虎榜、北向资金、融资融券、大宗交易。
+        """
+        start_time = time.time()
+        sections = []
+        issues = []
+
+        # 1) 获取市场资金流向数据 (P1-3 新增)
         try:
-            logger.info(f"😊 正在获取舆情数据...")
+            from tradingagents.dataflows.market_flow import fetch_market_flow_data
+
+            market_flow = fetch_market_flow_data(symbol, trade_date)
+            if market_flow and "获取失败" not in market_flow:
+                sections.append(market_flow)
+                logger.info("✅ 市场资金流向数据获取成功")
+            else:
+                sections.append(market_flow or "")
+                logger.warning("⚠️ 部分市场资金流向数据不可用")
+        except Exception as e:
+            logger.warning(f"市场资金流向数据获取失败: {e}")
+            issues.append({"severity": "warning", "message": f"资金流向: {e}", "field": ""})
+
+        # 2) 保留原有舆情数据作为补充 (如果可用)
+        try:
             from tradingagents.dataflows.interface import get_chinese_social_sentiment
 
             sentiment_data = get_chinese_social_sentiment(symbol, trade_date)
+            if sentiment_data and "❌" not in sentiment_data and "警告" not in sentiment_data:
+                sections.append("\n=== 舆情情绪分析 ===")
+                sections.append(sentiment_data)
+        except Exception:
+            pass  # 舆情数据本身就是补充，失败不影响
 
-            fetch_time = time.time() - start_time
+        fetch_time = time.time() - start_time
 
-            # 评估舆情数据质量
-            quality_score = 0.7
-            if sentiment_data and "❌" not in sentiment_data:
-                if "情绪指数" in sentiment_data or "舆情" in sentiment_data:
-                    quality_score = 0.9
+        # 评估数据质量
+        combined = "\n".join(sections)
+        quality_score = 0.3  # 基础分
 
-            logger.info(
-                f"✅ 舆情数据获取成功 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
-            )
+        # 有资金流向数据 → 大幅加分
+        if "龙虎榜" in combined and "暂无" not in combined.split("龙虎榜")[1][:20]:
+            quality_score += 0.2
+        if "北向资金" in combined and "暂无" not in combined.split("北向资金")[1][:20]:
+            quality_score += 0.15
+        if "融资融券" in combined and "暂无" not in combined.split("融资融券")[1][:20]:
+            quality_score += 0.15
+        if "大宗交易" in combined and "暂无" not in combined.split("大宗交易")[1][:20]:
+            quality_score += 0.15
 
-            return DataFetchResult(
-                data=sentiment_data if sentiment_data else "暂无舆情数据",
-                source="unified",
-                quality_score=quality_score,
-                issues=[],
-                fetch_time=fetch_time,
-            )
+        quality_score = min(quality_score, 1.0)
 
-        except Exception as e:
-            error_msg = f"❌ 舆情数据获取失败: {e}"
-            logger.error(error_msg)
-            return DataFetchResult(
-                data=error_msg,
-                source="failed",
-                quality_score=0.0,
-                issues=[{"severity": "error", "message": str(e), "field": ""}],
-                fetch_time=time.time() - start_time,
-            )
+        logger.info(
+            f"✅ 情绪/资金流向数据获取完成 (质量分: {quality_score:.2f}, 耗时: {fetch_time:.2f}s)"
+        )
+
+        return DataFetchResult(
+            data=combined if combined.strip() else "暂无市场情绪数据",
+            source="market_flow+sentiment",
+            quality_score=quality_score,
+            issues=issues,
+            fetch_time=fetch_time,
+        )
 
     def _get_china_market_features_data(
         self, symbol: str, trade_date: str
@@ -827,6 +874,12 @@ class DataCoordinator:
             china_features_data.append(f"股票代码: {symbol}")
             china_features_data.append(f"数据日期: {trade_date}")
             china_features_data.append("")
+
+            # P0-1: 同时构建结构化数据
+            structured = {
+                "symbol": symbol,
+                "trade_date": trade_date,
+            }
 
             # 尝试获取涨跌停数据
             try:
@@ -856,6 +909,14 @@ class DataCoordinator:
                         open_price = float(open_match.group(1))
                         change_pct = ((current_price - open_price) / open_price) * 100
 
+                        structured["current_price"] = current_price
+                        structured["open_price"] = open_price
+                        structured["change_pct"] = round(change_pct, 2)
+                        if high_match:
+                            structured["high"] = float(high_match.group(1))
+                        if low_match:
+                            structured["low"] = float(low_match.group(1))
+
                         china_features_data.append(f"当前价格: {current_price}")
                         china_features_data.append(f"今日开盘: {open_price}")
                         china_features_data.append(f"涨跌幅: {change_pct:.2f}%")
@@ -863,14 +924,19 @@ class DataCoordinator:
                         # 判断是否触及涨跌停
                         if change_pct >= 9.5:
                             china_features_data.append("⚠️ 触及涨停板（或接近涨停）")
+                            structured["limit_status"] = "涨停"
                         elif change_pct <= -9.5:
                             china_features_data.append("⚠️ 触及跌停板（或接近跌停）")
+                            structured["limit_status"] = "跌停"
                         elif change_pct >= 5:
                             china_features_data.append("📈 大幅上涨")
+                            structured["limit_status"] = "大幅上涨"
                         elif change_pct <= -5:
                             china_features_data.append("📉 大幅下跌")
+                            structured["limit_status"] = "大幅下跌"
                         else:
                             china_features_data.append("➡️ 正常波动")
+                            structured["limit_status"] = "正常波动"
 
                     china_features_data.append("")
 
@@ -880,6 +946,8 @@ class DataCoordinator:
                     )
                     if turnover_match:
                         turnover = float(turnover_match.group(1))
+                        structured["turnover_rate"] = turnover
+
                         china_features_data.append("【换手率分析】")
                         china_features_data.append(f"换手率: {turnover:.2f}%")
 
@@ -887,24 +955,30 @@ class DataCoordinator:
                             china_features_data.append(
                                 "💤 极低换手：交易清淡，流动性差"
                             )
+                            structured["turnover_level"] = "极低"
                         elif turnover < 3:
                             china_features_data.append(
                                 "🔄 低换手：正常范围，交易不活跃"
                             )
+                            structured["turnover_level"] = "低"
                         elif turnover < 7:
                             china_features_data.append("⚡ 中等换手：正常活跃")
+                            structured["turnover_level"] = "中等"
                         elif turnover < 10:
                             china_features_data.append(
                                 "🔥 高换手：高度活跃，关注资金动向"
                             )
+                            structured["turnover_level"] = "高"
                         elif turnover < 20:
                             china_features_data.append(
                                 "🚨 极高换手：异常活跃，可能有重大消息"
                             )
+                            structured["turnover_level"] = "极高"
                         else:
                             china_features_data.append(
                                 "⚠️ 超高换手：极度活跃，高风险高机会"
                             )
+                            structured["turnover_level"] = "超高"
 
                         china_features_data.append("")
 
@@ -914,21 +988,29 @@ class DataCoordinator:
                     )
                     if volume_ratio_match:
                         volume_ratio = float(volume_ratio_match.group(1))
+                        structured["volume_ratio"] = volume_ratio
+
                         china_features_data.append("【量比分析】")
                         china_features_data.append(f"量比: {volume_ratio:.2f}")
 
                         if volume_ratio < 0.5:
                             china_features_data.append("📉 严重缩量：成交清淡")
+                            structured["volume_ratio_level"] = "严重缩量"
                         elif volume_ratio < 0.8:
                             china_features_data.append("📉 缩量：交易活跃度下降")
+                            structured["volume_ratio_level"] = "缩量"
                         elif volume_ratio < 1.5:
                             china_features_data.append("➡️ 正常放量")
+                            structured["volume_ratio_level"] = "正常"
                         elif volume_ratio < 2.5:
                             china_features_data.append("📈 明显放量：资金关注度提升")
+                            structured["volume_ratio_level"] = "明显放量"
                         elif volume_ratio < 5:
                             china_features_data.append("🔥 显著放量：大量资金介入")
+                            structured["volume_ratio_level"] = "显著放量"
                         else:
                             china_features_data.append("🚨 异常放量：需关注消息面")
+                            structured["volume_ratio_level"] = "异常放量"
 
                         china_features_data.append("")
 
@@ -936,22 +1018,29 @@ class DataCoordinator:
                     amplitude_match = re.search(r"振幅[：:]\s*(\d+\.?\d*)", market_data)
                     if amplitude_match:
                         amplitude = float(amplitude_match.group(1))
+                        structured["amplitude"] = amplitude
+
                         china_features_data.append("【振幅分析】")
                         china_features_data.append(f"振幅: {amplitude:.2f}%")
 
                         if amplitude < 2:
                             china_features_data.append("💤 窄幅波动")
+                            structured["amplitude_level"] = "窄幅"
                         elif amplitude < 5:
                             china_features_data.append("📊 正常波动")
+                            structured["amplitude_level"] = "正常"
                         elif amplitude < 10:
                             china_features_data.append("⚡ 宽幅波动")
+                            structured["amplitude_level"] = "宽幅"
                         else:
                             china_features_data.append("🚨 剧烈波动")
+                            structured["amplitude_level"] = "剧烈"
 
                         china_features_data.append("")
 
                     # 标记数据来源
                     china_features_data.append(f"数据来源: 市场数据接口")
+                    structured["source"] = "unified"
 
             except Exception as e:
                 logger.warning(f"⚠️ 获取A股特色数据失败: {e}")
@@ -977,6 +1066,7 @@ class DataCoordinator:
                 quality_score=quality_score,
                 issues=[],
                 fetch_time=fetch_time,
+                parsed_data=structured,
             )
 
         except Exception as e:
@@ -989,6 +1079,109 @@ class DataCoordinator:
                 issues=[{"severity": "error", "message": str(e), "field": ""}],
                 fetch_time=time.time() - start_time,
             )
+
+    # ==================== P0-3: 数据充分性预检验 ====================
+
+    def _check_data_sufficiency(
+        self, results: Dict[str, "DataFetchResult"], symbol: str
+    ) -> List[Dict[str, Any]]:
+        """
+        检查数据是否满足分析最低要求 (P0-3)
+
+        检查维度:
+        1. 市场数据是否获取成功
+        2. 关键指标是否存在 (MA60 需要 60 天数据)
+        3. 基本面数据是否有核心字段
+
+        Returns:
+            问题列表，每项 {severity, message, field}
+        """
+        issues = []
+        market_result = results.get("market")
+        financial_result = results.get("financial")
+
+        # 1. 市场数据基本检查
+        if not market_result or market_result.source == "failed":
+            issues.append({
+                "severity": "critical",
+                "message": f"市场数据获取失败，无法进行技术分析",
+                "field": "market_data",
+            })
+            return issues  # 无法继续检查
+
+        market_text = market_result.data or ""
+        parsed_market = market_result.parsed_data or {}
+
+        # 2. 检查当前价格是否存在
+        if not parsed_market.get("current_price"):
+            issues.append({
+                "severity": "critical",
+                "message": "市场数据中缺少当前价格，分析结果可能不准确",
+                "field": "current_price",
+            })
+
+        # 3. 检查关键移动平均线是否存在
+        # MA60 需要至少 60 个交易日数据
+        has_ma5 = parsed_market.get("MA5") is not None or "MA5" in market_text
+        has_ma20 = parsed_market.get("MA20") is not None or "MA20" in market_text
+        has_ma60 = "MA60" in market_text
+
+        if not has_ma5:
+            issues.append({
+                "severity": "warning",
+                "message": "缺少 MA5 (5日均线)，短期趋势判断受限",
+                "field": "MA5",
+            })
+
+        if not has_ma20:
+            issues.append({
+                "severity": "warning",
+                "message": "缺少 MA20 (20日均线)，中期趋势判断受限",
+                "field": "MA20",
+            })
+
+        if not has_ma60:
+            issues.append({
+                "severity": "info",
+                "message": "缺少 MA60 (60日均线)，数据可能不足60个交易日，长期趋势分析受限",
+                "field": "MA60",
+            })
+
+        # 4. 检查 RSI 是否存在
+        has_rsi = parsed_market.get("RSI") is not None or "RSI" in market_text
+        if not has_rsi:
+            issues.append({
+                "severity": "warning",
+                "message": "缺少 RSI 指标，超买超卖判断受限",
+                "field": "RSI",
+            })
+
+        # 5. 基本面数据检查
+        if financial_result and financial_result.source != "failed":
+            parsed_fin = financial_result.parsed_data or {}
+            if not parsed_fin.get("PE") and not parsed_fin.get("PB"):
+                issues.append({
+                    "severity": "warning",
+                    "message": "基本面数据缺少 PE/PB 估值指标",
+                    "field": "PE_PB",
+                })
+        elif financial_result and financial_result.source == "failed":
+            issues.append({
+                "severity": "warning",
+                "message": "基本面数据获取失败，估值分析将受限",
+                "field": "financial_data",
+            })
+
+        # 6. 数据行数推断 (从文本中计算日期出现次数)
+        date_count = len(re.findall(r"\d{4}-\d{2}-\d{2}", market_text))
+        if 0 < date_count < 20:
+            issues.append({
+                "severity": "warning",
+                "message": f"市场数据仅包含约 {date_count} 个交易日，少于建议的最低 20 天",
+                "field": "data_days",
+            })
+
+        return issues
 
     def fetch_all_data(
         self,
@@ -1094,62 +1287,121 @@ class DataCoordinator:
             f"✅ [Data Coordinator] 所有数据获取完成 (总体质量分: {overall_quality:.2f}, 总耗时: {total_time:.2f}s)"
         )
 
+        # ========== P0-3: 数据充分性预检验 ==========
+        sufficiency_issues = self._check_data_sufficiency(results, symbol)
+        if sufficiency_issues:
+            for issue in sufficiency_issues:
+                severity = issue.get("severity", "warning")
+                msg = issue.get("message", "")
+                if severity == "critical":
+                    # 严重不足：大幅降低质量评分
+                    overall_quality = min(overall_quality, 0.3)
+                    logger.warning(f"🚨 [P0-3] 数据严重不足: {msg}")
+                elif severity == "warning":
+                    # 部分不足：适度降低
+                    overall_quality = max(0.3, overall_quality - 0.15)
+                    logger.warning(f"⚠️ [P0-3] 数据不足: {msg}")
+                else:
+                    logger.info(f"ℹ️ [P0-3] 数据提示: {msg}")
+
+            # 将充分性问题注入 market issues
+            market_result = results.get("market", DataFetchResult("", "", 0.0, [], 0))
+            market_result.issues.extend(sufficiency_issues)
+
         # 收集 metadata（如 PS 修正值、成交量单位等）
         financial_metadata = results.get(
             "financial", DataFetchResult("", "", 0.0, [], 0)
         ).metadata
 
+        # ========== P2-2: 多维数据质量评分 ==========
+        _default = DataFetchResult("", "", 0.0, [], 0)
+        market_structured = results.get("market", _default).parsed_data
+        market_text = results.get("market", _default).data
+        try:
+            from tradingagents.graph.data_quality import evaluate_data_quality
+
+            quality_report = evaluate_data_quality(
+                structured_data=market_structured,
+                trade_date=trade_date,
+                data_text=market_text,
+            )
+            # 用多维评分替代原有的简单可用性评分
+            overall_quality = min(overall_quality, quality_report.overall_score)
+            quality_grade = quality_report.grade
+            quality_issues = list(quality_report.issues)
+            logger.info(
+                f"📊 [P2-2] 数据质量: {quality_grade} ({quality_report.overall_score:.0%}) "
+                f"时效={quality_report.timeliness.score:.2f} "
+                f"完整={quality_report.completeness.score:.2f} "
+                f"一致={quality_report.consistency.score:.2f} "
+                f"异常={quality_report.anomaly.score:.2f}"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ [P2-2] 数据质量评估失败: {e}")
+            quality_grade = "B"
+            quality_issues = []
+
+        # ========== P2-3: 技术信号预计算摘要 ==========
+        try:
+            from tradingagents.graph.technical_signals import (
+                compute_technical_signals,
+                format_signals_for_prompt,
+            )
+
+            tech_signals = compute_technical_signals(market_structured)
+            tech_signals_text = format_signals_for_prompt(tech_signals)
+            if tech_signals.get("signals"):
+                logger.info(
+                    f"📡 [P2-3] 技术信号: {tech_signals['trend_text']} "
+                    f"(强度: {abs(tech_signals['trend_score']):.1f}/8, "
+                    f"信号数: {len(tech_signals['signals'])})"
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ [P2-3] 技术信号计算失败: {e}")
+            tech_signals = {}
+            tech_signals_text = ""
+
         # 构建返回结果
         result = {
-            "market_data": results.get(
-                "market", DataFetchResult("", "", 0.0, [], 0)
-            ).data,
-            "financial_data": results.get(
-                "financial", DataFetchResult("", "", 0.0, [], 0)
-            ).data,
-            "news_data": results.get("news", DataFetchResult("", "", 0.0, [], 0)).data,
-            "sentiment_data": results.get(
-                "sentiment", DataFetchResult("", "", 0.0, [], 0)
-            ).data,
-            "china_market_data": results.get(
-                "china_market", DataFetchResult("", "", 0.0, [], 0)
-            ).data,
+            # 文本数据通道 (向后兼容)
+            "market_data": results.get("market", _default).data,
+            "financial_data": results.get("financial", _default).data,
+            "news_data": results.get("news", _default).data,
+            "sentiment_data": results.get("sentiment", _default).data,
+            "china_market_data": results.get("china_market", _default).data,
+            # P0-1: 结构化数据通道
+            "market_data_structured": results.get("market", _default).parsed_data,
+            "financial_data_structured": results.get("financial", _default).parsed_data,
+            "china_market_data_structured": results.get(
+                "china_market", _default
+            ).parsed_data,
+            # 质量和元数据
             "data_quality_score": overall_quality,
             "data_sources": {
-                "market": results.get(
-                    "market", DataFetchResult("", "", 0.0, [], 0)
-                ).source,
-                "financial": results.get(
-                    "financial", DataFetchResult("", "", 0.0, [], 0)
-                ).source,
-                "news": results.get("news", DataFetchResult("", "", 0.0, [], 0)).source,
-                "sentiment": results.get(
-                    "sentiment", DataFetchResult("", "", 0.0, [], 0)
-                ).source,
-                "china_market": results.get(
-                    "china_market", DataFetchResult("", "", 0.0, [], 0)
-                ).source,
+                "market": results.get("market", _default).source,
+                "financial": results.get("financial", _default).source,
+                "news": results.get("news", _default).source,
+                "sentiment": results.get("sentiment", _default).source,
+                "china_market": results.get("china_market", _default).source,
             },
             "data_issues": {
-                "market": results.get(
-                    "market", DataFetchResult("", "", 0.0, [], 0)
-                ).issues,
-                "financial": results.get(
-                    "financial", DataFetchResult("", "", 0.0, [], 0)
-                ).issues,
-                "news": results.get("news", DataFetchResult("", "", 0.0, [], 0)).issues,
-                "sentiment": results.get(
-                    "sentiment", DataFetchResult("", "", 0.0, [], 0)
-                ).issues,
-                "china_market": results.get(
-                    "china_market", DataFetchResult("", "", 0.0, [], 0)
-                ).issues,
+                "market": results.get("market", _default).issues,
+                "financial": results.get("financial", _default).issues,
+                "news": results.get("news", _default).issues,
+                "sentiment": results.get("sentiment", _default).issues,
+                "china_market": results.get("china_market", _default).issues,
             },
             "data_metadata": {
                 "corrected_ps": financial_metadata.get("corrected_ps"),
                 "volume_unit_info": financial_metadata.get("volume_unit_info"),
             },
             "fetch_time": total_time,
+            # P2-2: 多维数据质量评分
+            "data_quality_grade": quality_grade,
+            "data_quality_issues": quality_issues,
+            # P2-3: 技术信号预计算摘要
+            "technical_signals": tech_signals,
+            "technical_signals_text": tech_signals_text,
         }
 
         # 缓存结果
@@ -1204,6 +1456,47 @@ def get_data_coordinator() -> DataCoordinator:
     if _data_coordinator is None:
         _data_coordinator = DataCoordinator()
     return _data_coordinator
+
+
+def _extract_price_series(market_text: str) -> List[float]:
+    """
+    从市场数据文本中提取收盘价序列 (P1-2 辅助函数)
+
+    尝试多种模式匹配收盘价:
+    - "收盘: 12.30" / "收盘价: 12.30"
+    - "close: 12.30"
+    - 表格格式中的收盘价列
+    - 如果没有收盘价序列，提取最新价
+    """
+    prices = []
+
+    # 模式1: 收盘价标签
+    close_patterns = [
+        r"收盘[价]?[：:]\s*(\d+\.?\d*)",
+        r"[Cc]lose[：:]\s*(\d+\.?\d*)",
+    ]
+    for pattern in close_patterns:
+        matches = re.findall(pattern, market_text)
+        if matches:
+            prices = [float(m) for m in matches if float(m) > 0]
+            if len(prices) >= 5:
+                return prices
+
+    # 模式2: 日线数据表格 (日期 + OHLC)
+    # 匹配 "2025-01-15 | 12.30 | 12.50 | 12.10 | 12.40" 格式
+    table_pattern = r"\d{4}-\d{2}-\d{2}.*?(\d+\.\d{2})\s*$"
+    matches = re.findall(table_pattern, market_text, re.MULTILINE)
+    if len(matches) >= 5:
+        prices = [float(m) for m in matches if float(m) > 0]
+        return prices
+
+    # 模式3: 仅有单一最新价
+    latest_pattern = r"最新价[：:]\s*(\d+\.?\d*)"
+    match = re.search(latest_pattern, market_text)
+    if match:
+        prices = [float(match.group(1))]
+
+    return prices
 
 
 def data_coordinator_node(state: AgentState):
@@ -1297,12 +1590,47 @@ def data_coordinator_node(state: AgentState):
     )
     logger.info(f"   总体质量评分: {results.get('data_quality_score', 0):.2f}")
 
+    # ========== P1-2: 计算量化风险指标 ==========
+    quant_risk_metrics = {}
+    quant_risk_text = ""
+    try:
+        from tradingagents.graph.risk_indicators import get_quant_risk_calculator
+
+        # 从市场数据文本中提取收盘价序列
+        market_text = results.get("market_data", "")
+        prices = _extract_price_series(market_text)
+
+        if len(prices) >= 5:
+            calculator = get_quant_risk_calculator()
+            metrics = calculator.calculate(prices)
+            quant_risk_metrics = metrics.to_dict()
+            quant_risk_text = metrics.format_for_prompt()
+            logger.info(
+                f"📊 [P1-2] 量化风险指标已计算 ({metrics.data_days}天数据, "
+                f"VaR95={metrics.var_95:.2%}, Vol={metrics.annualized_volatility:.2%})"
+                if metrics.var_95 and metrics.annualized_volatility
+                else f"📊 [P1-2] 量化风险指标计算完成 ({metrics.data_days}天数据)"
+            )
+        else:
+            logger.info(f"ℹ️ [P1-2] 价格数据不足({len(prices)}天)，跳过量化风险指标计算")
+    except Exception as e:
+        logger.warning(f"⚠️ [P1-2] 量化风险指标计算失败: {e}")
+
     return {
+        # 文本数据通道 (向后兼容)
         "market_data": results["market_data"],
         "financial_data": results["financial_data"],
         "news_data": results["news_data"],
         "sentiment_data": results["sentiment_data"],
         "china_market_data": results["china_market_data"],
+        # P0-1: 结构化数据通道
+        "market_data_structured": results.get("market_data_structured", {}),
+        "financial_data_structured": results.get("financial_data_structured", {}),
+        "china_market_data_structured": results.get("china_market_data_structured", {}),
+        # P1-2: 量化风险指标
+        "quant_risk_metrics": quant_risk_metrics,
+        "quant_risk_text": quant_risk_text,
+        # 质量和元数据
         "data_quality_score": results["data_quality_score"],
         "data_sources": results["data_sources"],
         "data_issues": results.get("data_issues", {}),

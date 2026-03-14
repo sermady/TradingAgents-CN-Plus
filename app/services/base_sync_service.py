@@ -303,7 +303,7 @@ class BaseSyncService(ABC):
             message: 进度消息
         """
         try:
-            from app.services.scheduler_service import TaskCancelledException
+            from app.services.scheduler import TaskCancelledException
 
             logger.info(f"📊 [进度更新] 任务 {job_id} 进度: {progress}% - {message}")
 

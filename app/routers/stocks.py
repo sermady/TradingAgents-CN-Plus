@@ -603,7 +603,7 @@ async def get_kline(
 async def get_news(code: str, days: int = 30, limit: int = 50, include_announcements: bool = True, current_user: dict = Depends(get_current_user)):
     """获取新闻与公告（支持A股、港股、美股）"""
     from app.services.foreign_stock_service import ForeignStockService
-    from app.services.news_data_service import get_news_data_service, NewsQueryParams
+    from app.services.news import get_news_data_service, NewsQueryParams
 
     # 检测股票类型
     market, normalized_code = _detect_market_and_code(code)
@@ -629,7 +629,7 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
         logger.info(f"📰 开始获取新闻: code={code}, normalized_code={normalized_code}, days={days}, limit={limit}")
 
         # 直接使用 news_data 路由的查询逻辑
-        from app.services.news_data_service import get_news_data_service, NewsQueryParams
+        from app.services.news import get_news_data_service, NewsQueryParams
         from datetime import datetime, timedelta
         from app.worker.akshare_sync_service import get_akshare_sync_service
 
